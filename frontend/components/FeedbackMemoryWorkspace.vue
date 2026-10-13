@@ -34,6 +34,7 @@ const processSearch = ref("");
 const configs = ref<FeedbackMemoryConfig[]>([]);
 const workspace = ref<FeedbackMemoryWorkspace | null>(null);
 const loading = ref(false);
+const refreshing = ref(false);
 const busy = ref(false);
 const generating = ref(false);
 const error = ref(false);
@@ -64,10 +65,10 @@ const filteredConfigs = computed(() => {
       .includes(keyword),
   );
 });
-const processLabel = computed(
+const processCategory = computed(
   () =>
     configs.value.find((row) => row.process_type === processType.value)
-      ?.process_type_label || processType.value,
+      ?.process_type_label || "",
 );
 const promptsOpen = ref(false);
 const editorOpen = ref(false);
@@ -90,7 +91,9 @@ const scope = (): FeedbackMemoryScope => ({
   module: module.value,
   process_type: processType.value,
 });
-const locked = computed(() => loading.value || busy.value || generating.value);
+const locked = computed(
+  () => loading.value || refreshing.value || busy.value || generating.value,
+);
 const enabledCount = computed(
   () => workspace.value?.entries.filter((row) => row.enabled).length || 0,
 );
@@ -188,6 +191,27 @@ async function loadConfigs() {
     loading.value = false;
   }
   await changeProcess();
+}
+// 手动刷新同时更新流程目录和当前工作区，保留仍存在的流程选择与版本浏览位置。
+async function refresh() {
+  if (locked.value) return;
+  refreshing.value = true;
+  error.value = false;
+  try {
+    configs.value = await api.configs(module.value);
+    if (configs.value.some((row) => row.process_type === processType.value)) {
+      await load();
+    } else {
+      processType.value = configs.value[0]?.process_type || "";
+      await changeProcess();
+    }
+    if (!error.value) message.success(t("feedbackMemory.refreshed"));
+  } catch (failure) {
+    error.value = true;
+    showError(failure);
+  } finally {
+    refreshing.value = false;
+  }
 }
 async function selectProcess(value: string) {
   if (locked.value || processType.value === value) return;
@@ -375,10 +399,10 @@ onMounted(loadConfigs);
             :disabled="locked"
             @click="selectProcess(config.process_type)"
           >
-            <span class="item-name">{{
-              config.process_type_label || config.process_type
+            <span class="item-name">{{ config.process_type }}</span>
+            <span v-if="config.process_type_label" class="item-meta">{{
+              config.process_type_label
             }}</span>
-            <span class="item-meta">{{ config.process_type }}</span>
           </button>
           <p v-if="!loading && !filteredConfigs.length" class="library-empty">
             {{
@@ -396,16 +420,18 @@ onMounted(loadConfigs);
       <main class="feedback-main panel">
         <div class="workspace-header">
           <div class="workspace-title">
-            <h3>{{ processLabel || t("feedbackMemory.selectProcess") }}</h3>
-            <p>{{ t("feedbackMemory.workspaceHint") }}</p>
+            <h3>{{ processType || t("feedbackMemory.selectProcess") }}</h3>
+            <p>{{ processCategory || t("feedbackMemory.workspaceHint") }}</p>
           </div>
           <a-space wrap>
             <a-button
               class="memory-icon-button"
+              :loading="refreshing"
               :disabled="locked"
               :aria-label="t('feedbackMemory.refresh')"
-              @click="processType ? load() : loadConfigs()"
-              ><ReloadOutlined
+              :title="t('feedbackMemory.refreshHint')"
+              @click="refresh"
+              ><ReloadOutlined v-if="!refreshing"
             /></a-button>
             <a-button
               :disabled="!workspace || locked"
@@ -920,8 +946,10 @@ onMounted(loadConfigs);
       <h3>{{ t("feedbackMemory.userTemplate") }}</h3>
       <pre class="readonly-text">{{ workspace?.user_prompt_template }}</pre>
       <h3>{{ t("feedbackMemory.variable") }}</h3>
-      <code v-text="'{{feedback_memory}}'" />
-      <p>{{ t("feedbackMemory.integrationHint") }}</p>
+      <div class="prompt-variable-info">
+        <code class="prompt-variable-token" v-text="'{{feedback_memory}}'" />
+        <p>{{ t("feedbackMemory.integrationHint") }}</p>
+      </div>
     </a-drawer>
     <a-drawer
       :open="!!activeSource"
@@ -1040,7 +1068,6 @@ onMounted(loadConfigs);
 }
 .library-list {
   max-height: calc(100vh - 400px);
-  min-height: 160px;
   overflow-y: auto;
 }
 .library-item {
@@ -1358,6 +1385,30 @@ h3 {
 }
 .readonly-prompts {
   margin-top: 20px;
+}
+.prompt-variable-info {
+  padding: 16px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-hover);
+}
+.prompt-variable-token {
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+  font: 12px/1.8 var(--font-mono, monospace);
+  overflow-wrap: anywhere;
+}
+.prompt-variable-info p {
+  margin: 12px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.8;
 }
 .readonly-prompts pre,
 .readonly-text {
