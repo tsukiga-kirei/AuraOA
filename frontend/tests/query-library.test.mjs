@@ -61,6 +61,42 @@ const { compileQueryBuilder } = await import(
   `data:text/javascript;base64,${Buffer.from(builderJs).toString('base64')}`
 )
 
+const labelSource = fs.readFileSync(new URL('../utils/queryColumnLabels.ts', import.meta.url), 'utf8')
+const labelJs = ts.transpileModule(labelSource, {
+  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+}).outputText
+const { fillQueryBuilderLabels, fillQueryFieldNotes } = await import(
+  `data:text/javascript;base64,${Buffer.from(labelJs).toString('base64')}`
+)
+
+test('reloading schema fills empty output and filter labels across identifier casing', () => {
+  const columns = [{ key: 'AMOUNT', label: '金额', data_type: 'NUMBER' }]
+  const builder = {
+    columns: [{ field: 'amount', alias: ' ', aggregate: '' }, { field: 'AMOUNT', alias: '累计金额', aggregate: 'SUM' }],
+    filters: [{ field: 'Amount', label: '' }, { field: 'amount', label: '最低金额' }],
+  }
+  fillQueryBuilderLabels(builder, columns)
+  assert.deepEqual(builder.columns.map(c => c.alias), ['金额', '累计金额'])
+  assert.deepEqual(builder.filters.map(f => f.label), ['金额', '最低金额'])
+  fillQueryBuilderLabels(builder, [{ ...columns[0], label: '新金额' }])
+  assert.equal(builder.columns[0].alias, '金额', 'reloading must retain an existing alias')
+})
+
+test('schema notes use Chinese defaults and preserve manual descriptions with different casing', () => {
+  const notes = { 'FORMTABLE_MAIN_199.amount': '实际支付金额', 'other.amount': '另一张表' }
+  const result = fillQueryFieldNotes(notes, 'formtable_main_199', [
+    { key: 'AMOUNT', label: '金额' },
+    { key: 'PERSON', label: '申请人' },
+    { key: 'UNKNOWN', label: 'UNKNOWN' },
+  ])
+  assert.deepEqual(result, {
+    'formtable_main_199.AMOUNT': '实际支付金额',
+    'formtable_main_199.PERSON': '申请人',
+    'other.amount': '另一张表',
+  })
+  assert.equal(notes['FORMTABLE_MAIN_199.amount'], '实际支付金额', 'source notes must not be mutated')
+})
+
 test('compileQueryBuilder handles varchar date without TO_DATE and native date with TO_DATE in oracle/dm', () => {
   const schema = [
     { key: 'sqrq', label: '申请日期', data_type: 'VARCHAR2' },

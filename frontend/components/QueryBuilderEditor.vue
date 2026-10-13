@@ -4,6 +4,7 @@ import { PlusOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import { useAuditDataQueryApi } from '~/composables/useAuditDataQueryApi'
 import QueryValueSourceEditor from './QueryValueSourceEditor.vue'
 import { compileQueryBuilder } from '~/utils/queryBuilder'
+import { fillQueryBuilderLabels, queryColumnLabel } from '~/utils/queryColumnLabels'
 import type {
   QueryBuilder,
   QueryColumn,
@@ -81,6 +82,7 @@ async function loadSchema(notify = true) {
     const result = await api.schema(builder.value.table.trim())
     if (seq !== sequence) return
     columns.value = result.columns
+    fillQueryBuilderLabels(builder.value, result.columns)
     emit('schema', builder.value.table.trim(), result.columns)
     if (result.dialect !== props.definition.dialect) {
       message.error(t('query.sourceChanged'))
@@ -99,9 +101,8 @@ function addColumn() {
   builder.value.columns.push({ field: '', alias: '', aggregate: '' })
 }
 function selectField(index: number, value: string) {
-  const column = columns.value.find((item) => item.key === value)
-  if (!builder.value.columns[index].alias && column && /[\u3400-\u9fff]/.test(column.label))
-    builder.value.columns[index].alias = column.label
+  if (!builder.value.columns[index].alias.trim())
+    builder.value.columns[index].alias = queryColumnLabel(columns.value, value)
 }
 function nextParameterName() {
   let index = 1
@@ -130,7 +131,7 @@ function setFilterBinding(index: number, value: QueryBinding) {
   if (filter.type !== 'date') delete filter.binding.days_offset
 }
 function selectFilterField(index: number, value: string) {
-  const column = columns.value.find((item) => item.key === value)
+  const column = columns.value.find((item) => item.key.toLowerCase() === value.toLowerCase())
   const filter = builder.value.filters[index]
   if (!filter.label && column && /[\u3400-\u9fff]/.test(column.label)) {
     filter.label = column.label
@@ -152,11 +153,8 @@ function selectFilterField(index: number, value: string) {
 function prepareFilterLabels() {
   builder.value.filters.forEach((filter, index) => {
     if (!filter.label.trim()) {
-      const column = columns.value.find((item) => item.key === filter.field)
       filter.label =
-        column && /[\u3400-\u9fff]/.test(column.label)
-          ? column.label
-          : t('query.builder.filterValue', index + 1)
+        queryColumnLabel(columns.value, filter.field) || t('query.builder.filterValue', index + 1)
     }
   })
 }

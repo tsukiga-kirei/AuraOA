@@ -19,6 +19,8 @@
 
 当前配置方式覆盖单表/视图，表名由管理员输入，字段从租户 OA 连接读取；尚未提供流程目录与建模目录搜索、多表可视化连接和任意 OR 条件组。复杂场景使用自定义 SQL 或 AI SQL 辅助。
 
+读取字段后，OA 中文标签默认填入空白业务说明、已有输出列的空白中文别名及筛选用途；字段名匹配不区分大小写，手工填写的内容优先保留。主表与各明细表的标签按字段所属物理表区分，避免同名字段互相覆盖；字典查询失败时保留物理字段并记录警告。
+
 ## 权限和生命周期
 
 所有接口要求 JWT → TenantContext → `tenant_admin` → 页面权限 `/admin/tenant/memory`。新增租户的默认管理员角色和迁移前已有的系统租户管理员角色默认获得该权限；其他角色由组织人员页面授权。
@@ -47,7 +49,7 @@
 | POST | `/check` | 请求体为 `definition`；返回结构检查报告 |
 | POST | `/preview` | 手工参数或流程绑定预览，返回证据对象 |
 | GET | `/source` | 返回 `{name,dialect,oa_type,oa_name,timezone,business_date}`：管理员已配置的租户 OA 数据源与应用业务日期，无连接凭据；未配置/已停用返回明确错误 |
-| GET | `/schema` | `table`：固定表名；返回 `{table,dialect,columns:[{key,label,data_type}]}`，通过零行查询读取物理结构，key 为物理字段名 |
+| GET | `/schema` | `table`：固定表名；返回 `{table,dialect,columns:[{key,label,data_type}]}`，通过零行查询读取物理结构，key 为物理字段名；label 优先取流程/建模表所属主表或明细表的中文标签，兼容 MySQL、Oracle、达梦列名大小写与明细表序号；无标签时回退物理字段名 |
 | POST | `/assist` | AI 生成/解释/修复，返回可编辑建议 |
 | GET | `/prompts` | 返回租户提示词；未配置时返回系统默认值 |
 | PUT | `/prompts` | `{generate,explain,repair}`：各必填、最多12000字节 |
