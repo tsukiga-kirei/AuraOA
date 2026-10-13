@@ -1336,6 +1336,7 @@ const strictnessOptions = computed(() => [
 
 //用户推理提示词可用变量
 const reasoningPromptVariables = computed(() => [
+  { key: '{{feedback_memory}}', desc: t('feedbackMemory.variableDescription') },
   { key: '{{main_table}}', desc: t('admin.ruleConfig.varMainTableDesc') },
   { key: '{{detail_tables}}', desc: t('admin.ruleConfig.varDetailTablesDesc') },
   { key: '{{rules}}', desc: t('admin.ruleConfig.varRulesDesc') },
@@ -2724,6 +2725,7 @@ async function persistArchiveRuleDrafts(silent = false): Promise<boolean> {
 
 //=====存档AI提示变量（与审计工作台相同）=====
 const archiveReasoningPromptVariables = computed(() => [
+  { key: '{{feedback_memory}}', desc: t('feedbackMemory.variableDescription') },
   { key: '{{main_table}}', desc: t('admin.ruleConfig.varMainTableDesc') },
   { key: '{{detail_tables}}', desc: t('admin.ruleConfig.varDetailTablesDesc') },
   { key: '{{rules}}', desc: t('admin.ruleConfig.varRulesDesc') },

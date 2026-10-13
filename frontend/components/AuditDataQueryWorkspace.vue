@@ -1376,6 +1376,11 @@ defineExpose({ canLeave, editPrompts, busy })
       @ok="savePrompts"
     >
       <p class="memory-help">{{ t('query.promptHint') }}</p>
+      <a-collapse ghost style="margin-bottom: 16px">
+        <a-collapse-panel key="constraints" :header="t('query.systemConstraints')">
+          <a-textarea :value="prompts.system_constraints" readonly :rows="12" />
+        </a-collapse-panel>
+      </a-collapse>
       <a-tabs>
         <a-tab-pane
           v-for="action in ['generate', 'explain', 'repair'] as const"

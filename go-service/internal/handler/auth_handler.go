@@ -267,7 +267,7 @@ func mapServiceErrorToHTTP(err error) int {
 	code := svcErr.Code
 
 	switch {
-	case code == errcode.ErrParamValidation:
+	case code == errcode.ErrParamValidation || code == errcode.ErrFeedbackMemoryLimit || code == errcode.ErrFeedbackMemoryEmpty:
 		return http.StatusBadRequest
 	case code >= 40100 && code <= 40199:
 		return http.StatusUnauthorized

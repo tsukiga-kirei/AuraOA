@@ -82,9 +82,10 @@ type AuditDataQueryBinding struct {
 
 // AuditDataQueryPrompts 保存可编辑的租户级 AI SQL 辅助提示词。
 type AuditDataQueryPrompts struct {
-	TenantID  uuid.UUID `gorm:"type:uuid;primaryKey" json:"tenant_id"`
-	Generate  string    `json:"generate"`
-	Explain   string    `json:"explain"`
-	Repair    string    `json:"repair"`
-	UpdatedAt time.Time `json:"updated_at"`
+	SystemConstraints string    `gorm:"-" json:"system_constraints"` // 服务端固定生成约束，只读展示，不持久化客户端输入
+	TenantID          uuid.UUID `gorm:"type:uuid;primaryKey" json:"tenant_id"`
+	Generate          string    `json:"generate"`
+	Explain           string    `json:"explain"`
+	Repair            string    `json:"repair"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }

@@ -22,6 +22,9 @@ const (
 	ErrNoProcessConfig    = 40004 // 流程审核配置不存在
 	ErrInvalidParam       = 40005 // 参数无效（业务侧通用）
 
+	ErrFeedbackMemoryLimit = 40006 // 反馈记忆素材超过条数上限
+	ErrFeedbackMemoryEmpty = 40007 // 反馈记忆草稿没有可靠条目
+
 	// 502xx - 外部依赖错误（详见后文 OA / AI 子段）
 	ErrExternal = 50200 // 外部系统调用失败（通用）
 
@@ -57,6 +60,7 @@ const (
 	ErrDuplicateProcessType          = 40901 // 同一租户下流程类型重复
 	ErrTenantConfigVersionConflict   = 40902 // 租户配置版本冲突
 	ErrPersonalConfigVersionConflict = 40903 // 个人配置版本冲突
+	ErrFeedbackMemoryStale           = 40904 // 反馈素材或发布基线已变化
 	ErrBootstrapForbidden            = 40910 // 已有用户，禁止再次执行初始化
 
 	// 500xx - 服务端内部错误

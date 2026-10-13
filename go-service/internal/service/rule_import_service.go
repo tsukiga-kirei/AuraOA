@@ -358,17 +358,18 @@ func (s *RuleImportService) generateDrafts(c *gin.Context, module string, config
 	}
 	chunks := splitRuleImportText(recognizedText, ruleImportChunkSize)
 	allRules := make([]dto.RuleImportDraft, 0)
+	operationID := uuid.New()
 	for index, chunk := range chunks {
 		userPrompt := fmt.Sprintf("业务模块：%s\n流程：%s（%s）\n文件名：%s\n当前表单可用字段配置：\n%s\n文档片段：%d/%d\n\n识别文本：\n%s", module, processLabel, processType, fileName, processFields, index+1, len(chunks), chunk)
 		resp, err := s.aiCaller.ChatWithFallback(c, tenantID, userID, primary, fallback, &ai.ChatRequest{
-			SystemPrompt: systemPrompt,
-			UserPrompt:   userPrompt,
-			Temperature:  0.1,
-			MaxTokens:    maxTokens,
-			RequestType:  module,
-			CallType:     "structured",
-			ProcessID:    "rule-import:" + configID.String(),
-			ProcessTitle: "规则文件导入 - " + processLabel,
+			SystemPrompt:  systemPrompt,
+			UserPrompt:    userPrompt,
+			Temperature:   0.1,
+			MaxTokens:     maxTokens,
+			RequestType:   "rule_assist",
+			BusinessLogID: &operationID,
+			CallType:      "structured",
+			ProcessTitle:  "AI 梳理规则 · " + module + " · " + processLabel,
 		})
 		if err != nil {
 			return nil, err

@@ -114,6 +114,7 @@ export interface QueryEvidence {
   model_text: string
 }
 export interface QueryPrompts {
+  system_constraints?: string
   generate: string
   explain: string
   repair: string

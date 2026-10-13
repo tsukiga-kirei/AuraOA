@@ -80,6 +80,7 @@ func archiveItemComplianceClass(item map[string]interface{}, want string) bool {
 
 // ArchiveReviewService 处理归档复盘运行时业务。
 type ArchiveReviewService struct {
+	feedbackMemory      *FeedbackMemoryService
 	dataQueries         *AuditDataQueryService
 	archiveLogRepo      *repository.ArchiveLogRepo
 	archiveSnapshotRepo *repository.ArchiveProcessSnapshotRepo
@@ -1481,7 +1482,15 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	}
 	snapshotJSON, _ := json.Marshal(processSnapshot)
 
+	feedbackMemoryText, memoryErr := s.feedbackMemory.RuntimeText(c, "archive", logEntry.ProcessType)
+	if memoryErr != nil {
+		return memoryErr
+	}
+	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
+		feedbackMemoryText = sanitize.SanitizeText(feedbackMemoryText)
+	}
 	reasoningReq := BuildArchiveReasoningPrompt(&aiConfig, logEntry.ProcessType, processData, mergedRulesText, currentNode, fieldSet, flowSnapshot, externalContextText)
+	applyFeedbackMemory(reasoningReq, feedbackMemoryText)
 	reasoningReq.Temperature = float64(tenant.Temperature)
 	reasoningReq.MaxTokens = tenant.MaxTokensPerRequest
 	reasoningReq.ModelConfig = modelCfg
@@ -1531,6 +1540,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	})
 
 	extractionReq := BuildArchiveExtractionPrompt(&aiConfig, aiReasoning, mergedRulesText)
+	applyFeedbackMemory(extractionReq, feedbackMemoryText)
 	extractionReq.Temperature = 0.1
 	extractionReq.MaxTokens = tenant.MaxTokensPerRequest
 	extractionReq.ModelConfig = modelCfg
@@ -2344,4 +2354,9 @@ func (s *ArchiveReviewService) FetchWorkflowCodes(ctx context.Context, tenantID 
 		return map[string]string{}
 	}
 	return codes
+}
+
+// SetFeedbackMemoryService 注入审核/归档共享的反馈记忆服务。
+func (s *ArchiveReviewService) SetFeedbackMemoryService(memory *FeedbackMemoryService) {
+	s.feedbackMemory = memory
 }

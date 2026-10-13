@@ -66,7 +66,7 @@ type MainTab = 'audit' | 'cron' | 'archive' | 'summary' | 'agents' | 'llm'
 type AuditSubTab = 'all' | 'approve' | 'return' | 'review'
 type CronSubTab = 'all' | 'success' | 'failed' | 'running'
 type ArchiveSubTab = 'all' | 'compliant' | 'partially_compliant' | 'non_compliant'
-type LLMSubTab = 'all' | 'audit' | 'archive' | 'summary' | 'chat' | 'sql_assist'
+type LLMSubTab = 'all' | 'audit' | 'archive' | 'summary' | 'chat' | 'sql_assist' | 'rule_assist' | 'feedback_memory'
 
 
 const { t } = useI18n()
@@ -115,7 +115,7 @@ const cronStats = ref<CronLogStats>({
 })
 const archiveStats = ref<ArchiveSnapshotStats>({ total: 0, compliant: 0, partial: 0, non_compliant: 0 })
 const summaryStats = ref<SummarySnapshotStats>({ total: 0, block_count: 0 })
-const llmStats = ref<LLMLogStats>({ total: 0, audit_count: 0, archive_count: 0, summary_count: 0, chat_count: 0, sql_assist_count: 0 })
+const llmStats = ref<LLMLogStats>({ total: 0, audit_count: 0, archive_count: 0, summary_count: 0, chat_count: 0, sql_assist_count: 0, rule_assist_count: 0, feedback_memory_count: 0 })
 const agentStats = ref<AgentUsageStats>({
   session_count: 0, message_count: 0, tool_call_count: 0, mcp_call_count: 0, skill_call_count: 0, agents: [],
 })
@@ -346,6 +346,8 @@ const llmSubTabs = computed(() => [
     label: t('admin.data.llmTab.summary'),
     cssClass: 'stat-card--warning',
   },
+  { key: 'feedback_memory' as LLMSubTab, icon: MessageOutlined, count: llmStats.value.feedback_memory_count || 0, label: t('admin.data.llmTab.feedback_memory'), cssClass: 'stat-card--info' },
+  { key: 'rule_assist' as LLMSubTab, icon: DatabaseOutlined, count: llmStats.value.rule_assist_count || 0, label: t('admin.data.llmTab.rule_assist'), cssClass: 'stat-card--info' },
   { key: 'sql_assist' as LLMSubTab, icon: DatabaseOutlined, count: llmStats.value.sql_assist_count || 0, label: t('admin.data.llmTab.sql_assist'), cssClass: 'stat-card--info' },
   { key: 'chat' as LLMSubTab, icon: MessageOutlined, count: llmStats.value.chat_count || 0, label: t('admin.data.llmTab.chat'), cssClass: 'stat-card--info' },
 ])
@@ -564,12 +566,16 @@ function getSourceChannelStyle(channel?: string) {
   return sourceChannelConfig.value[ch] || sourceChannelConfig.value.workbench
 }
 
+const isLLMOperation = (kind: string) => ['sql_assist', 'rule_assist', 'feedback_memory'].includes(kind)
+
 function getLLMRequestTypeLabel(value: string) {
   const map: Record<string, string> = {
     audit: t('admin.data.llmTab.audit'),
     archive: t('admin.data.llmTab.archive'),
     summary: t('admin.data.llmTab.summary'),
     sql_assist: t('admin.data.llmTab.sql_assist'),
+    rule_assist: t('admin.data.llmTab.rule_assist'),
+    feedback_memory: t('admin.data.llmTab.feedback_memory'),
     chat: t('admin.data.llmTab.chat'),
   }
   return map[value] || value || '-'
@@ -2390,7 +2396,7 @@ onMounted(async () => {
     </div>
 
     <div v-if="activeTab === 'llm'" class="tab-content fade-in">
-      <div class="stats-row stats-row--five">
+      <div class="stats-row">
         <div
             v-for="tab in llmSubTabs"
             :key="tab.key"
@@ -2483,8 +2489,8 @@ onMounted(async () => {
           </colgroup>
           <thead>
           <tr>
-            <th>{{ t('admin.data.thProcessId') }}</th>
-            <th>{{ t('admin.data.thProcessTitle') }}</th>
+            <th>{{ t('admin.data.llmBusinessType') }}</th>
+            <th>{{ t('admin.data.llmBusinessTitle') }}</th>
             <th>{{ t('admin.data.llmProcessCount') }}</th>
             <th>{{ t('admin.data.thTokens') }}</th>
             <th>{{ t('admin.data.thOperator') }}</th>
@@ -2498,11 +2504,11 @@ onMounted(async () => {
           </tr>
           <tr v-else v-for="item in llmProcesses" :key="item.process_id">
             <td>
-              <OverflowTooltip :text="item.process_id" block>{{ item.process_id }}</OverflowTooltip>
+              <a-tag>{{ getLLMRequestTypeLabel(item.request_type) }}</a-tag>
             </td>
             <td class="table-title-cell">
               <OverflowTooltip :text="item.process_title || '-'" block>
-                <span class="table-clamp" data-overflow-check>{{ item.process_title || '-' }}</span>
+                <span class="table-clamp" data-overflow-check>{{ item.process_title || '-' }}</span><small v-if="item.business_kind === 'process'" class="llm-process-reference">{{ item.process_id }}</small>
               </OverflowTooltip>
             </td>
             <td>
@@ -3043,7 +3049,7 @@ onMounted(async () => {
         <div v-if="llmDetailVisible" class="drawer-overlay" @click.self="llmDetailVisible = false">
           <div class="drawer-panel">
             <div class="drawer-header">
-              <h3>{{ t('admin.data.llmDetailTitle') }}</h3>
+              <h3>{{ t(selectedLLMProcess?.business_kind === 'operation' ? 'admin.data.llmOperationDetail' : 'admin.data.llmDetailTitle') }}</h3>
               <button class="drawer-close" @click="llmDetailVisible = false">
                 <CloseOutlined />
               </button>
@@ -3095,7 +3101,7 @@ onMounted(async () => {
                         <span v-if="getLLMModelLabel(logItem) !== '-'">{{ getLLMModelLabel(logItem) }}</span>
                         <span>{{ t('admin.data.duration') }} {{ (logItem.duration_ms / 1000).toFixed(1) }}s</span>
                         <span
-                          v-if="logItem.request_type !== 'chat'"
+                          v-if="['audit', 'archive', 'summary'].includes(logItem.request_type)"
                           class="chain-card-version"
                           :class="{ 'chain-card-version--legacy': !logItem.config_version_no }"
                         >
@@ -3104,8 +3110,9 @@ onMounted(async () => {
                       </div>
 
                       <div v-if="expandedLLMChainNodes.has(logItem.id)" class="chain-detail">
+                        <LLMOperationDetail v-if="isLLMOperation(logItem.request_type)" :item="logItem" />
                         <!-- AI 对话场景单独适配结构化视图 -->
-                        <template v-if="logItem.request_type === 'chat' && parseChatPrompt(logItem.user_prompt, logItem.system_prompt).isChatJson">
+                        <template v-else-if="logItem.request_type === 'chat' && parseChatPrompt(logItem.user_prompt, logItem.system_prompt).isChatJson">
                           <div class="chat-call-detail">
                             <!-- 系统提示词 -->
                             <div v-if="parseChatPrompt(logItem.user_prompt, logItem.system_prompt).systemPrompt" class="chat-detail-section">
@@ -4826,4 +4833,8 @@ details[open] > summary .chat-section-chevron {
   .drawer-panel { width: 100%; max-width: 100vw; }
   .detail-meta-grid { grid-template-columns: 1fr; }
 }
+</style>
+
+<style scoped>
+.llm-process-reference { display: block; color: var(--color-text-tertiary); font-size: 12px; margin-top: 4px; }
 </style>

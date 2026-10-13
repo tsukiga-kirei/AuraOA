@@ -54,6 +54,7 @@ type JobStreamEvent struct {
 
 // AuditExecuteService 审核执行业务逻辑：串联 OA 数据 → 提示词构建 → AI 调用 → 结果解析 → 写入日志。
 type AuditExecuteService struct {
+	feedbackMemory    *FeedbackMemoryService
 	dataQueries       *AuditDataQueryService
 	auditLogRepo      *repository.AuditLogRepo
 	auditSnapshotRepo *repository.AuditProcessSnapshotRepo
@@ -643,7 +644,15 @@ func (s *AuditExecuteService) processAuditJob(
 		currentNode = flowSnapshot.CurrentNodeName
 	}
 
+	feedbackMemoryText, memoryErr := s.feedbackMemory.RuntimeText(c, "audit", req.ProcessType)
+	if memoryErr != nil {
+		return memoryErr
+	}
+	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
+		feedbackMemoryText = sanitize.SanitizeText(feedbackMemoryText)
+	}
 	reasoningReq := BuildReasoningPrompt(&aiConfig, req.ProcessType, processData, mergedRulesText, currentNode, fieldSet, flowSnapshot, externalContextText)
+	applyFeedbackMemory(reasoningReq, feedbackMemoryText)
 	reasoningReq.Temperature = float64(tenant.Temperature)
 	reasoningReq.MaxTokens = tenant.MaxTokensPerRequest
 	reasoningReq.ModelConfig = modelCfg
@@ -711,6 +720,7 @@ func (s *AuditExecuteService) processAuditJob(
 	}
 
 	extractionReq := BuildExtractionPrompt(&aiConfig, aiReasoning, mergedRulesText)
+	applyFeedbackMemory(extractionReq, feedbackMemoryText)
 	extractionReq.Temperature = 0.1
 	extractionReq.MaxTokens = tenant.MaxTokensPerRequest
 	extractionReq.ModelConfig = modelCfg
@@ -2880,4 +2890,9 @@ func (s *AuditExecuteService) FetchWorkflowCodes(ctx context.Context, tenantID u
 		return map[string]string{}
 	}
 	return codes
+}
+
+// SetFeedbackMemoryService 注入审核/归档共享的反馈记忆服务。
+func (s *AuditExecuteService) SetFeedbackMemoryService(memory *FeedbackMemoryService) {
+	s.feedbackMemory = memory
 }
