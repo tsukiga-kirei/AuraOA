@@ -47,6 +47,7 @@ func SetupRouter(
 	chatHandler *handler.ChatHandler,
 	agentAdminHandler *handler.AgentAdminHandler,
 	experienceHandler *handler.ExperienceHandler,
+	feedbackMemoryHandler *handler.FeedbackMemoryHandler,
 	sysFlags *systemflags.Resolver,
 	operationAuditRepo *repository.OperationAuditLogRepo,
 	orgRepo *repository.OrgRepo,
@@ -495,6 +496,22 @@ func SetupRouter(
 		cronLogsAdmin.GET("/stats", cronTaskHandler.GetAllLogsStats)
 		cronLogsAdmin.GET("/export", cronTaskHandler.ExportAllLogs)
 	}
+
+	// 反馈记忆与数据记忆共用记忆库菜单权限，素材访问仅在租户内进行。
+	memory := r.Group("/api/tenant/feedback-memory")
+	memory.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"), middleware.RequirePagePermission(orgRepo, "/admin/tenant/memory"))
+	memory.GET("/configs", feedbackMemoryHandler.Configs)
+	memory.GET("", feedbackMemoryHandler.Workspace)
+	memory.GET("/comments", feedbackMemoryHandler.Comments)
+	memory.POST("/import", feedbackMemoryHandler.ImportComments)
+	memory.POST("/entries", feedbackMemoryHandler.SaveEntry)
+	memory.PUT("/entries/:id", feedbackMemoryHandler.SaveEntry)
+	memory.DELETE("/entries/:id", feedbackMemoryHandler.DeleteEntry)
+	memory.POST("/generate", feedbackMemoryHandler.Generate)
+	memory.GET("/versions", feedbackMemoryHandler.Versions)
+	memory.GET("/versions/:id", feedbackMemoryHandler.Version)
+	memory.POST("/versions/:id/publish", feedbackMemoryHandler.Publish)
+	memory.POST("/disable", feedbackMemoryHandler.Disable)
 
 	// 用户体验反馈管理：同时校验租户管理员身份与菜单权限。
 	experience := r.Group("/api/tenant/experience")

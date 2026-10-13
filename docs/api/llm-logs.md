@@ -23,7 +23,7 @@ GET /api/tenant/llm-logs/processes
 
 | 参数 | 类型 | 说明 |
 |------|------|------|
-| `request_type` | string | 场景：`audit` / `archive` / `summary`；规划增加 `chat`（见 [智能体文档](../agents/README.md)） |
+| `request_type` | string | 场景：`audit` / `archive` / `summary` / `chat` / `sql_assist` / `rule_assist` / `feedback_memory` |
 | `call_type` | string | 类型：`reasoning` / `structured` |
 | `keyword` | string | 流程标题关键词 |
 | `operator` | string | 操作人 |
@@ -98,3 +98,16 @@ GET /api/admin/stats/token-usage
 ## SQL 辅助场景
 
 `request_type` 新增 `sql_assist`，`call_type=structured`。统计响应新增 `sql_assist_count`（每次独立辅助业务计数），总调用与 Token/费用包含此场景；数据管理页提供对应筛选。
+
+
+## 独立 AI 辅助操作
+
+数据记忆 SQL 辅助、AI 梳理规则和反馈记忆分别使用 `sql_assist`、`rule_assist`、`feedback_memory`，均为 `call_type=structured`。三者都通过统一模型入口记录实际提示词、响应、Token 和耗时，并计入配额、用量与仪表盘总量。
+
+新辅助操作使用独立 `business_log_id`；规则文件分片调用共享同次导入的业务ID，下一次导入使用新ID。SQL 辅助每次独立生成，反馈记忆使用生成版本ID。无需伪造 OA `process_id`。
+
+聚合列表新增 `request_type` 和 `business_kind`（`process|chat|operation`）。辅助操作在响应的 `process_id` 字段返回 `场景:业务UUID` 形式的**调用链键**，将其原样 URL 编码传入 chain 接口，不用于 OA 跳转。历史 SQL 辅助按原伪流程键保留分组；历史 `rule-import:` 调用以 `rule_assist` 展示，不再计入审核/归档次数（旧记录无法恢复每次导入边界，仍按原配置标识分组），原始日志不改写。
+
+统计新增 `rule_assist_count`、`feedback_memory_count`；`sql_assist_count` 继续保留。`total` 是不同业务调用链总量，同一 OA 流程包含审核和归档时合为一个流程链，因此分场景数量不要求相加等于总量。筛选场景时保留同一流程的完整调用链，但不同对话或辅助操作不会因空流程ID而串到一起。
+
+页面为辅助操作提供独立详情：结构化条目/SQL、待确认事项、输入输出Token、只读提示词与原始模型输出，不展示不适用的审核配置版本。

@@ -77,6 +77,7 @@ export const KNOWN_AUDIT_AI_VARIABLES = new Set([
   '{{flow_history}}',
   '{{flow_graph}}',
   '{{external_context}}',
+  '{{feedback_memory}}',
   '{{reasoning_result}}',
   ...KNOWN_SYSTEM_TIME_VARIABLES,
 ])

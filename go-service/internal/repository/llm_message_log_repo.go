@@ -245,6 +245,8 @@ type LLMProcessListRow struct {
 	LatestCallAt        time.Time `json:"latest_call_at"`
 	LatestUserName      string    `json:"latest_user_name"`
 	LatestTriggerDetail string    `json:"latest_trigger_detail"`
+	RequestType         string    `json:"request_type"`
+	BusinessKind        string    `json:"business_kind"`
 }
 
 // LLMLogListRow 单条调用记录（不含大文本 payload）。
@@ -260,12 +262,14 @@ type LLMLogListRow struct {
 
 // LLMLogStats AI 调用记录统计（按流程维度）。
 type LLMLogStats struct {
-	ChatCount      int64 `json:"chat_count"`
-	Total          int64 `json:"total"`
-	AuditCount     int64 `json:"audit_count"`
-	ArchiveCount   int64 `json:"archive_count"`
-	SummaryCount   int64 `json:"summary_count"`
-	SQLAssistCount int64 `json:"sql_assist_count"`
+	ChatCount           int64 `json:"chat_count"`
+	Total               int64 `json:"total"`
+	AuditCount          int64 `json:"audit_count"`
+	ArchiveCount        int64 `json:"archive_count"`
+	SummaryCount        int64 `json:"summary_count"`
+	SQLAssistCount      int64 `json:"sql_assist_count"`
+	RuleAssistCount     int64 `json:"rule_assist_count"`
+	FeedbackMemoryCount int64 `json:"feedback_memory_count"`
 }
 
 // LLMLogDetailWithPayload 详情含输入输出提示词与思考过程。
@@ -277,9 +281,19 @@ type LLMLogDetailWithPayload struct {
 	ResponseContent  string `json:"response_content"`
 }
 
-// llmBusinessKey 使用场景前缀区分聊天会话与 OA 流程，历史无关联的聊天按调用单列。
+// llmRequestType 将历史规则导入从审核/归档统计中剥离，不改写历史原始记录。
+func llmRequestType(table string) string {
+	return "CASE WHEN " + table + ".process_id LIKE 'rule-import:%' AND " + table + ".request_type IN ('audit','archive') THEN 'rule_assist' ELSE " + table + ".request_type END"
+}
+
+// llmBusinessKey 使用真实业务关联生成展示键，辅助操作不虚构 OA 流程 ID。
 func llmBusinessKey(table string) string {
-	return "CASE WHEN " + table + ".request_type = 'chat' THEN 'chat:' || COALESCE(" + table + ".business_log_id, " + table + ".id)::text ELSE " + table + ".process_id END"
+	kind := "(" + llmRequestType(table) + ")"
+	return "CASE WHEN " + kind + " = 'chat' THEN 'chat:' || COALESCE(" + table + ".business_log_id," + table + ".id)::text WHEN " + kind + " IN ('sql_assist','rule_assist','feedback_memory') THEN " + kind + " || ':' || COALESCE(" + table + ".business_log_id::text, NULLIF(" + table + ".process_id,'')," + table + ".id::text) ELSE " + table + ".process_id END"
+}
+
+func llmVisibleBusiness(table string) string {
+	return "(" + llmRequestType(table) + ") IN ('chat','sql_assist','rule_assist','feedback_memory') OR (" + table + ".process_id IS NOT NULL AND " + table + ".process_id <> '')"
 }
 
 // ListProcessesPaged 数据管理页：按流程或聊天会话聚合分页查询。
@@ -295,7 +309,7 @@ func (r *LLMMessageLogRepo) ListProcessesPaged(c *gin.Context, filter LLMLogFilt
 	tenantID, _ := c.Get("tenant_id")
 	base := r.DB.
 		Table(t+" AS l").
-		Where("l.tenant_id = ? AND (l.request_type = 'chat' OR (l.process_id IS NOT NULL AND l.process_id <> ''))", tenantID).
+		Where("l.tenant_id = ? AND ("+llmVisibleBusiness("l")+")", tenantID).
 		Joins("LEFT JOIN users u ON u.id = l.user_id").
 		Joins("LEFT JOIN chat_sessions cs ON cs.id = l.business_log_id AND cs.tenant_id = l.tenant_id AND l.request_type = 'chat'").
 		Joins("LEFT JOIN audit_logs al ON al.id = l.business_log_id AND al.tenant_id = l.tenant_id AND l.request_type = 'audit'").
@@ -313,6 +327,8 @@ func (r *LLMMessageLogRepo) ListProcessesPaged(c *gin.Context, filter LLMLogFilt
 	var items []LLMProcessListRow
 	err := base.
 		Select(llmBusinessKey("l") + ` AS process_id,
+   (ARRAY_AGG(` + llmRequestType("l") + ` ORDER BY l.created_at DESC))[1] AS request_type,
+   CASE WHEN BOOL_OR((` + llmRequestType("l") + `) IN ('sql_assist','rule_assist','feedback_memory')) THEN 'operation' WHEN BOOL_OR(l.request_type='chat') THEN 'chat' ELSE 'process' END AS business_kind,
 			(ARRAY_AGG(CASE WHEN l.request_type = 'chat' AND NULLIF(cs.title, '') IS NOT NULL THEN cs.title ELSE l.process_title END ORDER BY l.created_at DESC))[1] AS process_title,
 			COUNT(*)::bigint AS call_count,
 			COALESCE(SUM(l.total_tokens), 0)::bigint AS total_tokens,
@@ -335,7 +351,7 @@ func (r *LLMMessageLogRepo) ListCallsByProcessID(c *gin.Context, processID strin
 	var items []LLMLogDetailWithPayload
 	err := r.DB.
 		Table(t).
-		Select(t+".*, "+
+		Select(t+".*, "+llmRequestType(t)+" AS request_type, "+
 			"CASE WHEN "+t+".request_type = 'chat' AND NULLIF(cs.title, '') IS NOT NULL THEN cs.title ELSE "+t+".process_title END AS process_title, "+
 			llmOperatorDisplaySQL(t, "u", "al", "psl")+" AS user_name, "+
 			llmTriggerDetailSQL(t, "al", "psl")+" AS trigger_detail, "+
@@ -361,36 +377,16 @@ func (r *LLMMessageLogRepo) ListCallsByProcessID(c *gin.Context, processID strin
 
 // CountStats 统计租户 AI 调用流程数量（按场景分布）。
 func (r *LLMMessageLogRepo) CountStats(c *gin.Context) (*LLMLogStats, error) {
-	type row struct {
-		ChatCount      int64 `gorm:"column:chat_count"`
-		Total          int64 `gorm:"column:total"`
-		AuditCount     int64 `gorm:"column:audit_count"`
-		ArchiveCount   int64 `gorm:"column:archive_count"`
-		SummaryCount   int64 `gorm:"column:summary_count"`
-		SQLAssistCount int64 `gorm:"column:sql_assist_count"`
+	var out LLMLogStats
+	t := "tenant_llm_message_logs"
+	key := llmBusinessKey(t)
+	kind := "(" + llmRequestType(t) + ")"
+	selections := "COUNT(DISTINCT " + key + ")::bigint AS total"
+	for _, scene := range []struct{ kind, column string }{{"audit", "audit_count"}, {"archive", "archive_count"}, {"summary", "summary_count"}, {"chat", "chat_count"}, {"sql_assist", "sql_assist_count"}, {"rule_assist", "rule_assist_count"}, {"feedback_memory", "feedback_memory_count"}} {
+		selections += ", COUNT(DISTINCT " + key + ") FILTER (WHERE " + kind + " = '" + scene.kind + "')::bigint AS " + scene.column
 	}
-	var out row
-	err := r.WithTenant(c).
-		Model(&model.TenantLLMMessageLog{}).
-		Where("request_type = 'chat' OR (process_id IS NOT NULL AND process_id <> '')").
-		Select(`COUNT(DISTINCT ` + llmBusinessKey("tenant_llm_message_logs") + `)::bigint AS total,
-			COUNT(DISTINCT COALESCE(business_log_id, id)) FILTER (WHERE request_type = 'chat')::bigint AS chat_count,
-			COUNT(DISTINCT process_id) FILTER (WHERE request_type = 'audit')::bigint AS audit_count,
-			COUNT(DISTINCT process_id) FILTER (WHERE request_type = 'archive')::bigint AS archive_count,
-			COUNT(DISTINCT process_id) FILTER (WHERE request_type = 'summary')::bigint AS summary_count,
- COUNT(DISTINCT process_id) FILTER (WHERE request_type = 'sql_assist')::bigint AS sql_assist_count`).
-		Scan(&out).Error
-	if err != nil {
-		return nil, err
-	}
-	return &LLMLogStats{
-		ChatCount:      out.ChatCount,
-		Total:          out.Total,
-		AuditCount:     out.AuditCount,
-		ArchiveCount:   out.ArchiveCount,
-		SummaryCount:   out.SummaryCount,
-		SQLAssistCount: out.SQLAssistCount,
-	}, nil
+	err := r.WithTenant(c).Model(&model.TenantLLMMessageLog{}).Where(llmVisibleBusiness(t)).Select(selections).Scan(&out).Error
+	return &out, err
 }
 
 // GetByIDWithPayload 按 ID 查询单条 AI 调用记录及输入输出内容。
@@ -401,7 +397,7 @@ func (r *LLMMessageLogRepo) GetByIDWithPayload(c *gin.Context, id uuid.UUID) (*L
 	var detail LLMLogDetailWithPayload
 	err := r.DB.
 		Table(t).
-		Select(t+".*, "+
+		Select(t+".*, "+llmRequestType(t)+" AS request_type, "+
 			"CASE WHEN "+t+".request_type = 'chat' AND NULLIF(cs.title, '') IS NOT NULL THEN cs.title ELSE "+t+".process_title END AS process_title, "+
 			llmOperatorDisplaySQL(t, "u", "al", "psl")+" AS user_name, "+
 			llmTriggerDetailSQL(t, "al", "psl")+" AS trigger_detail, "+
@@ -430,7 +426,7 @@ func (r *LLMMessageLogRepo) GetByIDWithPayload(c *gin.Context, id uuid.UUID) (*L
 func applyLLMLogFilter(db *gorm.DB, f LLMLogFilter) *gorm.DB {
 	const t = "tenant_llm_message_logs"
 	if f.RequestType != "" {
-		db = db.Where("EXISTS (SELECT 1 FROM "+t+" x WHERE x.tenant_id = l.tenant_id AND x.process_id = l.process_id AND x.request_type = ?)", f.RequestType)
+		db = db.Where("EXISTS (SELECT 1 FROM "+t+" x WHERE x.tenant_id = l.tenant_id AND "+llmBusinessKey("x")+" = "+llmBusinessKey("l")+" AND ("+llmRequestType("x")+") = ?)", f.RequestType)
 	}
 	if f.CallType != "" {
 		db = db.Where("l.call_type = ?", f.CallType)

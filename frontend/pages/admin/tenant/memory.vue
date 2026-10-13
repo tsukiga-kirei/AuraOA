@@ -48,11 +48,7 @@ const tabs = computed(() => [
       role="tabpanel"
       aria-labelledby="memory-tab-review"
     >
-      <div class="review-placeholder">
-        <CommentOutlined />
-        <h2>{{ t('memory.review') }}</h2>
-        <p>{{ t('memory.reviewHint') }}</p>
-      </div>
+      <FeedbackMemoryWorkspace />
     </div>
   </div>
 </template>
@@ -119,34 +115,6 @@ const tabs = computed(() => [
 .top-tab-btn:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
-}
-.review-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  min-height: 350px;
-  padding: 24px;
-  text-align: center;
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-lg);
-}
-.review-placeholder > .anticon {
-  font-size: 40px;
-  color: var(--color-text-tertiary);
-}
-.review-placeholder h2 {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin: 0;
-}
-.review-placeholder p {
-  color: var(--color-text-tertiary);
-  font-size: 14px;
-  margin: 0;
 }
 @media (max-width: 760px) {
   .page-header {

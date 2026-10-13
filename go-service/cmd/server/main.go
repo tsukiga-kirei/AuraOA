@@ -334,6 +334,10 @@ func main() {
 	dataQueryService := service.NewAuditDataQueryService(repository.NewAuditDataQueryRepo(db), externalContextService, tenantRepo, aiModelRepo, aiCallerService, invalidationManager)
 	service.AttachDataQueryServices(dataQueryService, auditExecuteService, archiveReviewService, auditRuleService, archiveRuleService, executionConfigSourceService)
 	dataQueryHandler := handler.NewAuditDataQueryHandler(dataQueryService)
+	feedbackMemoryService := service.NewFeedbackMemoryService(repository.NewFeedbackMemoryRepo(db), tenantRepo, aiModelRepo, aiCallerService)
+	auditExecuteService.SetFeedbackMemoryService(feedbackMemoryService)
+	archiveReviewService.SetFeedbackMemoryService(feedbackMemoryService)
+	feedbackMemoryHandler := handler.NewFeedbackMemoryHandler(feedbackMemoryService)
 	auditHandler := handler.NewAuditHandler(auditExecuteService, auditSnapshotRepo, auditLogRepo)
 	archiveReviewHandler := handler.NewArchiveReviewHandler(archiveReviewService, archiveSnapshotRepo, archiveLogRepo)
 	summaryConfigHandler := handler.NewProcessSummaryConfigHandler(summaryConfigService)
@@ -376,7 +380,7 @@ func main() {
 	r.SetTrustedProxies(nil)
 	r.ForwardedByClientIP = true
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")
-	router.SetupRouter(r, rdb, pkglogger.Global(), allowedOrigins, authHandler, basicSSOHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, summaryConfigHandler, executionConfigSourceHandler, externalContextHandler, dataQueryHandler, auditHandler, archiveReviewHandler, summaryHandler, embedEventHandler, dashboardOverviewHandler, userNotificationHandler, cacheAdminHandler, chatHandler, agentAdminHandler, experienceHandler, sysFlagsResolver, operationAuditLogRepo, orgRepo, tenantRepo)
+	router.SetupRouter(r, rdb, pkglogger.Global(), allowedOrigins, authHandler, basicSSOHandler, orgHandler, tenantHandler, systemHandler, healthHandler, configHandler, ruleHandler, userConfigHandler, userConfigMgmtHandler, llmLogHandler, cronHandler, cronTaskHandler, archiveConfigHandler, archiveRuleHandler, summaryConfigHandler, executionConfigSourceHandler, externalContextHandler, dataQueryHandler, auditHandler, archiveReviewHandler, summaryHandler, embedEventHandler, dashboardOverviewHandler, userNotificationHandler, cacheAdminHandler, chatHandler, agentAdminHandler, experienceHandler, feedbackMemoryHandler, sysFlagsResolver, operationAuditLogRepo, orgRepo, tenantRepo)
 
 	// 第九步：启动 HTTP 服务器
 	port := viper.GetInt("server.port")

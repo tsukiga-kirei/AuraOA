@@ -291,6 +291,8 @@ export interface CronLogFilter {
 // ─── AI 调用记录 ─────────────────────────────────────────────────────────────
 
 export interface LLMProcessItem {
+  request_type: string
+  business_kind: 'process' | 'chat' | 'operation'
   process_id: string
   process_title: string
   call_count: number
@@ -334,6 +336,8 @@ export interface LLMLogStats {
   archive_count: number
   summary_count: number
   sql_assist_count: number
+  rule_assist_count: number
+  feedback_memory_count: number
 }
 
 export interface AgentUsageItem {

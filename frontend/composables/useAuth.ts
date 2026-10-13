@@ -11,6 +11,9 @@ interface ApiResponse<T> {
 
 // 后端业务错误码到 i18n 键名的映射表
 const ERROR_CODE_I18N_MAP: Record<number, string> = {
+  40006: 'feedbackMemory.limit',
+  40007: 'feedbackMemory.noReliableItems',
+  40904: 'feedbackMemory.stale',
   40001: 'auth.error.invalidParam',
   40103: 'auth.error.wrongPassword',
   40104: 'auth.error.accountLocked',

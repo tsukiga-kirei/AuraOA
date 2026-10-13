@@ -60,6 +60,8 @@ tags:
   description: 智能体、MCP 服务与 Skills 扩展管理
 - name: AuditDataQueries
   description: 租户通用审核数据查询库
+- name: FeedbackMemory
+  description: 评论反馈记忆的素材、生成、来源追溯与发布
 paths:
   /api/tenant/audit-data-queries:
     get:
@@ -4901,7 +4903,7 @@ paths:
           format: uuid
   /api/tenant/llm-logs/processes:
     get:
-      summary: 分页查询 AI 调用流程列表
+      summary: 分页查询流程、对话与独立 AI 辅助操作
       tags:
       - LLMLogs
       security:
@@ -4928,6 +4930,24 @@ paths:
                         items:
                           type: object
                           properties:
+                            process_id:
+                              type: string
+                              description: 调用链键，辅助操作为场景前缀加业务ID，不是 OA 流程ID
+                            process_title:
+                              type: string
+                            request_type:
+                              type: string
+                              enum: [audit, archive, summary, chat, sql_assist, rule_assist, feedback_memory]
+                            business_kind:
+                              type: string
+                              enum: [process, chat, operation]
+                            call_count:
+                              type: integer
+                            total_tokens:
+                              type: integer
+                            latest_call_at:
+                              type: string
+                              format: date-time
                             latest_user_name:
                               type: string
                               description: 最新调用操作人；OA 通用嵌入优先使用当次 OA 当前操作人姓名快照
@@ -4949,6 +4969,10 @@ paths:
           - audit
           - archive
           - summary
+          - chat
+          - sql_assist
+          - rule_assist
+          - feedback_memory
       - name: call_type
         in: query
         schema:
@@ -4993,7 +5017,7 @@ paths:
         description: 每页条数
   /api/tenant/llm-logs/stats:
     get:
-      summary: 按流程与对话会话统计 AI 调用链数量
+      summary: 按流程、对话与辅助操作统计 AI 调用链数量
       tags: [LLMLogs]
       security: [{bearerAuth: []}]
       responses:
@@ -5001,10 +5025,10 @@ paths:
           description: 成功，chat_count 为对话链数量
           content:
             application/json:
-              schema: {"type":"object","properties":{"code":{"type":"integer"},"message":{"type":"string"},"data":{"type":"object","properties":{"total":{"type":"integer"},"audit_count":{"type":"integer"},"archive_count":{"type":"integer"},"summary_count":{"type":"integer"},"chat_count":{"type":"integer"},"sql_assist_count":{"type":"integer"}}}}}
+              schema: {"type":"object","properties":{"code":{"type":"integer"},"message":{"type":"string"},"data":{"type":"object","properties":{"total":{"type":"integer"},"audit_count":{"type":"integer"},"archive_count":{"type":"integer"},"summary_count":{"type":"integer"},"chat_count":{"type":"integer"},"sql_assist_count":{"type":"integer"},"rule_assist_count":{"type":"integer"},"feedback_memory_count":{"type":"integer"}}}}}
   /api/tenant/llm-logs/{processId}/chain:
     get:
-      summary: 获取流程或对话全部 AI 调用链（对话键为 chat:UUID）
+      summary: 获取指定业务调用链（流程、chat:UUID 或辅助操作场景前缀键）
       tags:
       - LLMLogs
       security:
@@ -8693,6 +8717,29 @@ paths:
           $ref: "#/components/responses/ErrorResponse"
         "403":
           $ref: "#/components/responses/ErrorResponse"
+  /api/tenant/feedback-memory/configs:
+    get: {"summary":"查询记忆库可选流程类型","description":"JWT + TenantContext + tenant_admin + /admin/tenant/memory 页面权限；仅访问当前租户。","tags":["FeedbackMemory"],"security":[{"bearerAuth":[]}],"responses":{"200":{"description":"成功","content":{"application/json":{"schema":{"type":"object","properties":{"code":{"type":"integer","example":0},"message":{"type":"string"},"data":{"type":"array","items":{"type":"object","properties":{"process_type":{"type":"string"},"process_type_label":{"type":"string"}}}}}}}}},"400":{"$ref":"#/components/responses/ErrorResponse"},"403":{"$ref":"#/components/responses/ErrorResponse"},"404":{"$ref":"#/components/responses/ErrorResponse"},"409":{"$ref":"#/components/responses/ErrorResponse"}},"parameters":[{"name":"module","in":"query","required":true,"schema":{"type":"string","enum":["audit","archive"]}}]}
+  /api/tenant/feedback-memory:
+    get: {"summary":"读取反馈素材、已发布记忆与只读生成规则","description":"JWT + TenantContext + tenant_admin + /admin/tenant/memory 页面权限；仅访问当前租户。","tags":["FeedbackMemory"],"security":[{"bearerAuth":[]}],"responses":{"200":{"description":"成功","content":{"application/json":{"schema":{"type":"object","properties":{"code":{"type":"integer","example":0},"message":{"type":"string"},"data":{"$ref":"#/components/schemas/FeedbackMemoryWorkspace"}}}}}},"400":{"$ref":"#/components/responses/ErrorResponse"},"403":{"$ref":"#/components/responses/ErrorResponse"},"404":{"$ref":"#/components/responses/ErrorResponse"},"409":{"$ref":"#/components/responses/ErrorResponse"}},"parameters":[{"name":"module","in":"query","required":true,"schema":{"type":"string","enum":["audit","archive"]}},{"name":"process_type","in":"query","required":true,"schema":{"type":"string","maxLength":200}}]}
+  /api/tenant/feedback-memory/comments:
+    get: {"summary":"分页查询同流程类型审核评论","description":"JWT + TenantContext + tenant_admin + /admin/tenant/memory 页面权限；仅访问当前租户。","tags":["FeedbackMemory"],"security":[{"bearerAuth":[]}],"responses":{"200":{"description":"成功","content":{"application/json":{"schema":{"type":"object","properties":{"code":{"type":"integer","example":0},"message":{"type":"string"},"data":{"$ref":"#/components/schemas/FeedbackMemoryCommentPage"}}}}}},"400":{"$ref":"#/components/responses/ErrorResponse"},"403":{"$ref":"#/components/responses/ErrorResponse"},"404":{"$ref":"#/components/responses/ErrorResponse"},"409":{"$ref":"#/components/responses/ErrorResponse"}},"parameters":[{"name":"module","in":"query","required":true,"schema":{"type":"string","enum":["audit","archive"]}},{"name":"process_type","in":"query","required":true,"schema":{"type":"string","maxLength":200}},{"name":"page","in":"query","schema":{"type":"integer","default":1,"minimum":1}},{"name":"page_size","in":"query","schema":{"type":"integer","default":20,"minimum":1,"maximum":100}},{"name":"keyword","in":"query","schema":{"type":"string"}},{"name":"feedback","in":"query","schema":{"type":"string","enum":["like","dislike","comments"]}}]}
+  /api/tenant/feedback-memory/import:
+    post: {"summary":"导入选定评论的服务器原文快照","description":"JWT + TenantContext + tenant_admin + /admin/tenant/memory 页面权限；仅访问当前租户。","tags":["FeedbackMemory"],"security":[{"bearerAuth":[]}],"responses":{"200":{"description":"成功","content":{"application/json":{"schema":{"type":"object","properties":{"code":{"type":"integer","example":0},"message":{"type":"string"},"data":{"type":"object","properties":{"saved":{"type":"boolean"}}}}}}}},"400":{"$ref":"#/components/responses/ErrorResponse"},"403":{"$ref":"#/components/responses/ErrorResponse"},"404":{"$ref":"#/components/responses/ErrorResponse"},"409":{"$ref":"#/components/responses/ErrorResponse"}},"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/FeedbackMemoryImport"}}}}}
+  /api/tenant/feedback-memory/entries:
+    post: {"summary":"新增手动反馈条件","description":"JWT + TenantContext + tenant_admin + /admin/tenant/memory 页面权限；仅访问当前租户。","tags":["FeedbackMemory"],"security":[{"bearerAuth":[]}],"responses":{"200":{"description":"成功","content":{"application/json":{"schema":{"type":"object","properties":{"code":{"type":"integer","example":0},"message":{"type":"string"},"data":{"type":"object","properties":{"saved":{"type":"boolean"}}}}}}}},"400":{"$ref":"#/components/responses/ErrorResponse"},"403":{"$ref":"#/components/responses/ErrorResponse"},"404":{"$ref":"#/components/responses/ErrorResponse"},"409":{"$ref":"#/components/responses/ErrorResponse"}},"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/FeedbackMemoryEntryInput"}}}}}
+  /api/tenant/feedback-memory/entries/{id}:
+    put: {"summary":"修改素材条件或启停；评论正文只读","description":"JWT + TenantContext + tenant_admin + /admin/tenant/memory 页面权限；仅访问当前租户。","tags":["FeedbackMemory"],"security":[{"bearerAuth":[]}],"responses":{"200":{"description":"成功","content":{"application/json":{"schema":{"type":"object","properties":{"code":{"type":"integer","example":0},"message":{"type":"string"},"data":{"type":"object","properties":{"saved":{"type":"boolean"}}}}}}}},"400":{"$ref":"#/components/responses/ErrorResponse"},"403":{"$ref":"#/components/responses/ErrorResponse"},"404":{"$ref":"#/components/responses/ErrorResponse"},"409":{"$ref":"#/components/responses/ErrorResponse"}},"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/FeedbackMemoryEntryInput"}}}}}
+    delete: {"summary":"移除当前素材，保留历史快照","description":"JWT + TenantContext + tenant_admin + /admin/tenant/memory 页面权限；仅访问当前租户。","tags":["FeedbackMemory"],"security":[{"bearerAuth":[]}],"responses":{"200":{"description":"成功","content":{"application/json":{"schema":{"type":"object","properties":{"code":{"type":"integer","example":0},"message":{"type":"string"},"data":{"type":"object","properties":{"deleted":{"type":"boolean"}}}}}}}},"400":{"$ref":"#/components/responses/ErrorResponse"},"403":{"$ref":"#/components/responses/ErrorResponse"},"404":{"$ref":"#/components/responses/ErrorResponse"},"409":{"$ref":"#/components/responses/ErrorResponse"}},"parameters":[{"name":"module","in":"query","required":true,"schema":{"type":"string","enum":["audit","archive"]}},{"name":"process_type","in":"query","required":true,"schema":{"type":"string","maxLength":200}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]}
+  /api/tenant/feedback-memory/generate:
+    post: {"summary":"基于当前素材和上一发布版生成不可变记忆草稿","description":"JWT + TenantContext + tenant_admin + /admin/tenant/memory 页面权限；仅访问当前租户。","tags":["FeedbackMemory"],"security":[{"bearerAuth":[]}],"responses":{"200":{"description":"成功","content":{"application/json":{"schema":{"type":"object","properties":{"code":{"type":"integer","example":0},"message":{"type":"string"},"data":{"$ref":"#/components/schemas/FeedbackMemoryVersion"}}}}}},"400":{"$ref":"#/components/responses/ErrorResponse"},"403":{"$ref":"#/components/responses/ErrorResponse"},"404":{"$ref":"#/components/responses/ErrorResponse"},"409":{"$ref":"#/components/responses/ErrorResponse"}},"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/FeedbackMemoryScope"}}}}}
+  /api/tenant/feedback-memory/versions:
+    get: {"summary":"按版本号倒序分页查询生成时点","description":"JWT + TenantContext + tenant_admin + /admin/tenant/memory 页面权限；仅访问当前租户。","tags":["FeedbackMemory"],"security":[{"bearerAuth":[]}],"responses":{"200":{"description":"成功","content":{"application/json":{"schema":{"type":"object","properties":{"code":{"type":"integer","example":0},"message":{"type":"string"},"data":{"$ref":"#/components/schemas/FeedbackMemoryVersionSummaryPage"}}}}}},"400":{"$ref":"#/components/responses/ErrorResponse"},"403":{"$ref":"#/components/responses/ErrorResponse"},"404":{"$ref":"#/components/responses/ErrorResponse"},"409":{"$ref":"#/components/responses/ErrorResponse"}},"parameters":[{"name":"module","in":"query","required":true,"schema":{"type":"string","enum":["audit","archive"]}},{"name":"process_type","in":"query","required":true,"schema":{"type":"string","maxLength":200}},{"name":"page","in":"query","schema":{"type":"integer","default":1,"minimum":1}},{"name":"page_size","in":"query","schema":{"type":"integer","default":20,"minimum":1,"maximum":100}}]}
+  /api/tenant/feedback-memory/versions/{id}:
+    get: {"summary":"读取生成版本的完整来源及提示词","description":"JWT + TenantContext + tenant_admin + /admin/tenant/memory 页面权限；仅访问当前租户。","tags":["FeedbackMemory"],"security":[{"bearerAuth":[]}],"responses":{"200":{"description":"成功","content":{"application/json":{"schema":{"type":"object","properties":{"code":{"type":"integer","example":0},"message":{"type":"string"},"data":{"$ref":"#/components/schemas/FeedbackMemoryVersion"}}}}}},"400":{"$ref":"#/components/responses/ErrorResponse"},"403":{"$ref":"#/components/responses/ErrorResponse"},"404":{"$ref":"#/components/responses/ErrorResponse"},"409":{"$ref":"#/components/responses/ErrorResponse"}},"parameters":[{"name":"module","in":"query","required":true,"schema":{"type":"string","enum":["audit","archive"]}},{"name":"process_type","in":"query","required":true,"schema":{"type":"string","maxLength":200}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]}
+  /api/tenant/feedback-memory/versions/{id}/publish:
+    post: {"summary":"校验素材修订号与发布基线后发布草稿","description":"JWT + TenantContext + tenant_admin + /admin/tenant/memory 页面权限；仅访问当前租户。","tags":["FeedbackMemory"],"security":[{"bearerAuth":[]}],"responses":{"200":{"description":"成功","content":{"application/json":{"schema":{"type":"object","properties":{"code":{"type":"integer","example":0},"message":{"type":"string"},"data":{"type":"object","properties":{"published":{"type":"boolean"}}}}}}}},"400":{"$ref":"#/components/responses/ErrorResponse"},"403":{"$ref":"#/components/responses/ErrorResponse"},"404":{"$ref":"#/components/responses/ErrorResponse"},"409":{"$ref":"#/components/responses/ErrorResponse"}},"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/FeedbackMemoryScope"}}}}}
+  /api/tenant/feedback-memory/disable:
+    post: {"summary":"停用当前记忆，保留历史版本","description":"JWT + TenantContext + tenant_admin + /admin/tenant/memory 页面权限；仅访问当前租户。","tags":["FeedbackMemory"],"security":[{"bearerAuth":[]}],"responses":{"200":{"description":"成功","content":{"application/json":{"schema":{"type":"object","properties":{"code":{"type":"integer","example":0},"message":{"type":"string"},"data":{"type":"object","properties":{"disabled":{"type":"boolean"}}}}}}}},"400":{"$ref":"#/components/responses/ErrorResponse"},"403":{"$ref":"#/components/responses/ErrorResponse"},"404":{"$ref":"#/components/responses/ErrorResponse"},"409":{"$ref":"#/components/responses/ErrorResponse"}},"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/FeedbackMemoryScope"}}}}}
 components:
   securitySchemes:
     bearerAuth:
@@ -8717,6 +8764,18 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    FeedbackMemoryScope: {"type":"object","properties":{"module":{"type":"string","enum":["audit","archive"]},"process_type":{"type":"string","maxLength":200}},"required":["module","process_type"]}
+    FeedbackMemoryEntryInput: {"type":"object","properties":{"module":{"type":"string","enum":["audit","archive"]},"process_type":{"type":"string","maxLength":200},"condition":{"type":"string","maxLength":1000},"content":{"type":"string","minLength":1,"maxLength":2000},"enabled":{"type":"boolean"}},"required":["module","process_type","content"]}
+    FeedbackMemoryImport: {"type":"object","properties":{"module":{"type":"string","enum":["audit","archive"]},"process_type":{"type":"string","maxLength":200},"comment_ids":{"type":"array","minItems":1,"maxItems":100,"items":{"type":"string","format":"uuid"}}},"required":["module","process_type","comment_ids"]}
+    FeedbackMemoryEntry: {"type":"object","properties":{"id":{"type":"string","format":"uuid"},"memory_id":{"type":"string","format":"uuid"},"source_type":{"type":"string","enum":["manual","comment"]},"source_id":{"type":"string","format":"uuid","nullable":true},"content":{"type":"string","minLength":1,"maxLength":2000},"condition":{"type":"string","maxLength":1000},"enabled":{"type":"boolean"},"source_snapshot":{"type":"object","description":"评论导入时的流程、作者、原文、满意度和更新时间；手动素材为{}"},"created_by":{"type":"string"},"created_at":{"type":"string","format":"date-time"},"updated_at":{"type":"string","format":"date-time"}}}
+    FeedbackMemoryComment: {"type":"object","properties":{"id":{"type":"string","format":"uuid"},"audit_log_id":{"type":"string","format":"uuid"},"process_id":{"type":"string"},"title":{"type":"string"},"username":{"type":"string"},"content":{"type":"string"},"feedback":{"type":"string","nullable":true,"enum":["like","dislike",null]},"updated_at":{"type":"string","format":"date-time"},"imported":{"type":"boolean"}}}
+    FeedbackMemoryItem: {"type":"object","properties":{"condition":{"type":"string"},"content":{"type":"string"},"source_refs":{"type":"array","minItems":1,"items":{"type":"string"}}},"required":["condition","content","source_refs"]}
+    FeedbackMemorySource: {"type":"object","properties":{"ref":{"type":"string"},"source_type":{"type":"string","enum":["manual","comment","previous"]},"condition":{"type":"string"},"content":{"type":"string"},"snapshot":{"oneOf":[{"$ref":"#/components/schemas/FeedbackMemoryEntry"},{"$ref":"#/components/schemas/FeedbackMemoryItem"}]}}}
+    FeedbackMemoryVersionSummary: {"type":"object","properties":{"id":{"type":"string","format":"uuid"},"memory_id":{"type":"string","format":"uuid"},"version_no":{"type":"integer"},"base_version_id":{"type":"string","format":"uuid","nullable":true},"input_revision":{"type":"integer"},"status":{"type":"string","enum":["draft","published"]},"created_by":{"type":"string"},"created_at":{"type":"string","format":"date-time"},"published_at":{"type":"string","format":"date-time","nullable":true}}}
+    FeedbackMemoryVersion: {"type":"object","properties":{"id":{"type":"string","format":"uuid"},"memory_id":{"type":"string","format":"uuid"},"version_no":{"type":"integer"},"base_version_id":{"type":"string","format":"uuid","nullable":true},"input_revision":{"type":"integer"},"status":{"type":"string","enum":["draft","published"]},"created_by":{"type":"string"},"created_at":{"type":"string","format":"date-time"},"published_at":{"type":"string","format":"date-time","nullable":true},"sources":{"type":"array","items":{"$ref":"#/components/schemas/FeedbackMemorySource"}},"items":{"type":"array","items":{"$ref":"#/components/schemas/FeedbackMemoryItem"}},"warnings":{"type":"array","items":{"type":"string"}},"system_prompt":{"type":"string"},"user_prompt":{"type":"string"},"prompt_text":{"type":"string"}}}
+    FeedbackMemoryWorkspace: {"type":"object","properties":{"memory":{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"module":{"type":"string","enum":["audit","archive"]},"process_type":{"type":"string","maxLength":200},"revision":{"type":"integer"},"last_version":{"type":"integer"},"published_version_id":{"type":"string","format":"uuid","nullable":true},"created_at":{"type":"string","format":"date-time"},"updated_at":{"type":"string","format":"date-time"}},"nullable":true},"entries":{"type":"array","items":{"$ref":"#/components/schemas/FeedbackMemoryEntry"}},"published":{"allOf":[{"$ref":"#/components/schemas/FeedbackMemoryVersion"}],"nullable":true},"system_prompt":{"type":"string","readOnly":true},"user_prompt_template":{"type":"string","readOnly":true}}}
+    FeedbackMemoryCommentPage: {"type":"object","properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/FeedbackMemoryComment"}},"total":{"type":"integer"},"page":{"type":"integer"},"page_size":{"type":"integer"}},"required":["items","total","page","page_size"]}
+    FeedbackMemoryVersionSummaryPage: {"type":"object","properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/FeedbackMemoryVersionSummary"}},"total":{"type":"integer"},"page":{"type":"integer"},"page_size":{"type":"integer"}},"required":["items","total","page","page_size"]}
     AuditQueryParameter:
       type: object
       required:
@@ -8995,6 +9054,10 @@ components:
       - explain
       - repair
       properties:
+        system_constraints:
+          type: string
+          readOnly: true
+          description: 服务端 SQL 辅助固定系统约束，不持久化客户端输入
         generate:
           type: string
           description: 必填，最多12000字节
