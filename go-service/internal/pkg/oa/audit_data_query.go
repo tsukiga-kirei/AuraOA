@@ -13,6 +13,9 @@ import (
 	"unicode"
 	"unicode/utf16"
 	"unicode/utf8"
+
+	pkglogger "auraoa/go-service/internal/pkg/logger"
+	"go.uber.org/zap"
 )
 
 // QuerySQLIssue 保存可定位的检查结果；AI 提示不参与只读校验。
@@ -36,6 +39,7 @@ type queryToken struct {
 }
 
 var queryIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+var queryDetailTableSuffix = regexp.MustCompile(`(?i)_dt[0-9]+$`)
 
 // tokenizeQuerySQL 对引号、注释、括号与参数分词，避免将字符串中的 AS 或冒号误识别。
 func tokenizeQuerySQL(input string) ([]queryToken, error) {
@@ -540,25 +544,39 @@ func (a *Ecology9Adapter) enrichQueryColumnLabels(ctx context.Context, table str
 		labels["viewtype"] = "查看状态"
 	}
 
-	// 2. 泛微流程表单、明细表与建模表元数据字典查询
-	// 兼容 Oracle、达梦和 MySQL 大小写匹配：LOWER(b.tablename) = LOWER(?) OR LOWER(t1.detailtable) = LOWER(?)
+	// 2. 先按主表查询字典，再按字段归属区分主表与明细表，兼容明细表只存序号。
 	if a.db != nil {
-		var rows []struct {
-			FieldKey  string `gorm:"column:fieldkey"`
-			FieldName string `gorm:"column:fieldname"`
+		mainTable := table
+		if suffix := queryDetailTableSuffix.FindStringIndex(table); suffix != nil {
+			mainTable = table[:suffix[0]]
 		}
+		// Oracle/达梦返回大写列名，沿用 OA 适配器的 mapGet，避免结构体小写标签漏接值。
+		var rows []map[string]interface{}
 		err := a.db.WithContext(ctx).
 			Table(a.tableName("workflow_billfield")+" "+a.col("t1")).
-			Select(a.col("t1.fieldname")+" AS fieldkey, "+a.col("t2.labelname")+" AS fieldname").
+			Select(a.col("t1.fieldname")+" AS fieldkey, "+a.col("t2.labelname")+" AS fieldname, "+a.col("t1.detailtable")+" AS detailtable, "+a.col("b.tablename")+" AS maintable").
 			Joins("JOIN "+a.tableName("htmllabelinfo")+" "+a.col("t2")+" ON "+a.col("t1.fieldlabel")+" = "+a.col("t2.indexid")+" AND "+a.col("t2.languageid")+" = 7").
 			Joins("LEFT JOIN "+a.tableName("workflow_bill")+" "+a.col("b")+" ON "+a.col("t1.billid")+" = "+a.col("b.id")).
-			Where("LOWER("+a.col("b.tablename")+") = LOWER(?) OR LOWER("+a.col("t1.detailtable")+") = LOWER(?)", table, table).
+			Where("LOWER("+a.col("b.tablename")+") = LOWER(?) OR LOWER("+a.col("t1.detailtable")+") = LOWER(?)", mainTable, table).
 			Find(&rows).Error
 
-		if err == nil {
+		if err != nil {
+			pkglogger.Global().Warn("读取查询表字段中文标签失败，保留物理字段名", zap.String("table", table), zap.Error(err))
+		} else {
 			for _, r := range rows {
-				k := strings.ToLower(strings.TrimSpace(r.FieldKey))
-				v := strings.TrimSpace(r.FieldName)
+				rowMain := strings.TrimSpace(mapGet(r, "maintable"))
+				if rowMain == "" {
+					rowMain = mainTable
+				}
+				owner := normalizeDetailTableKey(rowMain, mapGet(r, "detailtable"))
+				if owner == "main" {
+					owner = rowMain
+				}
+				if !strings.EqualFold(owner, table) {
+					continue
+				}
+				k := strings.ToLower(strings.TrimSpace(mapGet(r, "fieldkey")))
+				v := strings.TrimSpace(mapGet(r, "fieldname"))
 				if k != "" && v != "" {
 					labels[k] = v
 				}

@@ -3,6 +3,7 @@ import { useAuditDataQueryApi } from '~/composables/useAuditDataQueryApi'
 import { message, Modal } from 'ant-design-vue'
 import QueryValueSourceEditor from './QueryValueSourceEditor.vue'
 import QuerySchemaBrowser from './QuerySchemaBrowser.vue'
+import { fillQueryFieldNotes } from '~/utils/queryColumnLabels'
 import { appDayjs } from '~/utils/appTime'
 import { previewQuerySql, querySqlParameterNames } from '~/utils/querySqlEditor'
 import {
@@ -522,7 +523,7 @@ async function loadSchema(table: string, notify = true) {
   try {
     const result = await api.schema(table)
     if (sequence !== selectSequence || !contextTables.value.includes(table)) return
-    schema.value[table] = result.columns
+    rememberSchema(table, result.columns)
     if (notify) message.success(t('query.schemaLoaded', [table, result.columns.length]))
   } catch (error) {
     if (sequence === selectSequence) message.error(errorText(error))
@@ -533,6 +534,7 @@ async function loadSchema(table: string, notify = true) {
 }
 function rememberSchema(table: string, columns: QueryColumn[]) {
   schema.value[table] = columns
+  aiContext.value.field_notes = fillQueryFieldNotes(aiContext.value.field_notes || {}, table, columns)
 }
 function setFieldNote(key: string, value: string) {
   aiContext.value.field_notes ||= {}

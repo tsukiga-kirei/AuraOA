@@ -524,7 +524,7 @@ paths:
   /api/tenant/audit-data-queries/schema:
     get:
       summary: 读取指定 OA 表的零行物理元数据
-      description: JWT + 当前租户 tenant_admin + /admin/tenant/memory 页面权限。请求体最多256 KiB。
+      description: JWT + 当前租户 tenant_admin + /admin/tenant/memory 页面权限。key 保留物理字段名；label 补充所属流程/建模主表或明细表的中文标签，兼容 MySQL、Oracle、达梦返回列名大小写和明细表序号，无标签时回退物理字段名。
       tags:
       - AuditDataQueries
       security:

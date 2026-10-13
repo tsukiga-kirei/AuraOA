@@ -172,9 +172,6 @@ async function copyField(field: string) {
                     </div>
                   </td>
                   <td>
-                    <span v-if="record.label !== record.key" class="field-label">{{
-                      record.label
-                    }}</span>
                     <a-input
                       :value="fieldNotes[`${activeTable}.${record.key}`] || ''"
                       :disabled="disabled"
@@ -350,12 +347,6 @@ async function copyField(field: string) {
 }
 .field-key code {
   overflow-wrap: anywhere;
-  font-size: 12px;
-}
-.field-label {
-  display: block;
-  color: var(--color-text-secondary);
-  margin-bottom: 4px;
   font-size: 12px;
 }
 .schema-empty {

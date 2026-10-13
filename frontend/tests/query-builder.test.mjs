@@ -44,7 +44,10 @@ test('workflow aggregate uses archived EXISTS without multiplying source rows', 
   assert.deepEqual(result.parameters, [{ name: 'start_date', label: '开始日期', type: 'date' }])
 })
 test('Oracle dates use explicit conversion and identifiers preserve Chinese aliases', () => {
-  const result = compileQueryBuilder(base(), 'oracle', schema)
+  const nativeDateSchema = schema.map((column) =>
+    column.key === 'expense_date' ? { ...column, data_type: 'DATE' } : column,
+  )
+  const result = compileQueryBuilder(base(), 'oracle', nativeDateSchema)
   assert.match(result.sql, /d\."EXPENSE_DATE" >= TO_DATE\(:start_date, 'YYYY-MM-DD'\)/)
   assert.match(result.sql, /AS "累计金额"/)
 })
