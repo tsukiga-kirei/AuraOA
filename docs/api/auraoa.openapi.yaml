@@ -8864,7 +8864,7 @@ components:
         field_notes:
           type: object
           maxProperties: 200
-          description: 键为固定表名.字段名，值为业务说明。
+          description: 键为固定表名.字段名，值为业务说明。草稿保留；发送 SQL 助手时合并至 schema 对应列的 description，与 label 相同则省略，不重复发送 field_notes。
           additionalProperties:
             type: string
             maxLength: 200

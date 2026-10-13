@@ -3,7 +3,7 @@ import { useAuditDataQueryApi } from '~/composables/useAuditDataQueryApi'
 import { message, Modal } from 'ant-design-vue'
 import QueryValueSourceEditor from './QueryValueSourceEditor.vue'
 import QuerySchemaBrowser from './QuerySchemaBrowser.vue'
-import { fillQueryFieldNotes } from '~/utils/queryColumnLabels'
+import { fillQueryFieldNotes, queryAssistFieldContext } from '~/utils/queryColumnLabels'
 import { appDayjs } from '~/utils/appTime'
 import { previewQuerySql, querySqlParameterNames } from '~/utils/querySqlEditor'
 import {
@@ -184,9 +184,9 @@ const contextPreview = computed(() =>
       environment: source.value,
       category: category.value,
       target_mode: 'sql',
-      definition: { ...definition.value, tables: contextTables.value },
-      schema: Object.fromEntries(
-        contextTables.value.map((table) => [table, schema.value[table] || []]),
+      ...queryAssistFieldContext(
+        { ...definition.value, tables: contextTables.value },
+        Object.fromEntries(contextTables.value.map((table) => [table, schema.value[table] || []])),
       ),
       instruction: instruction.value,
       database_error: lastError.value,

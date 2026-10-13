@@ -4,7 +4,7 @@ import { PlusOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import { useAuditDataQueryApi } from '~/composables/useAuditDataQueryApi'
 import QueryValueSourceEditor from './QueryValueSourceEditor.vue'
 import { compileQueryBuilder } from '~/utils/queryBuilder'
-import { fillQueryBuilderLabels, queryColumnLabel } from '~/utils/queryColumnLabels'
+import { fillQueryBuilderLabels, queryColumnLabel, selectQueryOutputField } from '~/utils/queryColumnLabels'
 import type {
   QueryBuilder,
   QueryColumn,
@@ -101,8 +101,7 @@ function addColumn() {
   builder.value.columns.push({ field: '', alias: '', aggregate: '' })
 }
 function selectField(index: number, value: string) {
-  if (!builder.value.columns[index].alias.trim())
-    builder.value.columns[index].alias = queryColumnLabel(columns.value, value)
+  selectQueryOutputField(builder.value, index, value, columns.value)
 }
 function nextParameterName() {
   let index = 1
@@ -133,7 +132,9 @@ function setFilterBinding(index: number, value: QueryBinding) {
 function selectFilterField(index: number, value: string) {
   const column = columns.value.find((item) => item.key.toLowerCase() === value.toLowerCase())
   const filter = builder.value.filters[index]
-  if (!filter.label && column && /[\u3400-\u9fff]/.test(column.label)) {
+  const previousLabel = queryColumnLabel(columns.value, filter.field)
+  filter.field = value
+  if ((!filter.label?.trim() || filter.label === previousLabel) && column && /[\u3400-\u9fff]/.test(column.label)) {
     filter.label = column.label
   }
   if (column && filter.operator !== 'IN' && filter.binding?.source !== 'system') {
@@ -152,7 +153,7 @@ function selectFilterField(index: number, value: string) {
 }
 function prepareFilterLabels() {
   builder.value.filters.forEach((filter, index) => {
-    if (!filter.label.trim()) {
+    if (!filter.label?.trim()) {
       filter.label =
         queryColumnLabel(columns.value, filter.field) || t('query.builder.filterValue', index + 1)
     }
@@ -232,7 +233,7 @@ onMounted(() => {
         </template>
         <div v-for="(column, index) in builder.columns" :key="index" class="config-row">
           <a-select
-            v-model:value="column.field"
+            :value="column.field"
             show-search
             :options="
               column.aggregate === 'COUNT'
@@ -241,7 +242,7 @@ onMounted(() => {
             "
             :placeholder="t('query.builder.field')"
             :disabled="disabled"
-            @change="(value) => selectField(index, String(value ?? ''))"
+            @update:value="(value) => selectField(index, String(value ?? ''))"
           />
           <a-select v-model:value="column.aggregate" :disabled="disabled"
             ><a-select-option value="">{{ t('query.builder.detail') }}</a-select-option
@@ -281,12 +282,12 @@ onMounted(() => {
         </template>
         <div v-for="(filter, index) in builder.filters" :key="index" class="filter-row">
           <a-select
-            v-model:value="filter.field"
+            :value="filter.field"
             show-search
             :options="fieldOptions"
             :placeholder="t('query.builder.field')"
             :disabled="disabled"
-            @change="(value) => selectFilterField(index, String(value ?? ''))"
+            @update:value="(value) => selectFilterField(index, String(value ?? ''))"
           />
           <a-select
             v-model:value="filter.operator"

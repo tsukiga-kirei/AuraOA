@@ -812,6 +812,38 @@ const queryAssistSystemPrompt = `你是企业 OA 只读 SQL 助手。
 
 const defaultQueryGenerate = "结合条目名称、分类、统计口径、当前配置的输出/聚合/筛选/排序、变量来源、字段业务说明、现有 SQL 与诊断信息生成自定义 SQL。以真实 OA 环境和实时读取的表结构为准；保留已有命名参数及取值，不硬编码人员或当前流程。每列显式 AS 中文业务名；说明去重、时间、状态、单位和排除当前流程的口径。未确认的关联关系列入 warnings，不猜测字段或业务条件。只返回 SQL 候选，不生成可视化配置。"
 const defaultQueryExplain = "用中文解释 SQL 的数据来源、关联方式、参数、输出列和统计口径，指出可能重复累计或数据遗漏的地方。仅解释，不改变 SQL。"
+
+// queryAssistColumn 将补充业务说明放在对应真实字段旁，不重复发送字段字典。
+type queryAssistColumn struct {
+	oa.QueryColumn
+	Description string `json:"description,omitempty"`
+}
+
+// queryAssistFieldContext 合并实际表结构与手工说明，不修改待保存的草稿。
+func queryAssistFieldContext(def model.AuditDataQueryDefinition, schemas map[string][]oa.QueryColumn) (model.AuditDataQueryDefinition, map[string][]queryAssistColumn) {
+	notes := map[string]string{}
+	if def.AIContext != nil {
+		contextCopy := *def.AIContext
+		for key, value := range contextCopy.FieldNotes {
+			notes[strings.ToLower(key)] = strings.TrimSpace(value)
+		}
+		contextCopy.FieldNotes = nil
+		def.AIContext = &contextCopy
+	}
+	result := make(map[string][]queryAssistColumn, len(schemas))
+	for table, columns := range schemas {
+		result[table] = make([]queryAssistColumn, 0, len(columns))
+		for _, column := range columns {
+			description := notes[strings.ToLower(table+"."+column.Key)]
+			if description == strings.TrimSpace(column.Label) {
+				description = ""
+			}
+			result[table] = append(result[table], queryAssistColumn{QueryColumn: column, Description: description})
+		}
+	}
+	return def, result
+}
+
 const defaultQueryRepair = "根据数据库错误和检查报告提出最小 SQL 修复，保留原业务含义和参数。解释修改原因；口径不明确时给出待确认问题，不自行改写条件。"
 
 func (s *AuditDataQueryService) Prompts(c *gin.Context) (*model.AuditDataQueryPrompts, error) {
@@ -924,7 +956,7 @@ func (s *AuditDataQueryService) Assist(c *gin.Context, req QueryAssistRequest) (
 	default:
 		return nil, newServiceError(errcode.ErrParamValidation, "AI 辅助操作无效")
 	}
-	schema := map[string]interface{}{}
+	schema := map[string][]oa.QueryColumn{}
 	for _, table := range req.Definition.Tables {
 		cols, er := e.AuditQuerySchema(c.Request.Context(), table)
 		if er != nil {
@@ -961,9 +993,10 @@ func (s *AuditDataQueryService) Assist(c *gin.Context, req QueryAssistRequest) (
 		return nil, newServiceError(errcode.ErrNoAuthToken, "缺少用户身份")
 	}
 	req.Definition.Dialect = e.AuditQueryDialect()
+	assistDefinition, assistSchema := queryAssistFieldContext(req.Definition, schema)
 	payload, marshalErr := json.Marshal(map[string]interface{}{
 		"environment": environment, "category": req.Category,
-		"target_mode": "sql", "definition": req.Definition, "schema": schema,
+		"target_mode": "sql", "definition": assistDefinition, "schema": assistSchema,
 		"instruction": req.Instruction, "database_error": req.Error,
 		"check": queryCheck(req.Definition), "preview_summary": req.Preview,
 	})
