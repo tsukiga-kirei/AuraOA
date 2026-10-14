@@ -24,6 +24,7 @@ export interface EffectiveAgentItem {
   sort_order?: number
   quick_questions?: QuickQuestionItem[]
   tool_codes?: string[]
+  tool_history_turns?: number
 }
 
 export interface ChatSessionItem {
@@ -109,6 +110,7 @@ export interface AgentDefinitionItem {
   sort_order?: number
   quick_questions?: QuickQuestionItem[]
   tool_codes: string[]
+  tool_history_turns?: number
   access_control?: AccessControl
   created_at: string
   updated_at: string
@@ -126,6 +128,7 @@ export interface SaveAgentRequest {
   sort_order?: number
   quick_questions?: QuickQuestionItem[]
   tool_codes: string[]
+  tool_history_turns?: number
   access_control?: AccessControl
 }
 

@@ -9328,6 +9328,10 @@ components:
           "type": "boolean"
         "enabled":
           "type": "boolean"
+        "tool_history_turns":
+          "type": "integer"
+          "description": "工具明细保留轮数"
+          "default": 3
         "system_prompt":
           "type": "string"
         "tool_codes":
@@ -9477,6 +9481,10 @@ components:
           "type": "string"
         "enabled":
           "type": "boolean"
+        "tool_history_turns":
+          "type": "integer"
+          "description": "工具明细保留轮数"
+          "default": 3
         "tool_codes":
           "type": "array"
           "items":
@@ -9524,6 +9532,9 @@ components:
           "type": "string"
         "enabled":
           "type": "boolean"
+        "tool_history_turns":
+          "type": "integer"
+          "description": "工具明细保留轮数"
         "tool_codes":
           "type": "array"
           "items":

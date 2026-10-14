@@ -179,6 +179,7 @@ const agentForm = ref<SaveAgentRequest>({
   system_prompt: '',
   enabled: true,
   tool_codes: [],
+  tool_history_turns: 3,
   quick_questions: [],
   access_control: emptyAccessControl(),
 })
@@ -311,6 +312,7 @@ const openCreateAgent = () => {
     system_prompt: '',
     enabled: true,
     tool_codes: [],
+    tool_history_turns: 3,
     quick_questions: [
       { icon: 'UnorderedListOutlined', title: '待办任务', prompt: '请帮我查询当前我有哪些待办流程？', detail: '快速检阅当前待办事项' },
       { icon: 'FileSearchOutlined', title: '流程总结', prompt: '请帮我总结一下最近的审批流程', detail: '提取流程关键要点与审批流转' },
@@ -332,6 +334,7 @@ const openEditAgent = (item: AgentDefinitionItem) => {
     system_prompt: item.system_prompt,
     enabled: item.enabled,
     tool_codes: [...(item.tool_codes || [])],
+    tool_history_turns: item.tool_history_turns ?? 3,
     quick_questions: item.quick_questions
       ? item.quick_questions.map((q: any) => ({
           ...q,
@@ -586,6 +589,11 @@ onMounted(() => {
           <a-table-column :title="t('agentAdmin.col.quickQuestions')" :width="88">
             <template #default="{ record }">
               <a-tag color="geekblue">{{ record.quick_questions?.length || 0 }} {{ t('agentAdmin.quickQuestionUnit', '条') }}</a-tag>
+            </template>
+          </a-table-column>
+          <a-table-column :title="t('agentAdmin.col.toolHistoryTurns', '记忆轮数')" :width="92">
+            <template #default="{ record }">
+              <a-tag color="cyan">{{ record.tool_history_turns ?? 3 }} {{ t('agentAdmin.turnsUnit', '轮') }}</a-tag>
             </template>
           </a-table-column>
           <a-table-column :title="t('agentAdmin.col.permissions')" :width="100">
@@ -879,6 +887,33 @@ onMounted(() => {
               </div>
             </div>
           </a-checkbox-group>
+        </div>
+
+        <!-- 上下文记忆配置 -->
+        <div class="drawer-section">
+          <div class="drawer-section-title">
+            <span>{{ t('agentAdmin.memorySection', '上下文记忆配置') }}</span>
+          </div>
+          <p class="drawer-section-desc">
+            {{ t('agentAdmin.memorySectionDesc', '控制多轮对话中对已执行工具数据的记忆保留策略，避免后续追问出现遗忘或幻觉') }}
+          </p>
+
+          <a-row :gutter="16">
+            <a-col :span="12">
+              <a-form-item :label="t('agentAdmin.toolHistoryTurns', '工具明细保留轮数')">
+                <a-input-number
+                  v-model:value="agentForm.tool_history_turns"
+                  :min="0"
+                  :max="10"
+                  :precision="0"
+                  style="width: 100%;"
+                />
+                <div style="font-size: 12px; color: var(--color-text-secondary); margin-top: 4px; line-height: 1.5;">
+                  {{ t('agentAdmin.toolHistoryTurnsHint', '保留最近几轮工具执行明细（默认 3 轮，设为 0 时仅保留纯文本回复）。轮数越长多轮追问越精准，但会消耗更多上下文 Token。') }}
+                </div>
+              </a-form-item>
+            </a-col>
+          </a-row>
         </div>
 
         <!-- 快捷提问列表配置 -->

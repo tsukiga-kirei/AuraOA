@@ -3289,6 +3289,12 @@ export default {
     'agentAdmin.permAll': 'All Members',
     'agentAdmin.permCustom': 'Custom Scope',
     'agentAdmin.scopeSummary': '{0} roles, {1} members, {2} depts',
+    'agentAdmin.memorySection': 'Context Memory Settings',
+    'agentAdmin.memorySectionDesc': 'Control how many recent turns of tool execution data to retain in multi-turn chats to prevent amnesia and hallucinations',
+    'agentAdmin.toolHistoryTurns': 'Tool Details Retention (Turns)',
+    'agentAdmin.toolHistoryTurnsHint': 'Retain tool execution details for the last N turns (default 3, 0 retains plain text responses only). Longer history improves follow-up precision but uses more context tokens.',
+    'agentAdmin.col.toolHistoryTurns': 'Memory Turns',
+    'agentAdmin.turnsUnit': 'turns',
 
     //===== Auth error codes =====
     'auth.error.invalidParam': 'Invalid parameter',

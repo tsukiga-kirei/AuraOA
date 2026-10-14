@@ -3319,6 +3319,12 @@ export default {
     'agentAdmin.permAll': '全员可用',
     'agentAdmin.permCustom': '指定范围',
     'agentAdmin.scopeSummary': '{0}个角色，{1}名成员，{2}个部门',
+    'agentAdmin.memorySection': '上下文记忆配置',
+    'agentAdmin.memorySectionDesc': '控制多轮对话中对已执行工具数据的记忆保留策略，避免后续追问出现遗忘或幻觉',
+    'agentAdmin.toolHistoryTurns': '工具明细保留轮数',
+    'agentAdmin.toolHistoryTurnsHint': '保留最近几轮工具执行明细（默认 3 轮，设为 0 时仅保留纯文本回复）。轮数越长多轮追问越精准，但会消耗更多上下文 Token。',
+    'agentAdmin.col.toolHistoryTurns': '记忆轮数',
+    'agentAdmin.turnsUnit': '轮',
 
     //===== 认证错误码 =====
     'auth.error.invalidParam': '参数校验失败',

@@ -81,18 +81,23 @@ func (s *AgentAllocationService) GetAgentCatalog(ctx context.Context) (*dto.Agen
 			for _, b := range a.ToolBindings {
 				toolCodes = append(toolCodes, b.ToolCode)
 			}
+			turns := a.ToolHistoryTurns
+			if turns <= 0 {
+				turns = 3
+			}
 			agentCatalog = append(agentCatalog, dto.AgentDefinitionDTO{
-				ID:             a.ID,
-				AgentCode:      a.AgentCode,
-				Name:           a.Name,
-				Description:    a.Description,
-				SystemPrompt:   a.SystemPrompt,
-				Enabled:        a.Enabled,
-				IsSystem:       a.IsSystem,
-				QuickQuestions: parseQuickQuestions(a.QuickQuestions),
-				ToolCodes:      toolCodes,
-				CreatedAt:      a.CreatedAt,
-				UpdatedAt:      a.UpdatedAt,
+				ID:               a.ID,
+				AgentCode:        a.AgentCode,
+				Name:             a.Name,
+				Description:      a.Description,
+				SystemPrompt:     a.SystemPrompt,
+				Enabled:          a.Enabled,
+				IsSystem:         a.IsSystem,
+				ToolHistoryTurns: turns,
+				QuickQuestions:   parseQuickQuestions(a.QuickQuestions),
+				ToolCodes:        toolCodes,
+				CreatedAt:        a.CreatedAt,
+				UpdatedAt:        a.UpdatedAt,
 			})
 		}
 	}
@@ -241,20 +246,25 @@ func (s *AgentAllocationService) ListTenantAgents(ctx context.Context, tenantID 
 		if len(ac) == 0 || string(ac) == "{}" || string(ac) == "null" {
 			ac = datatypes.JSON(`{"allow_all":true,"allowed_roles":[],"allowed_members":[],"allowed_departments":[]}`)
 		}
+		turns := a.ToolHistoryTurns
+		if turns <= 0 {
+			turns = 3
+		}
 		res = append(res, dto.AgentDefinitionDTO{
-			ID:             a.ID,
-			TenantID:       a.TenantID,
-			AgentCode:      a.AgentCode,
-			Name:           a.Name,
-			Description:    a.Description,
-			SystemPrompt:   a.SystemPrompt,
-			Enabled:        a.Enabled,
-			IsSystem:       a.IsSystem,
-			QuickQuestions: parseQuickQuestions(a.QuickQuestions),
-			ToolCodes:      toolCodes,
-			AccessControl:  ac,
-			CreatedAt:      a.CreatedAt,
-			UpdatedAt:      a.UpdatedAt,
+			ID:               a.ID,
+			TenantID:         a.TenantID,
+			AgentCode:        a.AgentCode,
+			Name:             a.Name,
+			Description:      a.Description,
+			SystemPrompt:     a.SystemPrompt,
+			Enabled:          a.Enabled,
+			IsSystem:         a.IsSystem,
+			ToolHistoryTurns: turns,
+			QuickQuestions:   parseQuickQuestions(a.QuickQuestions),
+			ToolCodes:        toolCodes,
+			AccessControl:    ac,
+			CreatedAt:        a.CreatedAt,
+			UpdatedAt:        a.UpdatedAt,
 		})
 	}
 	return res, nil
@@ -285,16 +295,22 @@ func (s *AgentAllocationService) CreateTenantAgent(ctx context.Context, tenantID
 		ac = datatypes.JSON(`{"allow_all":true,"allowed_roles":[],"allowed_members":[],"allowed_departments":[]}`)
 	}
 
+	turns := 3
+	if req.ToolHistoryTurns != nil && *req.ToolHistoryTurns >= 0 {
+		turns = *req.ToolHistoryTurns
+	}
+
 	agent := model.AgentDefinition{
-		TenantID:       &tenantID,
-		AgentCode:      req.AgentCode,
-		Name:           req.Name,
-		Description:    req.Description,
-		SystemPrompt:   req.SystemPrompt,
-		Enabled:        req.Enabled,
-		IsSystem:       false,
-		QuickQuestions: qqJSON,
-		AccessControl:  ac,
+		TenantID:         &tenantID,
+		AgentCode:        req.AgentCode,
+		Name:             req.Name,
+		Description:      req.Description,
+		SystemPrompt:     req.SystemPrompt,
+		Enabled:          req.Enabled,
+		IsSystem:         false,
+		ToolHistoryTurns: turns,
+		QuickQuestions:   qqJSON,
+		AccessControl:    ac,
 	}
 
 	if err := s.agentRepo.CreateAgentWithBindings(tenantID, &agent, req.ToolCodes); err != nil {
@@ -302,19 +318,20 @@ func (s *AgentAllocationService) CreateTenantAgent(ctx context.Context, tenantID
 	}
 
 	return &dto.AgentDefinitionDTO{
-		ID:             agent.ID,
-		TenantID:       agent.TenantID,
-		AgentCode:      agent.AgentCode,
-		Name:           agent.Name,
-		Description:    agent.Description,
-		SystemPrompt:   agent.SystemPrompt,
-		Enabled:        agent.Enabled,
-		IsSystem:       agent.IsSystem,
-		QuickQuestions: req.QuickQuestions,
-		ToolCodes:      req.ToolCodes,
-		AccessControl:  agent.AccessControl,
-		CreatedAt:      agent.CreatedAt,
-		UpdatedAt:      agent.UpdatedAt,
+		ID:               agent.ID,
+		TenantID:         agent.TenantID,
+		AgentCode:        agent.AgentCode,
+		Name:             agent.Name,
+		Description:      agent.Description,
+		SystemPrompt:     agent.SystemPrompt,
+		Enabled:          agent.Enabled,
+		IsSystem:         agent.IsSystem,
+		ToolHistoryTurns: agent.ToolHistoryTurns,
+		QuickQuestions:   req.QuickQuestions,
+		ToolCodes:        req.ToolCodes,
+		AccessControl:    agent.AccessControl,
+		CreatedAt:        agent.CreatedAt,
+		UpdatedAt:        agent.UpdatedAt,
 	}, nil
 }
 
@@ -342,6 +359,9 @@ func (s *AgentAllocationService) UpdateTenantAgent(ctx context.Context, tenantID
 	}
 	if req.Enabled != nil {
 		updates["enabled"] = *req.Enabled
+	}
+	if req.ToolHistoryTurns != nil && *req.ToolHistoryTurns >= 0 {
+		updates["tool_history_turns"] = *req.ToolHistoryTurns
 	}
 	if req.QuickQuestions != nil {
 		qqJSON, _ := json.Marshal(*req.QuickQuestions)
