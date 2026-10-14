@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { message } from "ant-design-vue";
+import { message, Modal } from "ant-design-vue";
 import {
   CommentOutlined,
   PlusOutlined,
@@ -12,6 +12,11 @@ import {
   ReloadOutlined,
   ApartmentOutlined,
   SearchOutlined,
+  EyeOutlined,
+  SaveOutlined,
+  InfoCircleOutlined,
+  StopOutlined,
+  UndoOutlined,
 } from "@ant-design/icons-vue";
 import { useFeedbackMemoryApi } from "~/composables/useFeedbackMemoryApi";
 import { appDayjs } from "~/utils/appTime";
@@ -25,6 +30,8 @@ import type {
   FeedbackMemoryVersionSummary,
   FeedbackMemoryComment,
   FeedbackMemorySource,
+  FeedbackMemoryItem,
+  FeedbackMemoryInputPreview,
 } from "~/types/feedback-memory";
 const { t } = useI18n();
 const api = useFeedbackMemoryApi();
@@ -71,6 +78,71 @@ const processCategory = computed(
       ?.process_type_label || "",
 );
 const promptsOpen = ref(false);
+const previewOpen = ref(false);
+const integrationPreviewOpen = ref(false);
+function openConfirm(
+  action: "publish" | "disable" | "delete",
+  entryID?: string,
+) {
+  const target = entryID || selected.value?.id || "";
+  const editRevision = selected.value?.edit_revision || 0;
+  const targetScope = scope();
+  const content = t(
+    action === "publish"
+      ? selected.value?.items.length
+        ? "feedbackMemory.publishConfirm"
+        : "feedbackMemory.publishEmptyConfirm"
+      : action === "disable"
+        ? "feedbackMemory.disableConfirm"
+        : "feedbackMemory.deleteConfirm",
+  );
+  // 与规则配置的发布/切换版本确认框保持相同尺寸与交互。
+  Modal.confirm({
+    title: t(
+      action === "publish"
+        ? "feedbackMemory.publish"
+        : action === "disable"
+          ? "feedbackMemory.disable"
+          : "feedbackMemory.delete",
+    ),
+    content,
+    okText: t("feedbackMemory.confirm"),
+    cancelText: t("feedbackMemory.cancel"),
+    width: 380,
+    centered: true,
+    maskClosable: true,
+    okButtonProps: { danger: action !== "publish" },
+    async onOk() {
+      busy.value = true;
+      try {
+        if (action === "publish")
+          await api.publish(targetScope, target, editRevision);
+        else if (action === "disable") await api.disable(targetScope);
+        else await api.deleteEntry(targetScope, target);
+        message.success(
+          t(
+            action === "publish"
+              ? "feedbackMemory.published"
+              : action === "disable"
+                ? "feedbackMemory.disabled"
+                : "feedbackMemory.saved",
+          ),
+        );
+        await load();
+      } catch (failure) {
+        showError(failure);
+        throw failure;
+      } finally {
+        busy.value = false;
+      }
+    },
+  });
+}
+const previewLoading = ref(false);
+const inputPreview = ref<FeedbackMemoryInputPreview | null>(null);
+const memoryEditing = ref(false);
+const draftItems = ref<FeedbackMemoryItem[]>([]);
+const commentDeprecation = ref("active");
 const editorOpen = ref(false);
 const editing = ref<FeedbackMemoryEntry | null>(null);
 const form = reactive<FeedbackMemoryEntryInput>({
@@ -92,18 +164,30 @@ const scope = (): FeedbackMemoryScope => ({
   process_type: processType.value,
 });
 const locked = computed(
-  () => loading.value || refreshing.value || busy.value || generating.value,
+  () =>
+    loading.value ||
+    refreshing.value ||
+    busy.value ||
+    generating.value ||
+    previewLoading.value,
 );
 const enabledCount = computed(
-  () => workspace.value?.entries.filter((row) => row.enabled).length || 0,
+  () =>
+    workspace.value?.entries.filter(
+      (row) => row.enabled && !row.implanted_version_id,
+    ).length || 0,
+);
+const implantedCount = computed(
+  () =>
+    workspace.value?.entries.filter((row) => row.implanted_version_id).length ||
+    0,
 );
 const activeSource = ref<FeedbackMemorySource | null>(null);
 const stale = computed(
   () =>
     !!selected.value &&
     (selected.value.input_revision !== workspace.value?.memory?.revision ||
-      selected.value.base_version_id !==
-        (workspace.value?.memory?.published_version_id || null)),
+      selected.value.id !== workspace.value?.baseline?.id),
 );
 const current = computed(
   () =>
@@ -114,14 +198,90 @@ const canPublish = computed(
   () =>
     selected.value?.status === "draft" &&
     !stale.value &&
-    !!selected.value.items?.length,
+    (!!selected.value.items?.length || !!selected.value.base_version_id),
 );
+const canEditMemory = computed(
+  () =>
+    !!selected.value &&
+    selected.value.id === workspace.value?.baseline?.id &&
+    (selected.value.status === "published" || !stale.value),
+);
+const displayedItems = computed(() =>
+  memoryEditing.value ? draftItems.value : selected.value?.items || [],
+);
+const finalPrompt = computed(() =>
+  memoryEditing.value
+    ? draftItems.value
+        .map(
+          (item, index) =>
+            `${index + 1}. 适用条件：${item.condition.trim() || "仅在当前流程事实支持且不与正式规则冲突时适用"}\n参考记忆：${item.content.trim()}`,
+        )
+        .join("\n")
+        .trim()
+    : selected.value?.prompt_text || "",
+);
+function startMemoryEdit() {
+  if (!selected.value) return;
+  draftItems.value = selected.value.items.map((item) => ({
+    ...item,
+    source_refs: [...item.source_refs],
+  }));
+  memoryEditing.value = true;
+}
+async function saveMemoryDraft() {
+  if (!selected.value) return;
+  if (
+    draftItems.value.some(
+      (item) => !item.content.trim() || !item.source_refs.length,
+    )
+  ) {
+    message.warning(t("feedbackMemory.draftRequired"));
+    return;
+  }
+  await run(async () => {
+    selected.value = await api.saveDraft(
+      scope(),
+      selected.value!,
+      draftItems.value,
+    );
+    memoryEditing.value = false;
+  }, "feedbackMemory.draftSaved");
+}
+async function previewInput() {
+  previewLoading.value = true;
+  try {
+    inputPreview.value = await api.preview(scope());
+    integrationPreviewOpen.value = true;
+  } catch (failure) {
+    showError(failure);
+  } finally {
+    previewLoading.value = false;
+  }
+}
+async function toggleCommentDeprecated(comment: FeedbackMemoryComment) {
+  await run(
+    async () => {
+      await api.setCommentDeprecated(scope(), comment.id, !comment.deprecated);
+      selectedCommentIDs.value = selectedCommentIDs.value.filter(
+        (id) => id !== comment.id,
+      );
+      await loadComments();
+    },
+    comment.deprecated
+      ? "feedbackMemory.restored"
+      : "feedbackMemory.deprecatedSaved",
+  );
+}
 const formatDate = (value?: string | null) =>
   value ? appDayjs(value).format("YYYY/MM/DD HH:mm:ss") : "—";
 const sourceLabel = (kind: string) => t(`feedbackMemory.source.${kind}`);
 const versionStatus = (version: FeedbackMemoryVersionSummary) =>
   version.id === workspace.value?.memory?.published_version_id
-    ? t("feedbackMemory.active")
+    ? t(
+        workspace.value.memory.enabled
+          ? "feedbackMemory.active"
+          : "feedbackMemory.disabledStatus",
+      )
     : t(
         version.status === "draft"
           ? "feedbackMemory.draft"
@@ -194,7 +354,7 @@ async function loadConfigs() {
 }
 // 手动刷新同时更新流程目录和当前工作区，保留仍存在的流程选择与版本浏览位置。
 async function refresh() {
-  if (locked.value) return;
+  if (locked.value || memoryEditing.value) return;
   refreshing.value = true;
   error.value = false;
   try {
@@ -214,7 +374,8 @@ async function refresh() {
   }
 }
 async function selectProcess(value: string) {
-  if (locked.value || processType.value === value) return;
+  if (locked.value || memoryEditing.value || processType.value === value)
+    return;
   processType.value = value;
   await changeProcess();
 }
@@ -222,6 +383,7 @@ async function changeProcess() {
   selected.value = null;
   workspace.value = null;
   activeSource.value = null;
+  memoryEditing.value = false;
   versionPage.value = 1;
   versions.value = [];
   versionTotal.value = 0;
@@ -268,7 +430,10 @@ async function saveEntry() {
   });
 }
 async function loadComments(reset = false) {
-  if (reset) commentPage.value = 1;
+  if (reset) {
+    commentPage.value = 1;
+    selectedCommentIDs.value = [];
+  }
   commentLoading.value = true;
   try {
     const result = await api.comments(
@@ -277,9 +442,20 @@ async function loadComments(reset = false) {
       commentSize.value,
       commentKeyword.value,
       commentFeedback.value,
+      commentDeprecation.value,
     );
     comments.value = result.items || [];
     commentTotal.value = result.total;
+    if (
+      commentPage.value > 1 &&
+      (commentPage.value - 1) * commentSize.value >= result.total
+    ) {
+      commentPage.value = Math.max(
+        1,
+        Math.ceil(result.total / commentSize.value),
+      );
+      await loadComments();
+    }
   } catch (failure) {
     showError(failure);
   } finally {
@@ -299,7 +475,7 @@ async function importComments() {
   });
 }
 async function generate() {
-  if (locked.value) return;
+  if (locked.value || memoryEditing.value) return;
   generating.value = true;
   try {
     selected.value = await api.generate(scope());
@@ -315,6 +491,7 @@ async function generate() {
   }
 }
 async function selectVersion(id: string) {
+  if (memoryEditing.value) return;
   busy.value = true;
   try {
     selected.value = await api.version(scope(), id);
@@ -371,7 +548,7 @@ onMounted(loadConfigs);
               type="button"
               :class="{ selected: module === kind }"
               :aria-pressed="module === kind"
-              :disabled="locked"
+              :disabled="locked || memoryEditing"
               @click="
                 module = kind;
                 loadConfigs();
@@ -396,7 +573,7 @@ onMounted(loadConfigs);
             class="library-item"
             :class="{ selected: processType === config.process_type }"
             :aria-pressed="processType === config.process_type"
-            :disabled="locked"
+            :disabled="locked || memoryEditing"
             @click="selectProcess(config.process_type)"
           >
             <span class="item-name">{{ config.process_type }}</span>
@@ -427,12 +604,12 @@ onMounted(loadConfigs);
             <a-button
               class="memory-icon-button"
               :loading="refreshing"
-              :disabled="locked"
+              :disabled="locked || memoryEditing"
               :aria-label="t('feedbackMemory.refresh')"
               :title="t('feedbackMemory.refreshHint')"
               @click="refresh"
-              ><ReloadOutlined v-if="!refreshing"
-            /></a-button>
+              ><template #icon><ReloadOutlined v-if="!refreshing" /></template
+            ></a-button>
             <a-button
               :disabled="!workspace || locked"
               @click="promptsOpen = true"
@@ -459,13 +636,35 @@ onMounted(loadConfigs);
               >
               <span
                 class="status-label"
-                :class="{ 'status-label--active': workspace.published }"
+                :class="{
+                  'status-label--active':
+                    workspace.published && workspace.memory?.enabled,
+                }"
                 >{{
-                  workspace.published
+                  workspace.published && workspace.memory?.enabled
                     ? `${t("feedbackMemory.activeMemory")} v${workspace.published.version_no}`
-                    : t("feedbackMemory.unpublished")
+                    : workspace.published
+                      ? `${t("feedbackMemory.disabledStatus")} v${workspace.published.version_no}`
+                      : t("feedbackMemory.unpublished")
                 }}</span
               >
+              <span v-if="implantedCount">{{
+                t("feedbackMemory.implantedCount", implantedCount)
+              }}</span>
+              <a-button
+                v-if="workspace.published && !workspace.memory?.enabled"
+                size="small"
+                :disabled="locked || memoryEditing"
+                @click="
+                  run(
+                    () => api.enable(scope()),
+                    'feedbackMemory.enabledSuccess',
+                  )
+                "
+              >
+                <template #icon><UndoOutlined /></template
+                >{{ t("feedbackMemory.enable") }}
+              </a-button>
               <span v-if="workspace.published"
                 >{{ t("feedbackMemory.lastPublished") }}
                 {{ formatDate(workspace.published.published_at) }}</span
@@ -485,26 +684,42 @@ onMounted(loadConfigs);
                   <component :is="tab.icon" />{{ tab.label }}
                 </button>
               </nav>
-              <a-button
-                type="primary"
-                :loading="generating"
-                :disabled="
-                  busy || loading || (!enabledCount && !workspace.published)
-                "
-                @click="generate"
-                ><RobotOutlined />{{ t("feedbackMemory.generate") }}</a-button
-              >
+              <a-space wrap :size="8">
+                <a-button
+                  :disabled="locked || !selected || memoryEditing"
+                  @click="previewOpen = true"
+                >
+                  <template #icon><EyeOutlined /></template
+                  >{{ t("feedbackMemory.previewMemory") }}
+                </a-button>
+                <a-button
+                  type="primary"
+                  :loading="generating"
+                  :disabled="
+                    busy ||
+                    loading ||
+                    memoryEditing ||
+                    (!enabledCount && !workspace.baseline)
+                  "
+                  @click="generate"
+                  ><template #icon
+                    ><RobotOutlined v-if="!generating" /></template
+                  >{{ t("feedbackMemory.generate") }}</a-button
+                >
+              </a-space>
             </div>
             <template v-if="panel === 'materials'">
               <div class="material-actions">
                 <p>{{ t("feedbackMemory.materialHint") }}</p>
                 <a-space wrap>
-                  <a-button :disabled="locked" @click="openComments"
+                  <a-button
+                    :disabled="locked || memoryEditing"
+                    @click="openComments"
                     ><CommentOutlined />{{
                       t("feedbackMemory.importComments")
                     }}</a-button
                   >
-                  <a-button :disabled="locked" @click="edit()"
+                  <a-button :disabled="locked || memoryEditing" @click="edit()"
                     ><PlusOutlined />{{
                       t("feedbackMemory.addManual")
                     }}</a-button
@@ -534,9 +749,15 @@ onMounted(loadConfigs);
                     ><span>{{ formatDate(entry.updated_at) }}</span>
                   </div>
                   <a-space>
+                    <a-tag
+                      v-if="entry.implanted_version_id"
+                      class="source-tag"
+                      >{{ t("feedbackMemory.implanted") }}</a-tag
+                    >
                     <a-switch
+                      v-else
                       :checked="entry.enabled"
-                      :disabled="locked"
+                      :disabled="locked || memoryEditing"
                       size="small"
                       :aria-label="t('feedbackMemory.enabled')"
                       @change="
@@ -555,24 +776,23 @@ onMounted(loadConfigs);
                       "
                     />
                     <a-button
+                      v-if="!entry.implanted_version_id"
                       type="text"
                       size="small"
-                      :disabled="locked"
+                      :disabled="locked || memoryEditing"
                       :aria-label="t('feedbackMemory.edit')"
                       @click="edit(entry)"
                       ><EditOutlined
                     /></a-button>
-                    <a-popconfirm
-                      :title="t('feedbackMemory.deleteConfirm')"
-                      @confirm="run(() => api.deleteEntry(scope(), entry.id))"
-                      ><a-button
-                        type="text"
-                        size="small"
-                        danger
-                        :disabled="locked"
-                        :aria-label="t('feedbackMemory.delete')"
-                        ><DeleteOutlined /></a-button
-                    ></a-popconfirm>
+                    <a-button
+                      type="text"
+                      size="small"
+                      danger
+                      :disabled="locked || memoryEditing"
+                      :aria-label="t('feedbackMemory.delete')"
+                      @click="openConfirm('delete', entry.id)"
+                      ><DeleteOutlined
+                    /></a-button>
                   </a-space>
                 </div>
                 <div v-if="entry.source_snapshot.title" class="source-process">
@@ -607,56 +827,74 @@ onMounted(loadConfigs);
                       {{ selected.created_by }}
                     </p>
                   </div>
-                  <a-popconfirm
-                    v-if="canPublish"
-                    :title="t('feedbackMemory.publishConfirm')"
-                    @confirm="
-                      run(
-                        () => api.publish(scope(), selected!.id),
-                        'feedbackMemory.published',
-                      )
-                    "
-                    ><a-button type="primary" :disabled="locked">{{
-                      t("feedbackMemory.publish")
-                    }}</a-button></a-popconfirm
-                  >
-                  <a-popconfirm
-                    v-if="current"
-                    :title="t('feedbackMemory.disableConfirm')"
-                    @confirm="
-                      run(() => api.disable(scope()), 'feedbackMemory.disabled')
-                    "
-                    ><a-button danger :disabled="locked">{{
-                      t("feedbackMemory.disable")
-                    }}</a-button></a-popconfirm
-                  >
+                  <a-space wrap :size="8">
+                    <template v-if="memoryEditing">
+                      <a-button
+                        :disabled="busy"
+                        @click="memoryEditing = false"
+                        >{{ t("feedbackMemory.cancel") }}</a-button
+                      >
+                      <a-button
+                        type="primary"
+                        :loading="busy"
+                        @click="saveMemoryDraft"
+                        ><template #icon><SaveOutlined v-if="!busy" /></template
+                        >{{ t("feedbackMemory.saveDraft") }}</a-button
+                      >
+                    </template>
+                    <a-button
+                      v-else-if="canEditMemory"
+                      :disabled="locked"
+                      @click="startMemoryEdit"
+                      ><template #icon><EditOutlined /></template
+                      >{{ t("feedbackMemory.editMemory") }}</a-button
+                    >
+                    <a-button
+                      v-if="canPublish && !memoryEditing"
+                      type="primary"
+                      :disabled="locked"
+                      @click="openConfirm('publish')"
+                      >{{ t("feedbackMemory.publish") }}</a-button
+                    >
+                    <a-button
+                      v-if="
+                        current && workspace.memory?.enabled && !memoryEditing
+                      "
+                      danger
+                      :disabled="locked"
+                      @click="openConfirm('disable')"
+                      >{{ t("feedbackMemory.disable") }}</a-button
+                    >
+                  </a-space>
                 </div>
-                <a-alert
-                  v-if="selected.status === 'draft' && stale"
-                  class="feedback-alert"
-                  type="warning"
-                  show-icon
-                  :message="t('feedbackMemory.stale')"
-                />
-                <a-alert
-                  v-for="(warning, index) in selected.warnings"
-                  :key="index"
-                  class="feedback-alert"
-                  type="warning"
-                  show-icon
-                  :message="warning"
-                />
-                <a-button
-                  v-if="selected.base_version_id"
-                  type="link"
-                  :disabled="locked"
-                  @click="selectVersion(selected.base_version_id!)"
-                  ><HistoryOutlined />{{
-                    t("feedbackMemory.viewBase")
-                  }}</a-button
+                <div
+                  v-if="
+                    selected.warnings.length ||
+                    (selected.status === 'draft' && stale) ||
+                    memoryEditing
+                  "
+                  class="memory-notice"
+                  role="note"
                 >
+                  <InfoCircleOutlined />
+                  <div>
+                    <strong>{{ t("feedbackMemory.reviewNotes") }}</strong>
+                    <p v-if="memoryEditing">
+                      {{ t("feedbackMemory.editHint") }}
+                    </p>
+                    <p v-if="selected.status === 'draft' && stale">
+                      {{ t("feedbackMemory.stale") }}
+                    </p>
+                    <p
+                      v-for="(warning, index) in selected.warnings"
+                      :key="index"
+                    >
+                      {{ warning }}
+                    </p>
+                  </div>
+                </div>
                 <article
-                  v-for="(item, index) in selected.items"
+                  v-for="(item, index) in displayedItems"
                   :key="index"
                   class="memory-entry"
                 >
@@ -664,13 +902,60 @@ onMounted(loadConfigs);
                     <strong>{{
                       t("feedbackMemory.memoryItem", index + 1)
                     }}</strong>
+                    <a-button
+                      v-if="memoryEditing"
+                      type="text"
+                      danger
+                      size="small"
+                      :disabled="busy"
+                      :aria-label="t('feedbackMemory.removeItem')"
+                      @click="draftItems.splice(index, 1)"
+                      ><template #icon><DeleteOutlined /></template
+                    ></a-button>
                   </div>
-                  <p class="entry-condition">
-                    {{ t("feedbackMemory.condition") }}：{{
-                      item.condition || t("feedbackMemory.defaultCondition")
-                    }}
-                  </p>
-                  <p class="entry-content">{{ item.content }}</p>
+                  <a-form
+                    v-if="memoryEditing"
+                    layout="vertical"
+                    class="memory-item-editor"
+                  >
+                    <a-form-item :label="t('feedbackMemory.condition')"
+                      ><a-textarea
+                        v-model:value="item.condition"
+                        :maxlength="1000"
+                        :auto-size="{ minRows: 2, maxRows: 5 }"
+                        :disabled="busy"
+                    /></a-form-item>
+                    <a-form-item
+                      :label="t('feedbackMemory.memoryContent')"
+                      required
+                      ><a-textarea
+                        v-model:value="item.content"
+                        :maxlength="2000"
+                        :auto-size="{ minRows: 3, maxRows: 10 }"
+                        :disabled="busy"
+                        show-count
+                    /></a-form-item>
+                    <a-form-item :label="t('feedbackMemory.basedOn')" required
+                      ><a-select
+                        v-model:value="item.source_refs"
+                        mode="multiple"
+                        :disabled="busy"
+                        :options="
+                          selected.sources.map((source, i) => ({
+                            value: source.ref,
+                            label: `${t('feedbackMemory.sourceNumber', i + 1)} · ${source.content.slice(0, 60)}`,
+                          }))
+                        "
+                    /></a-form-item>
+                  </a-form>
+                  <template v-else>
+                    <p class="entry-condition">
+                      {{ t("feedbackMemory.condition") }}：{{
+                        item.condition || t("feedbackMemory.defaultCondition")
+                      }}
+                    </p>
+                    <p class="entry-content">{{ item.content }}</p>
+                  </template>
                   <div class="source-links">
                     <span>{{ t("feedbackMemory.basedOn") }}</span
                     ><a-button
@@ -689,56 +974,95 @@ onMounted(loadConfigs);
                     >
                   </div>
                 </article>
+                <a-button
+                  v-if="memoryEditing"
+                  :disabled="busy || draftItems.length >= 80"
+                  @click="
+                    draftItems.push({
+                      condition: '',
+                      content: '',
+                      source_refs: [],
+                    })
+                  "
+                  ><template #icon><PlusOutlined /></template
+                  >{{ t("feedbackMemory.addItem") }}</a-button
+                >
                 <a-empty
-                  v-if="!selected.items.length"
+                  v-if="!displayedItems.length"
                   :description="t('feedbackMemory.noReliableItems')"
                 />
+                <section class="final-prompt-preview">
+                  <h3><EyeOutlined /> {{ t("feedbackMemory.finalPrompt") }}</h3>
+                  <p class="memory-help">
+                    {{ t("feedbackMemory.finalPromptHint") }}
+                  </p>
+                  <pre class="readonly-text">{{
+                    finalPrompt || t("feedbackMemory.noReliableItems")
+                  }}</pre>
+                </section>
                 <a-collapse ghost class="readonly-prompts">
                   <a-collapse-panel
-                    key="output"
-                    :header="t('feedbackMemory.finalPrompt')"
+                    key="trace"
+                    :header="t('feedbackMemory.generationTrace')"
                   >
-                    <pre>{{
-                      selected.prompt_text ||
-                      t("feedbackMemory.noReliableItems")
-                    }}</pre>
-                  </a-collapse-panel>
-                  <a-collapse-panel
-                    key="system"
-                    :header="t('admin.data.llmSystemPrompt')"
-                  >
-                    <pre>{{ selected.system_prompt }}</pre>
-                  </a-collapse-panel>
-                  <a-collapse-panel
-                    key="input"
-                    :header="t('feedbackMemory.actualInput')"
-                  >
-                    <pre>{{ selected.user_prompt }}</pre>
-                  </a-collapse-panel>
-                  <a-collapse-panel
-                    key="sources"
-                    :header="t('feedbackMemory.allSources')"
-                    ><article
-                      v-for="(source, index) in selected.sources"
-                      :key="source.ref"
-                      class="memory-entry"
+                    <p class="memory-help">
+                      {{ t("feedbackMemory.traceHint") }}
+                    </p>
+                    <a-button
+                      :loading="previewLoading"
+                      :disabled="locked || memoryEditing"
+                      @click="previewInput"
+                      ><template #icon
+                        ><EyeOutlined v-if="!previewLoading" /></template
+                      >{{ t("feedbackMemory.previewInput") }}</a-button
                     >
-                      <strong
-                        >{{ t("feedbackMemory.sourceNumber", index + 1) }} ·
-                        {{ sourceLabel(source.source_type) }}</strong
+                    <a-collapse ghost>
+                      <a-collapse-panel
+                        key="system"
+                        :header="t('admin.data.llmSystemPrompt')"
                       >
-                      <p v-if="source.condition" class="entry-condition">
-                        {{ source.condition }}
-                      </p>
-                      <p class="entry-content">{{ source.content }}</p>
-                      <a-button
-                        type="link"
-                        size="small"
-                        @click="activeSource = source"
-                        >{{ t("feedbackMemory.sourceDetail") }}</a-button
+                        <pre>{{ selected.system_prompt }}</pre>
+                      </a-collapse-panel>
+                      <a-collapse-panel
+                        key="original"
+                        :header="t('feedbackMemory.originalOutput')"
                       >
-                    </article></a-collapse-panel
-                  >
+                        <pre>{{
+                          JSON.stringify(selected.generated_items, null, 2)
+                        }}</pre>
+                      </a-collapse-panel>
+                      <a-collapse-panel
+                        key="input"
+                        :header="t('feedbackMemory.actualInput')"
+                      >
+                        <pre>{{ selected.user_prompt }}</pre>
+                      </a-collapse-panel>
+                      <a-collapse-panel
+                        key="sources"
+                        :header="t('feedbackMemory.allSources')"
+                        ><article
+                          v-for="(source, index) in selected.sources"
+                          :key="source.ref"
+                          class="memory-entry"
+                        >
+                          <strong
+                            >{{ t("feedbackMemory.sourceNumber", index + 1) }} ·
+                            {{ sourceLabel(source.source_type) }}</strong
+                          >
+                          <p v-if="source.condition" class="entry-condition">
+                            {{ source.condition }}
+                          </p>
+                          <p class="entry-content">{{ source.content }}</p>
+                          <a-button
+                            type="link"
+                            size="small"
+                            @click="activeSource = source"
+                            >{{ t("feedbackMemory.sourceDetail") }}</a-button
+                          >
+                        </article></a-collapse-panel
+                      >
+                    </a-collapse>
+                  </a-collapse-panel>
                 </a-collapse>
               </template>
             </template>
@@ -761,7 +1085,7 @@ onMounted(loadConfigs);
                 :class="{
                   'version-button--selected': selected?.id === version.id,
                 }"
-                :disabled="locked"
+                :disabled="locked || memoryEditing"
                 @click="selectVersion(version.id)"
               >
                 <span class="version-row"
@@ -837,6 +1161,7 @@ onMounted(loadConfigs);
 
     <a-drawer
       v-model:open="commentsOpen"
+      root-class-name="memory-surface feedback-comments-drawer"
       :title="t('feedbackMemory.importComments')"
       width="min(850px, 96vw)"
       :mask-closable="!busy"
@@ -849,16 +1174,27 @@ onMounted(loadConfigs);
         class="feedback-alert"
       />
       <div class="comment-filters">
-        <a-input-search
+        <a-input
           v-model:value="commentKeyword"
+          class="comment-search"
+          allow-clear
           :placeholder="t('feedbackMemory.searchComments')"
-          :disabled="commentLoading"
-          @search="loadComments(true)"
-        /><a-select
+          :disabled="commentLoading || busy"
+          @press-enter="loadComments(true)"
+          ><template #prefix><SearchOutlined /></template
+        ></a-input>
+        <a-button
+          :loading="commentLoading"
+          :disabled="busy"
+          :aria-label="t('feedbackMemory.searchComments')"
+          @click="loadComments(true)"
+          ><template #icon><SearchOutlined v-if="!commentLoading" /></template
+        ></a-button>
+        <a-select
           v-model:value="commentFeedback"
           allow-clear
           :placeholder="t('feedbackMemory.satisfaction')"
-          :disabled="commentLoading"
+          :disabled="commentLoading || busy"
           @change="loadComments(true)"
           ><a-select-option value="like">{{
             t("feedbackMemory.like")
@@ -867,6 +1203,22 @@ onMounted(loadConfigs);
             t("feedbackMemory.dislike")
           }}</a-select-option></a-select
         >
+        <a-select
+          v-model:value="commentDeprecation"
+          :disabled="commentLoading || busy"
+          :aria-label="t('feedbackMemory.deprecationFilter')"
+          @change="loadComments(true)"
+        >
+          <a-select-option value="active">{{
+            t("feedbackMemory.notDeprecated")
+          }}</a-select-option>
+          <a-select-option value="deprecated">{{
+            t("feedbackMemory.deprecated")
+          }}</a-select-option>
+          <a-select-option value="all">{{
+            t("feedbackMemory.allComments")
+          }}</a-select-option>
+        </a-select>
       </div>
       <a-spin :spinning="commentLoading">
         <a-empty
@@ -882,12 +1234,36 @@ onMounted(loadConfigs);
             :key="comment.id"
             class="memory-entry"
           >
-            <a-checkbox :value="comment.id" :disabled="comment.imported || busy"
-              ><strong>{{ comment.title }}</strong
-              ><a-tag v-if="comment.imported">{{
-                t("feedbackMemory.imported")
-              }}</a-tag></a-checkbox
-            >
+            <div class="comment-heading">
+              <a-checkbox
+                :value="comment.id"
+                :disabled="comment.imported || comment.deprecated || busy"
+                ><strong>{{ comment.title }}</strong
+                ><a-tag v-if="comment.imported">{{
+                  t("feedbackMemory.imported")
+                }}</a-tag></a-checkbox
+              >
+              <a-button
+                size="small"
+                type="text"
+                :disabled="busy || commentLoading"
+                @click="toggleCommentDeprecated(comment)"
+              >
+                <template #icon
+                  ><UndoOutlined v-if="comment.deprecated" /><StopOutlined
+                    v-else /></template
+                >{{
+                  t(
+                    comment.deprecated
+                      ? "feedbackMemory.restore"
+                      : "feedbackMemory.deprecate",
+                  )
+                }}
+              </a-button>
+            </div>
+            <a-tag v-if="comment.deprecated">{{
+              t("feedbackMemory.deprecated")
+            }}</a-tag>
             <div class="entry-meta">
               {{ comment.username }} · {{ formatDate(comment.updated_at) }} ·
               {{ comment.process_id
@@ -907,6 +1283,7 @@ onMounted(loadConfigs);
           :page-size="commentSize"
           :total="commentTotal"
           show-size-changer
+          size="small"
           :page-size-options="['10', '20', '50']"
           :disabled="commentLoading || busy"
           @change="changeCommentPage"
@@ -931,6 +1308,84 @@ onMounted(loadConfigs);
     </a-drawer>
 
     <a-drawer
+      v-model:open="previewOpen"
+      :title="t('feedbackMemory.previewMemory')"
+      width="min(900px, 96vw)"
+      root-class-name="memory-surface"
+    >
+      <div class="runtime-preview">
+        <p class="memory-help">{{ t("feedbackMemory.runtimePreviewHint") }}</p>
+        <template v-if="selected">
+          <div class="memory-notice">
+            <InfoCircleOutlined />
+            <div>
+              <strong
+                >v{{ selected.version_no }} ·
+                {{ versionStatus(selected) }}</strong
+              >
+              <p>
+                {{
+                  t(
+                    current && workspace?.memory?.enabled
+                      ? "feedbackMemory.previewActive"
+                      : "feedbackMemory.previewPending",
+                  )
+                }}
+              </p>
+              <p v-if="!current || !workspace?.memory?.enabled">
+                {{
+                  workspace?.memory?.enabled && workspace.published
+                    ? t(
+                        "feedbackMemory.currentRuntime",
+                        workspace.published.version_no,
+                      )
+                    : t("feedbackMemory.runtimeDisabled")
+                }}
+              </p>
+            </div>
+          </div>
+          <template
+            v-if="!current && workspace?.memory?.enabled && workspace.published"
+          >
+            <h3>
+              {{
+                t(
+                  "feedbackMemory.currentRuntime",
+                  workspace.published.version_no,
+                )
+              }}
+            </h3>
+            <pre class="readonly-text">{{
+              workspace.published.runtime_user_prompt
+            }}</pre>
+          </template>
+          <h3>{{ t("feedbackMemory.runtimeMemoryBlock") }}</h3>
+          <pre class="readonly-text">{{
+            selected.runtime_user_prompt || t("feedbackMemory.runtimeNoMemory")
+          }}</pre>
+          <h3>{{ t("feedbackMemory.runtimeConstraint") }}</h3>
+          <pre class="readonly-text">{{
+            selected.runtime_system_prompt ||
+            t("feedbackMemory.runtimeNoConstraint")
+          }}</pre>
+        </template>
+      </div>
+    </a-drawer>
+
+    <a-drawer
+      v-model:open="integrationPreviewOpen"
+      :title="t('feedbackMemory.previewInput')"
+      width="min(900px, 96vw)"
+      root-class-name="memory-surface"
+    >
+      <p class="memory-help">{{ t("feedbackMemory.inputPreviewHint") }}</p>
+      <h3>{{ t("admin.data.llmSystemPrompt") }}</h3>
+      <pre class="readonly-text">{{ inputPreview?.system_prompt }}</pre>
+      <h3>{{ t("feedbackMemory.actualInput") }}</h3>
+      <pre class="readonly-text">{{ inputPreview?.user_prompt }}</pre>
+    </a-drawer>
+
+    <a-drawer
       v-model:open="promptsOpen"
       :title="t('feedbackMemory.generationRules')"
       width="min(800px, 96vw)"
@@ -945,11 +1400,6 @@ onMounted(loadConfigs);
       <pre class="readonly-text">{{ workspace?.system_prompt }}</pre>
       <h3>{{ t("feedbackMemory.userTemplate") }}</h3>
       <pre class="readonly-text">{{ workspace?.user_prompt_template }}</pre>
-      <h3>{{ t("feedbackMemory.variable") }}</h3>
-      <div class="prompt-variable-info">
-        <code class="prompt-variable-token" v-text="'{{feedback_memory}}'" />
-        <p>{{ t("feedbackMemory.integrationHint") }}</p>
-      </div>
     </a-drawer>
     <a-drawer
       :open="!!activeSource"
@@ -975,15 +1425,6 @@ onMounted(loadConfigs);
               formatDate(sourceComment(activeSource)?.updated_at)
             }}</a-descriptions-item></a-descriptions
           ></template
-        >
-        <a-button
-          v-if="
-            activeSource.source_type === 'previous' && selected?.base_version_id
-          "
-          type="link"
-          :disabled="locked"
-          @click="selectVersion(selected!.base_version_id!)"
-          >{{ t("feedbackMemory.viewBase") }}</a-button
         >
         <a-collapse ghost
           ><a-collapse-panel
@@ -1386,30 +1827,6 @@ h3 {
 .readonly-prompts {
   margin-top: 20px;
 }
-.prompt-variable-info {
-  padding: 16px;
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-hover);
-}
-.prompt-variable-token {
-  display: inline-block;
-  max-width: 100%;
-  box-sizing: border-box;
-  padding: 4px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-primary-bg);
-  color: var(--color-primary);
-  font: 12px/1.8 var(--font-mono, monospace);
-  overflow-wrap: anywhere;
-}
-.prompt-variable-info p {
-  margin: 12px 0 0;
-  color: var(--color-text-secondary);
-  font-size: 13px;
-  line-height: 1.8;
-}
 .readonly-prompts pre,
 .readonly-text {
   white-space: pre-wrap;
@@ -1434,11 +1851,73 @@ h3 {
 }
 .comment-filters {
   display: flex;
-  gap: 12px;
-  margin-bottom: 20px;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.comment-search {
+  flex: 1 1 240px;
+  min-width: 160px;
+}
+.comment-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.comment-heading .ant-checkbox-wrapper {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.comment-heading .ant-btn {
+  flex-shrink: 0;
+}
+.memory-notice {
+  display: flex;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.memory-notice > .anticon {
+  color: var(--color-primary);
+  margin-top: 4px;
+}
+.memory-notice p {
+  margin: 4px 0 0;
+}
+.memory-item-editor {
+  margin-top: 12px;
+}
+.memory-item-editor .ant-form-item {
+  margin-bottom: 12px;
+}
+.final-prompt-preview {
+  margin-top: 20px;
+}
+.runtime-preview {
+  display: flex;
+  flex-direction: column;
+}
+.runtime-preview h3 {
+  margin: 28px 0 12px;
+  line-height: 1.6;
+}
+.runtime-preview .readonly-text {
+  margin: 0;
+  padding: 18px 20px;
+  line-height: 1.9;
+}
+.runtime-preview .memory-notice {
+  margin: 12px 0 0;
 }
 .comment-filters .ant-select {
-  min-width: 140px;
+  min-width: 110px;
 }
 .pagination-wrapper {
   display: flex;

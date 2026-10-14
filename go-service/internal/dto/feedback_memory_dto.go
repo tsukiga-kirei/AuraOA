@@ -39,6 +39,7 @@ type FeedbackMemoryComment struct {
 	Feedback   *string   `json:"feedback"`
 	UpdatedAt  time.Time `json:"updated_at"`
 	Imported   bool      `json:"imported"`
+	Deprecated bool      `json:"deprecated"`
 }
 
 // FeedbackMemoryWorkspace 返回当前素材、发布记忆及只读生成规则。
@@ -46,6 +47,33 @@ type FeedbackMemoryWorkspace struct {
 	Memory             *model.FeedbackMemory        `json:"memory"`
 	Entries            []model.FeedbackMemoryEntry  `json:"entries"`
 	Published          *model.FeedbackMemoryVersion `json:"published"`
+	Baseline           *model.FeedbackMemoryVersion `json:"baseline"`
+	DeletedEntries     []model.FeedbackMemoryEntry  `json:"-"`
 	SystemPrompt       string                       `json:"system_prompt"`
 	UserPromptTemplate string                       `json:"user_prompt_template"`
+}
+
+// FeedbackMemoryCommentQuery 在服务端分页前筛选弃用状态，默认隐藏已弃用建议。
+type FeedbackMemoryCommentQuery struct {
+	ExperienceQuery
+	Deprecation string `form:"deprecation" binding:"omitempty,oneof=active deprecated all"`
+}
+
+// FeedbackMemoryCommentStateRequest 设置当前记忆库的建议弃用状态。
+type FeedbackMemoryCommentStateRequest struct {
+	FeedbackMemoryScope
+	Deprecated bool `json:"deprecated"`
+}
+
+// FeedbackMemoryDraftRequest 整体保存条目，使用编辑修订号防止相互覆盖。
+type FeedbackMemoryDraftRequest struct {
+	FeedbackMemoryScope
+	Items        []model.FeedbackMemoryItem `json:"items" binding:"max=80"`
+	EditRevision int                        `json:"edit_revision" binding:"min=0"`
+}
+
+// FeedbackMemoryPublishRequest 发布用户已审阅的编辑修订，避免发布他人刚修改的正文。
+type FeedbackMemoryPublishRequest struct {
+	FeedbackMemoryScope
+	EditRevision int `json:"edit_revision" binding:"min=0"`
 }

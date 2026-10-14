@@ -75,8 +75,64 @@ func (h *FeedbackMemoryHandler) Comments(c *gin.Context) {
 	if !ok {
 		return
 	}
-	out, err := h.service.Comments(c, scope, q)
+	var filter dto.FeedbackMemoryCommentQuery
+	if c.ShouldBindQuery(&filter) != nil {
+		memoryBadRequest(c)
+		return
+	}
+	filter.ExperienceQuery = q
+	out, err := h.service.Comments(c, scope, filter)
 	memoryResult(c, out, err)
+}
+
+// SetCommentDeprecated PUT /comments/:id，弃用或恢复当前模块流程的建议。
+func (h *FeedbackMemoryHandler) SetCommentDeprecated(c *gin.Context) {
+	var req dto.FeedbackMemoryCommentStateRequest
+	if c.ShouldBindJSON(&req) != nil {
+		memoryBadRequest(c)
+		return
+	}
+	id, ok := memoryID(c)
+	if !ok {
+		return
+	}
+	memoryResult(c, gin.H{"saved": true}, h.service.SetCommentDeprecated(c, id, req))
+}
+
+// PreviewInput POST /preview，不调用AI，返回下次生成的完整提示词。
+func (h *FeedbackMemoryHandler) PreviewInput(c *gin.Context) {
+	var q dto.FeedbackMemoryScope
+	if c.ShouldBindJSON(&q) != nil {
+		memoryBadRequest(c)
+		return
+	}
+	out, err := h.service.PreviewInput(c, q)
+	memoryResult(c, out, err)
+}
+
+// SaveDraft PUT /versions/:id，保存人工整体调整，发布版本自动另存为草稿。
+func (h *FeedbackMemoryHandler) SaveDraft(c *gin.Context) {
+	var req dto.FeedbackMemoryDraftRequest
+	if c.ShouldBindJSON(&req) != nil || req.Items == nil {
+		memoryBadRequest(c)
+		return
+	}
+	id, ok := memoryID(c)
+	if !ok {
+		return
+	}
+	out, err := h.service.SaveDraft(c, id, req)
+	memoryResult(c, out, err)
+}
+
+// Enable POST /enable，恢复最后发布的记忆。
+func (h *FeedbackMemoryHandler) Enable(c *gin.Context) {
+	var q dto.FeedbackMemoryScope
+	if c.ShouldBindJSON(&q) != nil {
+		memoryBadRequest(c)
+		return
+	}
+	memoryResult(c, gin.H{"enabled": true}, h.service.Enable(c, q))
 }
 
 // ImportComments POST /api/tenant/feedback-memory/import，批量导入评论快照。
@@ -161,7 +217,7 @@ func (h *FeedbackMemoryHandler) Version(c *gin.Context) {
 
 // Publish POST /versions/:id/publish，确认发布草稿。
 func (h *FeedbackMemoryHandler) Publish(c *gin.Context) {
-	var q dto.FeedbackMemoryScope
+	var q dto.FeedbackMemoryPublishRequest
 	if c.ShouldBindJSON(&q) != nil {
 		memoryBadRequest(c)
 		return
@@ -170,7 +226,7 @@ func (h *FeedbackMemoryHandler) Publish(c *gin.Context) {
 	if !ok {
 		return
 	}
-	memoryResult(c, gin.H{"published": true}, h.service.Publish(c, q, &id))
+	memoryResult(c, gin.H{"published": true}, h.service.Publish(c, q.FeedbackMemoryScope, &id, q.EditRevision))
 }
 
 // Disable POST /disable，停用当前记忆并保留来源和历史。

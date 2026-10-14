@@ -71,7 +71,7 @@ func (r *FeedbackMemoryRepo) ensure(c *gin.Context, scope dto.FeedbackMemoryScop
 		return nil, ErrNoTenantContext
 	}
 	now := apptime.Now()
-	m := model.FeedbackMemory{ID: uuid.New(), TenantID: tid, Module: scope.Module, ProcessType: scope.ProcessType, CreatedAt: now, UpdatedAt: now}
+	m := model.FeedbackMemory{ID: uuid.New(), TenantID: tid, Module: scope.Module, ProcessType: scope.ProcessType, Enabled: true, CreatedAt: now, UpdatedAt: now}
 	if err = r.WithTenant(c).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "tenant_id"}, {Name: "module"}, {Name: "process_type"}}, DoNothing: true}).Create(&m).Error; err != nil {
 		return nil, err
 	}
@@ -94,8 +94,18 @@ func (r *FeedbackMemoryRepo) Workspace(c *gin.Context, scope dto.FeedbackMemoryS
 			return err
 		}
 		out.Memory = m
-		if err := repo.WithTenant(c).Where("memory_id = ?", m.ID).Order("created_at, id").Find(&out.Entries).Error; err != nil {
+		if err := repo.WithTenant(c).Where("memory_id = ? AND deleted_at IS NULL", m.ID).Order("created_at, id").Find(&out.Entries).Error; err != nil {
 			return err
+		}
+		if err := repo.WithTenant(c).Where("memory_id = ? AND deleted_at IS NOT NULL", m.ID).Find(&out.DeletedEntries).Error; err != nil {
+			return err
+		}
+		if m.LastVersion > 0 {
+			var v model.FeedbackMemoryVersion
+			if err := repo.WithTenant(c).Where("memory_id = ? AND version_no = ?", m.ID, m.LastVersion).First(&v).Error; err != nil {
+				return err
+			}
+			out.Baseline = &v
 		}
 		if m.PublishedVersionID != nil {
 			out.Published, err = repo.Version(c, *m.PublishedVersionID)
@@ -129,7 +139,7 @@ func (r *FeedbackMemoryRepo) SaveEntry(c *gin.Context, id uuid.UUID, req dto.Fee
 	return r.Mutate(c, req.FeedbackMemoryScope, func(repo *FeedbackMemoryRepo, m *model.FeedbackMemory) error {
 		if id == uuid.Nil {
 			var count int64
-			if err := repo.WithTenant(c).Model(&model.FeedbackMemoryEntry{}).Where("memory_id = ?", m.ID).Count(&count).Error; err != nil {
+			if err := repo.WithTenant(c).Model(&model.FeedbackMemoryEntry{}).Where("memory_id = ? AND deleted_at IS NULL", m.ID).Count(&count).Error; err != nil {
 				return err
 			}
 			if count >= 200 {
@@ -139,11 +149,15 @@ func (r *FeedbackMemoryRepo) SaveEntry(c *gin.Context, id uuid.UUID, req dto.Fee
 			return repo.WithTenant(c).Create(&model.FeedbackMemoryEntry{ID: uuid.New(), TenantID: m.TenantID, MemoryID: m.ID, SourceType: "manual", Content: req.Content, Condition: req.Condition, Enabled: req.Enabled, SourceSnapshot: []byte("{}"), CreatedBy: c.GetString("username"), CreatedAt: now, UpdatedAt: now}).Error
 		}
 		var row model.FeedbackMemoryEntry
-		if err := repo.WithTenant(c).Where("memory_id = ? AND id = ?", m.ID, id).First(&row).Error; err != nil {
+		if err := repo.WithTenant(c).Where("memory_id = ? AND id = ? AND deleted_at IS NULL", m.ID, id).First(&row).Error; err != nil {
 			return err
 		}
 		if row.SourceType == "comment" {
 			req.Content = row.Content
+		}
+		// 已植入素材由版本条目维护，禁止通过旧接口修改或重新参与生成。
+		if row.ImplantedVersionID != nil {
+			return ErrFeedbackMemoryStale
 		}
 		return repo.WithTenant(c).Model(&row).Updates(map[string]interface{}{"content": req.Content, "condition": req.Condition, "enabled": req.Enabled, "updated_at": apptime.Now()}).Error
 	})
@@ -152,7 +166,7 @@ func (r *FeedbackMemoryRepo) SaveEntry(c *gin.Context, id uuid.UUID, req dto.Fee
 // DeleteEntry 删除素材不改写历史快照，也不会自动改变已发布记忆。
 func (r *FeedbackMemoryRepo) DeleteEntry(c *gin.Context, scope dto.FeedbackMemoryScope, id uuid.UUID) error {
 	return r.Mutate(c, scope, func(repo *FeedbackMemoryRepo, m *model.FeedbackMemory) error {
-		result := repo.WithTenant(c).Where("memory_id = ? AND id = ?", m.ID, id).Delete(&model.FeedbackMemoryEntry{})
+		result := repo.WithTenant(c).Model(&model.FeedbackMemoryEntry{}).Where("memory_id = ? AND id = ? AND deleted_at IS NULL", m.ID, id).Updates(map[string]interface{}{"deleted_at": apptime.Now(), "updated_at": apptime.Now()})
 		if result.Error != nil {
 			return result.Error
 		}
@@ -172,10 +186,20 @@ func (r *FeedbackMemoryRepo) commentsQuery(c *gin.Context, scope dto.FeedbackMem
 const memoryCommentColumns = "m.id, m.audit_log_id, a.process_id, a.title, m.username, m.content, m.feedback, m.updated_at"
 
 // Comments 分页筛选当前流程类型的原始评论。
-func (r *FeedbackMemoryRepo) Comments(c *gin.Context, scope dto.FeedbackMemoryScope, q dto.ExperienceQuery) (*dto.ExperiencePage[dto.FeedbackMemoryComment], error) {
-	normalizeExperiencePage(&q)
+func (r *FeedbackMemoryRepo) Comments(c *gin.Context, scope dto.FeedbackMemoryScope, q dto.FeedbackMemoryCommentQuery) (*dto.ExperiencePage[dto.FeedbackMemoryComment], error) {
+	normalizeExperiencePage(&q.ExperienceQuery)
 	out := &dto.ExperiencePage[dto.FeedbackMemoryComment]{Items: []dto.FeedbackMemoryComment{}, Page: q.Page, PageSize: q.PageSize}
 	query := r.commentsQuery(c, scope)
+	// 已导入评论在分页和总数统计前排除；删除素材后自然回到可导入列表。
+	query = query.Where(`NOT EXISTS (SELECT 1 FROM feedback_memory_entries e JOIN feedback_memories fm ON fm.id=e.memory_id AND fm.tenant_id=e.tenant_id WHERE e.tenant_id=m.tenant_id AND e.source_id=m.id AND e.deleted_at IS NULL AND fm.module=? AND fm.process_type=?)`, scope.Module, scope.ProcessType)
+	deprecatedSQL := `EXISTS (SELECT 1 FROM feedback_memory_comment_exclusions x WHERE x.tenant_id=m.tenant_id AND x.module=? AND x.process_type=? AND x.comment_id=m.id)`
+	if q.Deprecation != "all" {
+		filter := "NOT " + deprecatedSQL
+		if q.Deprecation == "deprecated" {
+			filter = deprecatedSQL
+		}
+		query = query.Where(filter, scope.Module, scope.ProcessType)
+	}
 	if q.Keyword != "" {
 		like := "%" + q.Keyword + "%"
 		query = query.Where("m.content ILIKE ? OR a.title ILIKE ? OR m.username ILIKE ?", like, like, like)
@@ -186,7 +210,7 @@ func (r *FeedbackMemoryRepo) Comments(c *gin.Context, scope dto.FeedbackMemorySc
 	if err := query.Session(&gorm.Session{}).Count(&out.Total).Error; err != nil {
 		return nil, err
 	}
-	err := query.Select(memoryCommentColumns+`, EXISTS (SELECT 1 FROM feedback_memory_entries e JOIN feedback_memories fm ON fm.id=e.memory_id AND fm.tenant_id=e.tenant_id WHERE e.tenant_id=m.tenant_id AND e.source_id=m.id AND fm.module=? AND fm.process_type=?) AS imported`, scope.Module, scope.ProcessType).Order("m.updated_at DESC,m.id DESC").Offset((q.Page - 1) * q.PageSize).Limit(q.PageSize).Scan(&out.Items).Error
+	err := query.Select(memoryCommentColumns+`, EXISTS (SELECT 1 FROM feedback_memory_entries e JOIN feedback_memories fm ON fm.id=e.memory_id AND fm.tenant_id=e.tenant_id WHERE e.tenant_id=m.tenant_id AND e.source_id=m.id AND e.deleted_at IS NULL AND fm.module=? AND fm.process_type=?) AS imported, `+deprecatedSQL+` AS deprecated`, scope.Module, scope.ProcessType, scope.Module, scope.ProcessType).Order("m.updated_at DESC,m.id DESC").Offset((q.Page - 1) * q.PageSize).Limit(q.PageSize).Scan(&out.Items).Error
 	return out, err
 }
 
@@ -194,7 +218,7 @@ func (r *FeedbackMemoryRepo) Comments(c *gin.Context, scope dto.FeedbackMemorySc
 func (r *FeedbackMemoryRepo) ImportComments(c *gin.Context, req dto.FeedbackMemoryImportRequest) error {
 	return r.Mutate(c, req.FeedbackMemoryScope, func(repo *FeedbackMemoryRepo, m *model.FeedbackMemory) error {
 		rows := []dto.FeedbackMemoryComment{}
-		if err := repo.commentsQuery(c, req.FeedbackMemoryScope).Where("m.id IN ?", req.CommentIDs).Select(memoryCommentColumns).Scan(&rows).Error; err != nil {
+		if err := repo.commentsQuery(c, req.FeedbackMemoryScope).Where("m.id IN ?", req.CommentIDs).Where(`NOT EXISTS (SELECT 1 FROM feedback_memory_comment_exclusions x WHERE x.tenant_id=m.tenant_id AND x.module=? AND x.process_type=? AND x.comment_id=m.id)`, req.Module, req.ProcessType).Select(memoryCommentColumns).Scan(&rows).Error; err != nil {
 			return err
 		}
 		unique := map[uuid.UUID]bool{}
@@ -205,11 +229,11 @@ func (r *FeedbackMemoryRepo) ImportComments(c *gin.Context, req dto.FeedbackMemo
 			return gorm.ErrRecordNotFound
 		}
 		var count int64
-		if err := repo.WithTenant(c).Model(&model.FeedbackMemoryEntry{}).Where("memory_id = ?", m.ID).Count(&count).Error; err != nil {
+		if err := repo.WithTenant(c).Model(&model.FeedbackMemoryEntry{}).Where("memory_id = ? AND deleted_at IS NULL", m.ID).Count(&count).Error; err != nil {
 			return err
 		}
 		var imported int64
-		if err := repo.WithTenant(c).Model(&model.FeedbackMemoryEntry{}).Where("memory_id = ? AND source_id IN ?", m.ID, req.CommentIDs).Count(&imported).Error; err != nil {
+		if err := repo.WithTenant(c).Model(&model.FeedbackMemoryEntry{}).Where("memory_id = ? AND deleted_at IS NULL AND source_id IN ?", m.ID, req.CommentIDs).Count(&imported).Error; err != nil {
 			return err
 		}
 		if count+int64(len(rows))-imported > 200 {
@@ -220,11 +244,37 @@ func (r *FeedbackMemoryRepo) ImportComments(c *gin.Context, req dto.FeedbackMemo
 			now := apptime.Now()
 			id := row.ID
 			entry := model.FeedbackMemoryEntry{ID: uuid.New(), TenantID: m.TenantID, MemoryID: m.ID, SourceType: "comment", SourceID: &id, Content: row.Content, Enabled: true, SourceSnapshot: raw, CreatedBy: c.GetString("username"), CreatedAt: now, UpdatedAt: now}
-			if err := repo.WithTenant(c).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "memory_id"}, {Name: "source_id"}}, DoNothing: true}).Create(&entry).Error; err != nil {
+			if err := repo.WithTenant(c).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "memory_id"}, {Name: "source_id"}}, TargetWhere: clause.Where{Exprs: []clause.Expression{clause.Expr{SQL: "deleted_at IS NULL"}}}, DoNothing: true}).Create(&entry).Error; err != nil {
 				return err
 			}
 		}
 		return nil
+	})
+}
+
+// SetCommentDeprecated 独立设置当前记忆库的建议弃用状态；不改变已导入素材和原评论。
+func (r *FeedbackMemoryRepo) SetCommentDeprecated(c *gin.Context, id uuid.UUID, req dto.FeedbackMemoryCommentStateRequest) error {
+	m, err := r.ensure(c, req.FeedbackMemoryScope)
+	if err != nil {
+		return err
+	}
+	return r.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
+		repo := NewFeedbackMemoryRepo(tx)
+		if err := repo.WithTenant(c).Clauses(clause.Locking{Strength: "UPDATE"}).First(m, "id = ?", m.ID).Error; err != nil {
+			return err
+		}
+		var count int64
+		if err := repo.commentsQuery(c, req.FeedbackMemoryScope).Where("m.id = ?", id).Count(&count).Error; err != nil {
+			return err
+		}
+		if count != 1 {
+			return gorm.ErrRecordNotFound
+		}
+		row := model.FeedbackMemoryCommentExclusion{TenantID: m.TenantID, Module: req.Module, ProcessType: req.ProcessType, CommentID: id}
+		if req.Deprecated {
+			return repo.WithTenant(c).Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error
+		}
+		return repo.WithTenant(c).Where("module = ? AND process_type = ? AND comment_id = ?", req.Module, req.ProcessType, id).Delete(&row).Error
 	})
 }
 
@@ -250,7 +300,7 @@ func (r *FeedbackMemoryRepo) Versions(c *gin.Context, scope dto.FeedbackMemorySc
 	if err = query.Session(&gorm.Session{}).Count(&out.Total).Error; err != nil {
 		return nil, err
 	}
-	err = query.Select("id, memory_id, version_no, base_version_id, input_revision, status, created_by, created_at, published_at").Order("version_no DESC").Offset((q.Page - 1) * q.PageSize).Limit(q.PageSize).Find(&out.Items).Error
+	err = query.Select("id, memory_id, version_no, base_version_id, input_revision, status, created_by, created_at, published_at, edit_revision, edited_by, edited_at").Order("version_no DESC").Offset((q.Page - 1) * q.PageSize).Limit(q.PageSize).Find(&out.Items).Error
 	return out, err
 }
 
@@ -267,8 +317,30 @@ func (r *FeedbackMemoryRepo) SaveVersion(c *gin.Context, scope dto.FeedbackMemor
 		}
 		v.MemoryID = m.ID
 		v.TenantID = m.TenantID
+		if v.InputRevision != m.Revision {
+			return ErrFeedbackMemoryStale
+		}
+		if m.LastVersion == 0 {
+			if v.BaseVersionID != nil {
+				return ErrFeedbackMemoryStale
+			}
+		} else {
+			var latest model.FeedbackMemoryVersion
+			if err := repo.WithTenant(c).Where("memory_id = ? AND version_no = ?", m.ID, m.LastVersion).First(&latest).Error; err != nil {
+				return err
+			}
+			if v.BaseVersionID == nil || *v.BaseVersionID != latest.ID || v.BaseEditRevision != latest.EditRevision {
+				return ErrFeedbackMemoryStale
+			}
+		}
 		v.VersionNo = m.LastVersion + 1
+		if len(v.GeneratedItems) == 0 {
+			v.GeneratedItems = append([]byte(nil), v.Items...)
+		}
 		if err := repo.WithTenant(c).Create(v).Error; err != nil {
+			return err
+		}
+		if err := repo.markImplanted(c, v); err != nil {
 			return err
 		}
 		return repo.WithTenant(c).Model(m).Update("last_version", v.VersionNo).Error
@@ -276,7 +348,7 @@ func (r *FeedbackMemoryRepo) SaveVersion(c *gin.Context, scope dto.FeedbackMemor
 }
 
 // Publish 检查素材修订号与发布基线，原子切换当前版本；下线保留所有历史快照。
-func (r *FeedbackMemoryRepo) Publish(c *gin.Context, scope dto.FeedbackMemoryScope, id *uuid.UUID) error {
+func (r *FeedbackMemoryRepo) Publish(c *gin.Context, scope dto.FeedbackMemoryScope, id *uuid.UUID, editRevision ...int) error {
 	m, err := r.Get(c, scope)
 	if err != nil {
 		return err
@@ -294,25 +366,121 @@ func (r *FeedbackMemoryRepo) Publish(c *gin.Context, scope dto.FeedbackMemorySco
 			if v.MemoryID != m.ID {
 				return gorm.ErrRecordNotFound
 			}
-			if m.PublishedVersionID != nil && *m.PublishedVersionID == v.ID {
-				return nil
+			if len(editRevision) > 0 && v.EditRevision != editRevision[0] {
+				return ErrFeedbackMemoryStale
 			}
-			sameBase := (v.BaseVersionID == nil && m.PublishedVersionID == nil) || (v.BaseVersionID != nil && m.PublishedVersionID != nil && *v.BaseVersionID == *m.PublishedVersionID)
-			if v.PromptText == "" {
+			if m.PublishedVersionID != nil && *m.PublishedVersionID == v.ID {
+				return repo.WithTenant(c).Model(m).Updates(map[string]interface{}{"enabled": true, "updated_at": apptime.Now()}).Error
+			}
+			// 有旧基线的空草稿可显式发布，用于撤销最后一条记忆；首版空结果不能发布。
+			if v.PromptText == "" && v.BaseVersionID == nil {
 				return ErrFeedbackMemoryEmpty
 			}
-			if v.Status != "draft" || v.InputRevision != m.Revision || !sameBase {
+			if v.Status != "draft" || v.InputRevision != m.Revision || v.VersionNo != m.LastVersion {
 				return ErrFeedbackMemoryStale
 			}
 			if err := repo.WithTenant(c).Model(v).Updates(map[string]interface{}{"status": "published", "published_at": apptime.Now()}).Error; err != nil {
 				return err
 			}
 		}
-		// 下线也使已有草稿失效，防止旧草稿在基线再次为空时被误发布。
-		updates := map[string]interface{}{"published_version_id": id, "updated_at": apptime.Now()}
-		if id == nil {
-			updates["revision"] = m.Revision + 1
+		updates := map[string]interface{}{"enabled": id != nil, "updated_at": apptime.Now()}
+		if id != nil {
+			updates["published_version_id"] = id
 		}
 		return repo.WithTenant(c).Model(m).Updates(updates).Error
 	})
+}
+
+func (r *FeedbackMemoryRepo) markImplanted(c *gin.Context, v *model.FeedbackMemoryVersion) error {
+	var items []model.FeedbackMemoryItem
+	if err := json.Unmarshal(v.Items, &items); err != nil {
+		return err
+	}
+	ids := []uuid.UUID{}
+	for _, item := range items {
+		for _, ref := range item.SourceRefs {
+			if id, err := uuid.Parse(ref); err == nil {
+				ids = append(ids, id)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.WithTenant(c).Model(&model.FeedbackMemoryEntry{}).Where("memory_id = ? AND id IN ? AND deleted_at IS NULL AND implanted_version_id IS NULL", v.MemoryID, ids).Update("implanted_version_id", v.ID).Error
+}
+
+// SaveDraft 只编辑最新草稿；编辑已发布版时创建新版，历史正文不变。
+func (r *FeedbackMemoryRepo) SaveDraft(c *gin.Context, scope dto.FeedbackMemoryScope, original *model.FeedbackMemoryVersion, items []byte, prompt string, editRevision, inputRevision int) (*model.FeedbackMemoryVersion, error) {
+	var out *model.FeedbackMemoryVersion
+	err := r.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
+		repo := NewFeedbackMemoryRepo(tx)
+		m, err := repo.Get(c, scope)
+		if err != nil {
+			return err
+		}
+		if err := repo.WithTenant(c).Clauses(clause.Locking{Strength: "UPDATE"}).First(m, "id = ?", m.ID).Error; err != nil {
+			return err
+		}
+		v, err := repo.Version(c, original.ID)
+		if err != nil {
+			return err
+		}
+		if v.MemoryID != m.ID {
+			return gorm.ErrRecordNotFound
+		}
+		if v.VersionNo != m.LastVersion || v.EditRevision != editRevision || inputRevision != m.Revision || (v.Status == "draft" && v.InputRevision != m.Revision) {
+			return ErrFeedbackMemoryStale
+		}
+		now := apptime.Now()
+		if v.Status == "published" {
+			base := v.ID
+			v.ID = uuid.New()
+			v.BaseVersionID = &base
+			v.VersionNo = m.LastVersion + 1
+			v.Status = "draft"
+			v.PublishedAt = nil
+			v.CreatedAt = now
+			v.CreatedBy = c.GetString("username")
+			v.InputRevision = m.Revision
+			v.EditRevision = 0
+			v.Items = items
+			v.PromptText = prompt
+			v.EditedAt = &now
+			v.EditedBy = c.GetString("username")
+			if err := repo.WithTenant(c).Create(v).Error; err != nil {
+				return err
+			}
+			if err := repo.WithTenant(c).Model(m).Update("last_version", v.VersionNo).Error; err != nil {
+				return err
+			}
+		} else {
+			v.Items = items
+			v.PromptText = prompt
+			v.EditRevision++
+			v.EditedAt = &now
+			v.EditedBy = c.GetString("username")
+			if err := repo.WithTenant(c).Model(v).Select("items", "prompt_text", "edit_revision", "edited_at", "edited_by").Updates(v).Error; err != nil {
+				return err
+			}
+		}
+		if err := repo.markImplanted(c, v); err != nil {
+			return err
+		}
+		out = v
+		return nil
+	})
+	return out, err
+}
+
+// Enable 恢复最后发布版本，不需要重新生成，也不改变生成基线。
+func (r *FeedbackMemoryRepo) Enable(c *gin.Context, scope dto.FeedbackMemoryScope) error {
+	result := r.WithTenant(c).Model(&model.FeedbackMemory{}).Where("module = ? AND process_type = ? AND published_version_id IS NOT NULL", scope.Module, scope.ProcessType).Updates(map[string]interface{}{"enabled": true, "updated_at": apptime.Now()})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
