@@ -37,6 +37,11 @@ function addListener(map, type, fn) {
 
 // 执行实际导出的完整脚本，模拟 OA 容器并记录按钮文案、请求和点击去向。
 function captureButtonText(state, html) {
+  const accessibleLabel = String(html).match(/class="aura-status-sr [^"]*"[^>]*>([^<]*)/)
+  if (accessibleLabel) {
+    state.text = accessibleLabel[1]
+    return
+  }
   const label = String(html).match(/class="aura-status-text"[^>]*>([^<]*)/)
   if (!label) return
   const score = String(html).match(/<b>([^<]+)<\/b><small>([^<]*)<\/small>/)
