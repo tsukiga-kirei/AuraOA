@@ -210,7 +210,7 @@
       box-shadow: 0 12px 30px rgba(15, 23, 42, .24) !important;
     }
 
-    /* 极简紧凑形态（全局生效：PC 与移动端均不显示长条文字与箭头，详细内容由 Tooltip 承载） */
+    /* 紧凑形态：审核显示数字，总结保留短标签，详细内容由 Tooltip 承载。 */
     .aura-status-button .aura-status-text,
     .aura-status-button .aura-status-arrow,
     .aura-is-compact .aura-status-text,
@@ -287,14 +287,11 @@
       transform: scale(.92);
       transition: opacity .18s ease, transform .18s cubic-bezier(.22, .7, .2, 1);
     }
-    .aura-embed-tooltip::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      border-radius: 9px;
-      background: radial-gradient(circle at 10% 50%, var(--aura-status-tint, transparent), transparent 75%);
-      opacity: .35;
-      pointer-events: none;
+    .aura-status-summary-label {
+      display: inline-block;
+      color: var(--aura-status-color);
+      font-weight: 600;
+      white-space: nowrap;
     }
     .aura-embed-tooltip--visible {
       opacity: 1;
@@ -526,7 +523,7 @@
   <div class="demo-wrapper">
     <div class="header">
       <h1>AuraOA 嵌入胶囊按钮最新效果预览</h1>
-      <p>统一极简形态：图标+分值胶囊 / 纯图标微球 · PC 鼠标悬停 / 移动端长按聚焦同主题气泡 Tooltip · 全局自由拖拽与原地平滑变形</p>
+      <p>紧凑入口：审核显示图标与数字，总结显示文档图标与“总结” · PC 鼠标悬停 / 移动端长按查看详情气泡 · 自由拖拽与原地平滑变形</p>
       <div class="tip-banner">
         <span class="tip-tag">交互说明</span>
         <span>👉 全局统一步调：不再展示冗长的文字与箭头，悬浮胶囊可<strong>自由拖拽</strong>；PC 端<strong>鼠标悬停触碰</strong>或移动端<strong>长按 450ms</strong> 显示同主题<strong>详情气泡</strong>；轻触<strong>打开弹窗</strong>。</span>
@@ -631,9 +628,10 @@
     function iconSvgMarkup(feature, status, isLoading) {
       return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + iconMarkup(feature, status, isLoading) + '</svg>';
     }
-    function copyInnerMarkup(label, scoreMatch) {
+    function copyInnerMarkup(label, scoreMatch, feature) {
       return '<span class="aura-status-text">' + escapeButtonText(label) + '</span>' +
-        (scoreMatch ? '<span class="aura-status-score"><b>' + escapeButtonText(scoreMatch[1]) + '</b><small>' + escapeButtonText(scoreMatch[2]) + '</small></span>' : '');
+        (feature === 'summary' ? '<span class="aura-status-summary-label">总结</span>' :
+          (scoreMatch ? '<span class="aura-status-score"><b>' + escapeButtonText(scoreMatch[1]) + '</b></span>' : ''));
     }
     function arrowMarkup() {
       return '<svg class="aura-status-arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg>';
@@ -665,7 +663,7 @@
       var parsed = parseButtonLabel(displayText);
       var unavailable = status === 'disabled' || status === 'error';
       return '<span class="aura-status-icon" aria-hidden="true">' + iconSvgMarkup(feature, status, isLoading) + '</span>' +
-        '<span class="aura-status-copy" aria-hidden="true"><span class="aura-status-copy-inner">' + copyInnerMarkup(parsed.label, parsed.scoreMatch) + '</span></span>' +
+        '<span class="aura-status-copy" aria-hidden="true"><span class="aura-status-copy-inner">' + copyInnerMarkup(parsed.label, parsed.scoreMatch, feature) + '</span></span>' +
         (!unavailable && !isLoading ? arrowMarkup() : '');
     }
     function buildStatusButton(btnId, feature, status, displayText, isLoading, isEnter) {
@@ -673,7 +671,7 @@
       var unavailable = status === 'disabled' || status === 'error';
       var parsed = parseButtonLabel(displayText);
       var compactClass = ' aura-is-compact';
-      var iconOnlyClass = !parsed.scoreMatch ? ' aura-status-button--icon-only' : '';
+      var iconOnlyClass = feature !== 'summary' && !parsed.scoreMatch ? ' aura-status-button--icon-only' : '';
       return '<button id="' + btnId + '" type="button" class="aura-status-button' + compactClass + iconOnlyClass + statusMotionClass(status, isLoading, isEnter !== false) + '" aria-disabled="' + (unavailable || isLoading ? 'true' : 'false') + '" style="--aura-status-color:' + theme.color + ';--aura-status-tint:' + theme.bg + ';--aura-status-surface:' + theme.surface + ';--aura-status-border:' + theme.border + ';--aura-status-shadow:' + theme.shadow + ';">' +
         buttonInnerHtml(feature, status, displayText, isLoading) +
       '</button>';
@@ -721,7 +719,7 @@
       var unavailable = status === 'disabled' || status === 'error';
       var parsed = parseButtonLabel(displayText);
       var nextIcon = iconSvgMarkup(feature, status, isLoading);
-      var nextCopyInner = copyInnerMarkup(parsed.label, parsed.scoreMatch);
+      var nextCopyInner = copyInnerMarkup(parsed.label, parsed.scoreMatch, feature);
       var showArrow = !unavailable && !isLoading;
       var iconKey = feature + '|' + status + '|' + (isLoading ? '1' : '0');
       var fromWidth = btn.getBoundingClientRect().width;
@@ -734,7 +732,7 @@
       applyButtonTheme(btn, theme);
       btn.setAttribute('aria-disabled', (unavailable || isLoading) ? 'true' : 'false');
       btn.classList.add('aura-is-compact');
-      btn.classList.toggle('aura-status-button--icon-only', !parsed.scoreMatch);
+      btn.classList.toggle('aura-status-button--icon-only', feature !== 'summary' && !parsed.scoreMatch);
 
       if (prefersReducedMotion()) {
         syncMotionClass(btn, status, isLoading, false);
@@ -1134,6 +1132,7 @@
       { id: 'g-pass', feature: 'audit', status: 'green', text: '审核通过 (95分)', loading: false },
       { id: 'g-watch', feature: 'audit', status: 'yellow', text: '建议关注 (78分)', loading: false },
       { id: 'g-return', feature: 'audit', status: 'red', text: '建议退回 (45分)', loading: false },
+      { id: 'g-Summary', feature: 'summary', status: 'green', text: '查看流程总结', loading: false },
       { id: 'g-run', feature: 'audit', status: 'loading', text: '审核分析中', loading: false },
       { id: 'g-load', feature: 'audit', status: 'gray', text: '加载中...', loading: true },
       { id: 'g-lock', feature: 'audit', status: 'disabled', text: '保存查看AI智审', loading: false }

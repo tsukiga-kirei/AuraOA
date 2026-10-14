@@ -2829,6 +2829,7 @@ export default {
     'admin.tenants.embedScriptTargetAll': '全部功能',
     'admin.tenants.embedScriptTargetAudit': '流程审核',
     'admin.tenants.embedScriptTargetSummary': '流程总结',
+    'admin.tenants.embedSummaryButtonLabel': '总结',
     'admin.tenants.exportEmbedScript': '导出 JS 脚本',
     'admin.tenants.exportEmbedPCScript': '导出 PC 端脚本',
     'admin.tenants.exportEmbedMobileScript': '导出移动端脚本',

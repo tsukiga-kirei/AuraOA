@@ -2812,6 +2812,7 @@ export default {
     'admin.tenants.embedScriptTargetAll': 'All features',
     'admin.tenants.embedScriptTargetAudit': 'Process audit',
     'admin.tenants.embedScriptTargetSummary': 'Process summary',
+    'admin.tenants.embedSummaryButtonLabel': 'Summary',
     'admin.tenants.exportEmbedScript': 'Export JS Script',
     'admin.tenants.exportEmbedPCScript': 'Export PC Script',
     'admin.tenants.exportEmbedMobileScript': 'Export Mobile Script',
