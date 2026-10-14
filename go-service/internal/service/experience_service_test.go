@@ -42,3 +42,26 @@ func TestAuditCommentValidation(t *testing.T) {
 		t.Fatalf("缺少租户时必须拒绝: %v", err)
 	}
 }
+
+// TestAuditExperienceSettingsRequiresTenant 验证设置读写不能绕过租户，拒绝缺少开关的请求。
+func TestAuditExperienceSettingsRequiresTenant(t *testing.T) {
+	for _, tenant := range []string{"", "invalid", uuid.Nil.String()} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Set("tenant_id", tenant)
+		s := &ExperienceService{}
+		_, readErr := s.AuditSettings(c)
+		enabled := false
+		_, writeErr := s.UpdateAuditSettings(c, dto.UpdateAuditExperienceSettingsRequest{AuditCommentsOwnOnly: &enabled})
+		for _, err := range []error{readErr, writeErr} {
+			if se, ok := err.(*ServiceError); !ok || se.Code != errcode.ErrPermissionDenied {
+				t.Fatalf("缺少有效租户应拒绝设置读写: %v", err)
+			}
+		}
+	}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Set("tenant_id", uuid.NewString())
+	_, err := (&ExperienceService{}).UpdateAuditSettings(c, dto.UpdateAuditExperienceSettingsRequest{})
+	if se, ok := err.(*ServiceError); !ok || se.Code != errcode.ErrParamValidation {
+		t.Fatalf("缺少开关不能默认为关闭: %v", err)
+	}
+}

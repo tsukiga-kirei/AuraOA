@@ -10,6 +10,8 @@
 |---|---|---|
 | GET | /api/tenant/experience/audit | 有评论的审核批次 |
 | GET | /api/tenant/experience/audit/:id | 原审核结果和分页评论 |
+| GET | /api/tenant/experience/audit-settings | 当前租户审核评论可见性设置 |
+| PUT | /api/tenant/experience/audit-settings | 保存当前租户审核评论可见性设置 |
 | GET | /api/tenant/experience/agents | 被点赞或点踩的助手消息 |
 
 列表查询参数：`keyword`（标题、评论或用户；审核还匹配 process_id，智能体还匹配回复内容）、`feedback`（空 / like / dislike / comments）、`page`（默认 1）、`page_size`（默认 20，1–100）。
@@ -23,8 +25,21 @@
 完整聊天记录复用 `GET /api/tenant/agent-sessions/:id/messages`，抽屉高亮对应被评价的消息。评价接口仍为 `POST /api/chat/messages/:id/feedback`，仅允许本人会话的助手消息。
 
 本期仅嵌入审核开放评论及可选满意度，归档、总结、审核工作台暂不增加入口。评论为纯文本，不触发 AI 调用，无新增 Token 消耗。
-标准嵌入审核的评论对有嵌入访问权的人可见；个人审核继承原任务的本人权限；管理员可查看本租户反馈。
+标准嵌入审核的评论默认对有嵌入访问权的人可见；个人审核继承原任务的本人权限；管理员可查看本租户反馈。
 数据生命周期沿用原记录：删除审核日志级联删除对应评论及可选满意度；聊天删除或保留期清理后，相关反馈及上下文同步删除。
+
+## 审核评论可见性
+
+管理员在「审核体验反馈」设置「用户仅可查看自己的审核评论」，对当前租户的所有审核批次（包含已有评论）统一生效，默认关闭。
+
+- GET 返回 `data: {"audit_comments_own_only": false}`。
+- PUT 要求 JSON `{"audit_comments_own_only": true}`（必填布尔值，false 可关闭），返回保存后的同结构 data；缺失、null 或非布尔值返回参数错误。
+- 设置接口继承本页的租户管理员及菜单权限，不接受 `tenant_id` 指定其他租户。
+- 开启后，用户端 `/api/embed/audits/:id/interactions` 在数据库分页前按经 OA 解析的当前作者 ID 过滤；评论总数和满意度计数使用相同范围。没有有效 OA 身份时返回空评论、零计数、`can_interact=false`。设置读取失败时返回错误，不回退到全部可见。
+- 管理员反馈列表、详情与评论反馈记忆仍使用本租户全部评论，不受开关影响。用户端响应不增加可见性字段，界面不展示开关或提示；提交、编辑和删除后仍自动重新加载评论。
+- 审核、智能体反馈管理页和用户审核评论区移除手动刷新按钮，保留加载失败后的重试入口。
+
+新增迁移 `000086_audit_comment_visibility`，在 `tenants` 增加 `audit_comments_own_only`，部署新后端前须先执行迁移。
 
 
 评论新增 `updated_at` 与 `can_manage` 字段。嵌入列表仅对当前已识别 OA 作者返回 `can_manage=true`；该字段只控制界面入口，后端写入仍独立校验租户、审核批次和 OA 作者。

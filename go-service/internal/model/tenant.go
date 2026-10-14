@@ -14,6 +14,7 @@ type Tenant struct {
 	Description            string    `gorm:"type:text"`
 	Status                 string    `gorm:"size:20;not null;default:active"` // active | inactive（启用 | 停用）
 	EmbedEnabled           bool      `gorm:"not null;default:false"`
+	AuditCommentsOwnOnly   bool      `gorm:"not null;default:false"` // 用户端仅可查看本人审核评论，管理员后台仍可查看全部。
 	EmbedTokenHash         string    `gorm:"size:64;default:''"`
 	EmbedTokenHint         string    `gorm:"size:32;default:''"`
 	EmbedTokenRotatedAt    *time.Time

@@ -20,6 +20,31 @@ func NewExperienceHandler(s *service.ExperienceService) *ExperienceHandler {
 	return &ExperienceHandler{service: s}
 }
 
+// AuditSettings GET /api/tenant/experience/audit-settings，返回当前租户审核反馈设置。
+func (h *ExperienceHandler) AuditSettings(c *gin.Context) {
+	data, err := h.service.AuditSettings(c)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, data)
+}
+
+// UpdateAuditSettings PUT /api/tenant/experience/audit-settings，保存租户统一评论可见性。
+func (h *ExperienceHandler) UpdateAuditSettings(c *gin.Context) {
+	var req dto.UpdateAuditExperienceSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "审核反馈设置参数无效")
+		return
+	}
+	data, err := h.service.UpdateAuditSettings(c, req)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, data)
+}
+
 func experienceID(c *gin.Context) (uuid.UUID, bool) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {

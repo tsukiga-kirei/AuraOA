@@ -5,13 +5,13 @@ import {
   MessageOutlined,
   LikeOutlined,
   DislikeOutlined,
-  ReloadOutlined,
   EyeOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
   InfoCircleOutlined,
   SearchOutlined,
 } from '@ant-design/icons-vue'
+import { message } from 'ant-design-vue'
 import type { AuditExperienceItem, AgentExperienceItem, AuditExperienceDetail, ExperienceQuery } from '~/types/experience'
 import type { ChatMessageItem } from '~/types/chat'
 import { renderSafeMarkdown } from '~/utils/markdown'
@@ -45,6 +45,10 @@ const audits = ref<AuditExperienceItem[]>([])
 const agents = ref<AgentExperienceItem[]>([])
 const loading = ref(false)
 const error = ref(false)
+const ownCommentsOnly = ref(false)
+const settingsLoading = ref(true)
+const settingsSaving = ref(false)
+const settingsError = ref(false)
 const drawer = ref(false)
 const detailLoading = ref(false)
 const detailError = ref(false)
@@ -94,7 +98,23 @@ function openDetail(item: AuditExperienceItem | AgentExperienceItem) {
   selected.value = item; detailKind.value = tab.value; detail.value = null; messages.value = []; commentPage.value = 1; drawer.value = true; void loadDetail()
 }
 function changeCommentPage(value: number) { commentPage.value = value; void loadDetail() }
-onMounted(load)
+async function loadSettings() {
+  settingsLoading.value = true; settingsError.value = false
+  try { ownCommentsOnly.value = (await api.auditSettings()).audit_comments_own_only }
+  catch { settingsError.value = true }
+  finally { settingsLoading.value = false }
+}
+async function saveSettings(checked: boolean | string | number) {
+  if (settingsLoading.value || settingsSaving.value || settingsError.value) return
+  settingsSaving.value = true
+  try {
+    const result = await api.updateAuditSettings({ audit_comments_own_only: checked === true })
+    ownCommentsOnly.value = result.audit_comments_own_only
+    message.success(t('experience.settingsSaved'))
+  } catch { message.error(t('experience.settingsSaveError')) }
+  finally { settingsSaving.value = false }
+}
+onMounted(() => { void load(); void loadSettings() })
 onBeforeUnmount(() => { listRequest++; detailRequest++ })
 </script>
 
@@ -107,6 +127,11 @@ onBeforeUnmount(() => { listRequest++; detailRequest++ })
     </div>
     <section id="experience-list" class="tab-content" role="tabpanel" :aria-labelledby="`experience-${tab}-tab`">
       <div class="section-intro"><span class="section-icon"><MessageOutlined /></span><div><h2>{{ t(tab === 'audit' ? 'experience.auditTitle' : 'experience.agentTitle') }}</h2><p>{{ t(tab === 'audit' ? 'experience.auditHint' : 'experience.agentHint') }}</p></div></div>
+      <div v-if="tab === 'audit'" class="audit-visibility-setting">
+        <div><strong id="audit-visibility-label">{{ t('experience.ownCommentsOnly') }}</strong><p>{{ t('experience.ownCommentsOnlyHint') }}</p></div>
+        <a-switch :checked="ownCommentsOnly" :loading="settingsLoading || settingsSaving" :disabled="settingsLoading || settingsSaving || settingsError" aria-labelledby="audit-visibility-label" @change="saveSettings" />
+      </div>
+      <a-alert v-if="tab === 'audit' && settingsError" class="settings-error" type="error" show-icon :message="t('experience.settingsLoadError')"><template #action><a-button size="small" @click="loadSettings">{{ t('experience.retry') }}</a-button></template></a-alert>
       <div class="filter-bar">
         <a-input
             v-model:value="keyword"
@@ -121,7 +146,6 @@ onBeforeUnmount(() => { listRequest++; detailRequest++ })
           </template>
         </a-input>
         <a-select :value="feedback || ''" :options="filters" :aria-label="t('experience.filter')" class="feedback-filter" @change="(value: any) => { feedback = value || undefined; filterChanged() }" />
-        <a-button :disabled="loading" @click="load"><ReloadOutlined :spin="loading" /> {{ t('experience.refresh') }}</a-button>
       </div>
       <a-alert v-if="error" type="error" show-icon :message="t('experience.loadError')"><template #action><a-button size="small" @click="load">{{ t('experience.retry') }}</a-button></template></a-alert>
       <div v-else class="data-table-card">
@@ -303,6 +327,10 @@ onBeforeUnmount(() => { listRequest++; detailRequest++ })
 .section-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; background: var(--color-primary-bg); color: var(--color-primary); font-size: 20px; flex-shrink: 0; }
 .section-intro h2 { margin: 0; font-size: 16px; color: var(--color-text-primary); }
 .section-intro p { font-size: 12px; line-height: 1.6; }
+.audit-visibility-setting { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; margin-bottom: 20px; background: var(--color-bg-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); }
+.audit-visibility-setting strong { font-size: 14px; color: var(--color-text-primary); }
+.audit-visibility-setting p { margin: 6px 0 0; font-size: 12px; line-height: 1.6; color: var(--color-text-tertiary); }
+.settings-error { margin-bottom: 20px; }
 .filter-bar { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
 .data-table-card {
   background: var(--color-bg-card);
