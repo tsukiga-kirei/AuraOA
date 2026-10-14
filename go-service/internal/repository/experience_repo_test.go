@@ -61,7 +61,7 @@ func TestExperienceQueries(t *testing.T) {
 		}
 	}
 	recorder.statements = append(recorder.statements, "-- interactions")
-	_, _ = repo.Interactions(c, audit, dto.ExperienceQuery{Page: -1, PageSize: 999})
+	_, _ = repo.Interactions(c, audit, dto.ExperienceQuery{Page: -1, PageSize: 999}, nil)
 	recorder.statements = append(recorder.statements, "-- audit-list")
 	_, _ = repo.ListAudits(c, dto.ExperienceQuery{Keyword: "补充", Feedback: "dislike", Page: 1, PageSize: 10})
 	recorder.statements = append(recorder.statements, "-- agent-list")
@@ -98,5 +98,79 @@ func TestExperienceQueries(t *testing.T) {
 		if err := os.WriteFile(path, data, 0600); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// TestExperienceCommentVisibility 校验作者过滤覆盖列表与统计，管理员可查看全部，匿名受限时不查询评论。
+func TestExperienceCommentVisibility(t *testing.T) {
+	recorder := &experienceSQLRecorder{Interface: logger.Default.LogMode(logger.Silent)}
+	db, err := gorm.Open(postgres.New(postgres.Config{DSN: "host=127.0.0.1 user=test dbname=test"}), &gorm.Config{DryRun: true, DisableAutomaticPing: true, Logger: recorder})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	tenant, audit := uuid.New(), uuid.New()
+	c.Set("tenant_id", tenant.String())
+	repo := NewExperienceRepo(db)
+	for _, ownOnly := range []bool{true, false} {
+		recorder.statements = nil
+		var author *string
+		if ownOnly {
+			oaID := "23"
+			author = &oaID
+		}
+		_, _ = repo.Interactions(c, audit, dto.ExperienceQuery{Page: 2, PageSize: 10}, author)
+		if len(recorder.statements) != 3 {
+			t.Fatalf("应分别查询总数、评论和满意度，实际: %v", recorder.statements)
+		}
+		for index, sql := range recorder.statements {
+			if !strings.Contains(sql, tenant.String()) || !strings.Contains(sql, audit.String()) {
+				t.Fatalf("丢失租户或审核范围: %s", sql)
+			}
+			if strings.Contains(sql, "oa_user_id = '23'") != ownOnly {
+				t.Fatalf("作者限制错误: %s", sql)
+			}
+			if index == 1 {
+				if !strings.Contains(sql, "LIMIT 10 OFFSET 10") {
+					t.Fatalf("评论未按可见范围分页: %s", sql)
+				}
+			} else if strings.Contains(sql, "LIMIT") || strings.Contains(sql, "OFFSET") {
+				t.Fatalf("统计被分页截断: %s", sql)
+			}
+		}
+	}
+	recorder.statements = nil
+	unknown := ""
+	out, err := repo.Interactions(c, audit, dto.ExperienceQuery{Page: -1, PageSize: 999}, &unknown)
+	if err != nil || len(recorder.statements) != 0 || out.Total != 0 || out.LikeCount != 0 || out.DislikeCount != 0 || len(out.Items) != 0 || out.Page != 1 || out.PageSize != 20 {
+		t.Fatalf("匿名受限访问必须返回空的规范分页结果: %+v, %v", out, err)
+	}
+}
+
+// TestExperienceSettingsTenantScope 验证设置只能读写当前租户，关闭开关的零值也会进入 SQL。
+func TestExperienceSettingsTenantScope(t *testing.T) {
+	recorder := &experienceSQLRecorder{Interface: logger.Default.LogMode(logger.Silent)}
+	db, err := gorm.Open(postgres.New(postgres.Config{DSN: "host=127.0.0.1 user=test dbname=test"}), &gorm.Config{DryRun: true, DisableAutomaticPing: true, SkipDefaultTransaction: true, Logger: recorder})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("GET", "/?tenant_id="+uuid.NewString(), nil)
+	tenant := uuid.NewString()
+	c.Set("tenant_id", tenant)
+	repo := NewExperienceRepo(db)
+	_, _ = repo.AuditSettings(c)
+	_ = repo.UpdateAuditSettings(c, true)
+	_ = repo.UpdateAuditSettings(c, false)
+	if len(recorder.statements) != 3 {
+		t.Fatalf("设置查询数量错误: %v", recorder.statements)
+	}
+	for _, sql := range recorder.statements {
+		if !strings.Contains(sql, "id = '"+tenant+"'") || strings.Contains(sql, c.Query("tenant_id")) {
+			t.Fatalf("设置未限定当前租户: %s", sql)
+		}
+	}
+	if !strings.Contains(recorder.statements[2], `"audit_comments_own_only"=false`) {
+		t.Fatalf("无法关闭开关: %s", recorder.statements[2])
 	}
 }

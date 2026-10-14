@@ -517,6 +517,8 @@ func SetupRouter(
 	experience := r.Group("/api/tenant/experience")
 	experience.Use(middleware.JWT(rdb), middleware.TenantContext(), middleware.RequireRole("tenant_admin"), middleware.RequirePagePermission(orgRepo, "/admin/tenant/experience"))
 	experience.GET("/audit", experienceHandler.ListAudit)
+	experience.GET("/audit-settings", experienceHandler.AuditSettings)
+	experience.PUT("/audit-settings", experienceHandler.UpdateAuditSettings)
 	experience.GET("/audit/:id", experienceHandler.AuditDetail)
 	experience.GET("/agents", experienceHandler.ListAgents)
 

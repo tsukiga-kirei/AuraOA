@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LikeOutlined, DislikeOutlined, MessageOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue'
+import { LikeOutlined, DislikeOutlined, MessageOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { AuditInteractions, AuditComment, Feedback } from '~/types/experience'
 import { useExperienceApi } from '~/composables/useExperienceApi'
@@ -74,7 +74,7 @@ function changePage(value: number) { page.value = value; void load() }
 
 <template>
   <section class="feedback-panel" :aria-label="t('experience.embedTitle')">
-    <div class="feedback-heading"><MessageOutlined /><h3>{{ t('experience.embedTitle') }}</h3><a-button type="text" size="small" :aria-label="t('experience.refresh')" :disabled="loading || saving" @click="load"><ReloadOutlined /></a-button></div>
+    <div class="feedback-heading"><MessageOutlined /><h3>{{ t('experience.embedTitle') }}</h3></div>
     <p class="feedback-hint">{{ t('experience.embedHint') }}</p>
     <a-alert v-if="error" type="error" show-icon :message="t('experience.loadError')"><template #action><a-button size="small" @click="load">{{ t('experience.retry') }}</a-button></template></a-alert>
     <a-spin v-else :spinning="loading">

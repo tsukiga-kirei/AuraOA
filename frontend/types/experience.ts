@@ -2,6 +2,9 @@ import type { PagedResult } from '~/types/admin-data'
 import type { AuditResult } from '~/types/audit'
 
 export type Feedback = 'like' | 'dislike'
+export interface AuditExperienceSettings {
+  audit_comments_own_only: boolean
+}
 export interface AuditComment {
   id: string
   audit_log_id: string

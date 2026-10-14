@@ -8228,6 +8228,57 @@ paths:
                   "message":
                     "type": "string"
                   "data": {}
+  /api/tenant/experience/audit-settings:
+    get:
+      summary: 租户管理员读取审核评论可见性设置
+      description: 限定当前租户，要求 tenant_admin 角色及用户体验优化页面权限；不向用户端返回此设置。
+      tags:
+        - Experience
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: {type: integer, enum: [0]}
+                  message: {type: string}
+                  data:
+                    $ref: '#/components/schemas/AuditExperienceSettings'
+        "403":
+          $ref: '#/components/responses/ErrorResponse'
+    put:
+      summary: 租户管理员保存审核评论可见性设置
+      description: 统一应用于当前租户所有审核批次，管理员后台仍可查看全部评论。
+      tags:
+        - Experience
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditExperienceSettings'
+      responses:
+        "200":
+          description: 返回保存后的设置
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: {type: integer, enum: [0]}
+                  message: {type: string}
+                  data:
+                    $ref: '#/components/schemas/AuditExperienceSettings'
+        "400":
+          $ref: '#/components/responses/ErrorResponse'
+        "403":
+          $ref: '#/components/responses/ErrorResponse'
   /api/tenant/experience/audit:
     get:
       summary: 租户管理员分页查看有互动的审核
@@ -8451,6 +8502,7 @@ paths:
   /api/embed/audits/{id}/interactions:
     get:
       summary: 读取审核留言与评价计数
+      description: 租户开启 audit_comments_own_only 后，仅返回经 OA 解析的当前作者评论，总数与满意度计数也按作者过滤；无法识别身份时返回空评论及零计数。默认全部可见。响应不包含该设置，读取设置失败时返回错误。嵌入身份沿用 OA 父页与租户共享令牌的既有信任边界。
       tags:
         - Embed
       security:
@@ -9153,6 +9205,15 @@ components:
               key: {type: string}
               label: {type: string}
               data_type: {type: string}
+    AuditExperienceSettings:
+      type: object
+      required:
+        - audit_comments_own_only
+      properties:
+        audit_comments_own_only:
+          type: boolean
+          default: false
+          description: 用户仅可查看本人审核评论；管理员后台仍可查看租户全部评论。
     AuditInteractionComment:
       type: object
       properties:

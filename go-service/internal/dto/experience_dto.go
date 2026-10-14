@@ -8,6 +8,16 @@ import (
 	"auraoa/go-service/internal/model"
 )
 
+// AuditExperienceSettings 定义租户统一的审核评论可见性设置，仅供管理员读写。
+type AuditExperienceSettings struct {
+	AuditCommentsOwnOnly bool `json:"audit_comments_own_only"`
+}
+
+// UpdateAuditExperienceSettingsRequest 要求显式提交开关，允许保存 false。
+type UpdateAuditExperienceSettingsRequest struct {
+	AuditCommentsOwnOnly *bool `json:"audit_comments_own_only" binding:"required"`
+}
+
 // ExperienceQuery 定义体验反馈列表筛选条件。
 type ExperienceQuery struct {
 	Keyword  string `form:"keyword"`

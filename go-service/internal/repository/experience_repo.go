@@ -16,6 +16,28 @@ type ExperienceRepo struct{ *BaseRepo }
 // NewExperienceRepo 创建反馈仓储。
 func NewExperienceRepo(db *gorm.DB) *ExperienceRepo { return &ExperienceRepo{NewBaseRepo(db)} }
 
+// AuditSettings 按当前租户主键读取设置；tenants 表本身没有 tenant_id 列。
+func (r *ExperienceRepo) AuditSettings(c *gin.Context) (*dto.AuditExperienceSettings, error) {
+	var tenant model.Tenant
+	err := r.DB.WithContext(c.Request.Context()).Select("id", "audit_comments_own_only").
+		Where("id = ?", c.GetString("tenant_id")).First(&tenant).Error
+	return &dto.AuditExperienceSettings{AuditCommentsOwnOnly: tenant.AuditCommentsOwnOnly}, err
+}
+
+// UpdateAuditSettings 仅更新当前租户的评论可见性，支持关闭开关。
+func (r *ExperienceRepo) UpdateAuditSettings(c *gin.Context, ownOnly bool) error {
+	result := r.DB.WithContext(c.Request.Context()).Model(&model.Tenant{}).
+		Where("id = ?", c.GetString("tenant_id")).
+		Updates(map[string]interface{}{"audit_comments_own_only": ownOnly, "updated_at": apptime.Now()})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
 func normalizeExperiencePage(q *dto.ExperienceQuery) {
 	if q.Page < 1 {
 		q.Page = 1
@@ -44,12 +66,20 @@ func (r *ExperienceRepo) DeleteOwnComment(c *gin.Context, auditID, commentID uui
 	return result.RowsAffected > 0, result.Error
 }
 
-// Interactions 分页读取指定审核的评论，同时统计当前评价。
-func (r *ExperienceRepo) Interactions(c *gin.Context, id uuid.UUID, q dto.ExperienceQuery) (*dto.AuditInteractionResponse, error) {
+// Interactions 分页读取指定审核的评论；作者为 nil 时查询全部，空字符串时不返回任何评论。
+func (r *ExperienceRepo) Interactions(c *gin.Context, id uuid.UUID, q dto.ExperienceQuery, oaUserID *string) (*dto.AuditInteractionResponse, error) {
 	normalizeExperiencePage(&q)
 	out := &dto.AuditInteractionResponse{ExperiencePage: dto.ExperiencePage[model.AuditComment]{Items: []model.AuditComment{}, Page: q.Page, PageSize: q.PageSize}}
 	query := r.WithTenant(c).Model(&model.AuditComment{}).Where("audit_log_id = ?", id)
-	if err := query.Session(&gorm.Session{}).Count(&out.Total).Error; err != nil {
+	if oaUserID != nil {
+		if *oaUserID == "" {
+			return out, nil
+		}
+		query = query.Where("oa_user_id = ?", *oaUserID)
+	}
+	// 列表、总数与满意度共用同一可见范围，且不让分页条件影响计数。
+	query = query.Session(&gorm.Session{})
+	if err := query.Count(&out.Total).Error; err != nil {
 		return nil, err
 	}
 	if err := query.Order("created_at ASC, id ASC").Offset((q.Page - 1) * q.PageSize).Limit(q.PageSize).Find(&out.Items).Error; err != nil {
@@ -86,7 +116,7 @@ func (r *ExperienceRepo) Interactions(c *gin.Context, id uuid.UUID, q dto.Experi
 		Likes    int64
 		Dislikes int64
 	}
-	err := r.WithTenant(c).Model(&model.AuditComment{}).Where("audit_log_id = ?", id).
+	err := query.
 		Select("COUNT(*) FILTER (WHERE feedback = 'like') AS likes, COUNT(*) FILTER (WHERE feedback = 'dislike') AS dislikes").Scan(&counts).Error
 	out.LikeCount, out.DislikeCount = counts.Likes, counts.Dislikes
 	return out, err

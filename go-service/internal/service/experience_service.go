@@ -27,6 +27,32 @@ func NewExperienceService(repo *repository.ExperienceRepo, audit *AuditExecuteSe
 	return &ExperienceService{repo: repo, audit: audit}
 }
 
+// AuditSettings 读取当前租户审核反馈设置，读取失败时禁止回退为公开评论。
+func (s *ExperienceService) AuditSettings(c *gin.Context) (*dto.AuditExperienceSettings, error) {
+	if id, err := uuid.Parse(c.GetString("tenant_id")); err != nil || id == uuid.Nil {
+		return nil, newServiceError(errcode.ErrPermissionDenied, "缺少租户上下文")
+	}
+	settings, err := s.repo.AuditSettings(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "读取审核反馈设置失败")
+	}
+	return settings, nil
+}
+
+// UpdateAuditSettings 保存当前租户的统一评论可见性，不影响管理员反馈查询。
+func (s *ExperienceService) UpdateAuditSettings(c *gin.Context, req dto.UpdateAuditExperienceSettingsRequest) (*dto.AuditExperienceSettings, error) {
+	if id, err := uuid.Parse(c.GetString("tenant_id")); err != nil || id == uuid.Nil {
+		return nil, newServiceError(errcode.ErrPermissionDenied, "缺少租户上下文")
+	}
+	if req.AuditCommentsOwnOnly == nil {
+		return nil, newServiceError(errcode.ErrParamValidation, "请提交评论可见性设置")
+	}
+	if err := s.repo.UpdateAuditSettings(c, *req.AuditCommentsOwnOnly); err != nil {
+		return nil, newServiceError(errcode.ErrDatabase, "保存审核反馈设置失败")
+	}
+	return &dto.AuditExperienceSettings{AuditCommentsOwnOnly: *req.AuditCommentsOwnOnly}, nil
+}
+
 func (s *ExperienceService) auditAccess(c *gin.Context, id uuid.UUID) (*model.AuditLog, error) {
 	tenantID, err := uuid.Parse(c.GetString("tenant_id"))
 	if err != nil || tenantID == uuid.Nil {
@@ -104,7 +130,18 @@ func (s *ExperienceService) Interactions(c *gin.Context, id uuid.UUID, q dto.Exp
 		return nil, err
 	}
 	oaID, _, _, identityErr := s.viewer(c)
-	out, err := s.repo.Interactions(c, id, q)
+	settings, err := s.AuditSettings(c)
+	if err != nil {
+		return nil, err
+	}
+	var author *string
+	if settings.AuditCommentsOwnOnly {
+		if identityErr != nil {
+			oaID = ""
+		}
+		author = &oaID
+	}
+	out, err := s.repo.Interactions(c, id, q, author)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "读取审核互动失败")
 	}
@@ -163,7 +200,7 @@ func (s *ExperienceService) AuditDetail(c *gin.Context, id uuid.UUID, q dto.Expe
 	if err != nil {
 		return nil, err
 	}
-	interactions, err := s.repo.Interactions(c, id, q)
+	interactions, err := s.repo.Interactions(c, id, q, nil)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "读取审核互动失败")
 	}
