@@ -247,6 +247,7 @@ type LLMProcessListRow struct {
 	LatestTriggerDetail string    `json:"latest_trigger_detail"`
 	RequestType         string    `json:"request_type"`
 	BusinessKind        string    `json:"business_kind"`
+	CallType            string    `json:"call_type"`
 }
 
 // LLMLogListRow 单条调用记录（不含大文本 payload）。
@@ -334,7 +335,8 @@ func (r *LLMMessageLogRepo) ListProcessesPaged(c *gin.Context, filter LLMLogFilt
 			COALESCE(SUM(l.total_tokens), 0)::bigint AS total_tokens,
 			MAX(l.created_at) AS latest_call_at,
 			(ARRAY_AGG(` + llmOperatorDisplaySQL("l", "u", "al", "psl") + ` ORDER BY l.created_at DESC))[1] AS latest_user_name,
-			(ARRAY_AGG(` + llmTriggerDetailSQL("l", "al", "psl") + ` ORDER BY l.created_at DESC))[1] AS latest_trigger_detail`).
+			(ARRAY_AGG(` + llmTriggerDetailSQL("l", "al", "psl") + ` ORDER BY l.created_at DESC))[1] AS latest_trigger_detail,
+			COALESCE(STRING_AGG(DISTINCT l.call_type, ','), '') AS call_type`).
 		Group(llmBusinessKey("l")).
 		Order("latest_call_at DESC").
 		Offset((page - 1) * pageSize).
