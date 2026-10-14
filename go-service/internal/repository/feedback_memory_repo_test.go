@@ -53,6 +53,9 @@ func TestFeedbackMemoryIntegration(t *testing.T) {
 	migration, err := os.ReadFile("../../../db/migrations/000085_feedback_memory.up.sql")
 	must(err)
 	must(db.Exec(string(migration)).Error)
+	migration, err = os.ReadFile("../../../db/migrations/000088_feedback_memory_lifecycle.up.sql")
+	must(err)
+	must(db.Exec(string(migration)).Error)
 	tid, other, uid := uuid.New(), uuid.New(), uuid.New()
 	must(db.Exec("INSERT INTO tenants(id) VALUES (?),(?)", tid, other).Error)
 	must(db.Exec("INSERT INTO users VALUES (?,?,?)", uid, "admin", "管理员").Error)
@@ -80,7 +83,7 @@ func TestFeedbackMemoryIntegration(t *testing.T) {
 		must(db.Exec("INSERT INTO audit_logs(id,tenant_id,process_id,title,process_type) VALUES (?,?,?,?,?)", auditID, tenant, "123", "差旅报销", process).Error)
 		must(db.Create(&model.AuditComment{ID: uuid.New(), TenantID: tenant, AuditLogID: auditID, Content: "跨月票据应按实际业务时间判断", Username: "反馈人", CreatedAt: apptime.Now(), UpdatedAt: apptime.Now()}).Error)
 	}
-	comments, err := repo.Comments(c, scope, dto.ExperienceQuery{Page: -1, PageSize: 999})
+	comments, err := repo.Comments(c, scope, dto.FeedbackMemoryCommentQuery{ExperienceQuery: dto.ExperienceQuery{Page: -1, PageSize: 999}})
 	must(err)
 	if comments.Total != 1 || len(comments.Items) != 1 || comments.Page != 1 || comments.PageSize != 20 {
 		t.Fatalf("评论隔离或分页错误: %+v", comments)
@@ -98,10 +101,15 @@ func TestFeedbackMemoryIntegration(t *testing.T) {
 	if workspace.Entries[0].Content != comments.Items[0].Content {
 		t.Fatal("原文快照不一致")
 	}
-	comments, err = repo.Comments(c, scope, dto.ExperienceQuery{Keyword: "跨月", Page: 1, PageSize: 10})
+	comments, err = repo.Comments(c, scope, dto.FeedbackMemoryCommentQuery{ExperienceQuery: dto.ExperienceQuery{Keyword: "跨月", Page: 1, PageSize: 10}})
 	must(err)
-	if len(comments.Items) != 1 || !comments.Items[0].Imported {
-		t.Fatal("已导入状态或关键词筛选错误")
+	if len(comments.Items) != 0 || comments.Total != 0 {
+		t.Fatal("已导入评论应在关键词筛选、分页与总数统计前排除")
+	}
+	allComments, err := repo.Comments(c, scope, dto.FeedbackMemoryCommentQuery{Deprecation: "all"})
+	must(err)
+	if allComments.Total != 0 {
+		t.Fatal("全部建议筛选不应重新展示已导入评论")
 	}
 	oldRevision := workspace.Memory.Revision
 	if !errors.Is(repo.ImportComments(c, dto.FeedbackMemoryImportRequest{FeedbackMemoryScope: scope, CommentIDs: []uuid.UUID{uuid.New()}}), gorm.ErrRecordNotFound) {
@@ -113,10 +121,18 @@ func TestFeedbackMemoryIntegration(t *testing.T) {
 		t.Fatal("失败写入没有回滚")
 	}
 	makeVersion := func(base *uuid.UUID, rev int) *model.FeedbackMemoryVersion {
-		return &model.FeedbackMemoryVersion{ID: uuid.New(), BaseVersionID: base, InputRevision: rev, Status: "draft", Sources: []byte("[]"), Items: []byte(`[{"content":"核实材料","condition":"","source_refs":["source"]}]`), Warnings: []byte("[]"), SystemPrompt: "生成规则", UserPrompt: "原文快照", PromptText: "核实材料", CreatedBy: "管理员", CreatedAt: apptime.Now()}
+		return &model.FeedbackMemoryVersion{ID: uuid.New(), BaseVersionID: base, InputRevision: rev, Status: "draft", Sources: []byte("[]"), Items: []byte(`[{"content":"核实材料","condition":"","source_refs":["` + workspace.Entries[0].ID.String() + `"]}]`), Warnings: []byte("[]"), SystemPrompt: "生成规则", UserPrompt: "原文快照", PromptText: "核实材料", CreatedBy: "管理员", CreatedAt: apptime.Now()}
 	}
 	v1 := makeVersion(nil, workspace.Memory.Revision)
 	must(repo.SaveVersion(c, scope, v1))
+	workspace, err = repo.Workspace(c, scope)
+	must(err)
+	if workspace.Entries[0].ImplantedVersionID == nil || *workspace.Entries[0].ImplantedVersionID != v1.ID {
+		t.Fatal("实际引用的素材未标记已植入")
+	}
+	if !errors.Is(repo.SaveEntry(c, workspace.Entries[0].ID, input), ErrFeedbackMemoryStale) {
+		t.Fatal("旧接口可以重新启停已植入素材")
+	}
 	must(repo.Publish(c, scope, &v1.ID))
 	if _, err := repo.Version(c2, v1.ID); !errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Fatal("不能跨租户读取版本")
@@ -134,19 +150,29 @@ func TestFeedbackMemoryIntegration(t *testing.T) {
 	}
 	workspace, err = repo.Workspace(c, scope)
 	must(err)
-	v3 := makeVersion(&v1.ID, workspace.Memory.Revision)
-	v4 := makeVersion(&v1.ID, workspace.Memory.Revision)
+	v3 := makeVersion(&v2.ID, workspace.Memory.Revision)
+	v4 := makeVersion(&v2.ID, workspace.Memory.Revision)
 	must(repo.SaveVersion(c, scope, v3))
-	must(repo.SaveVersion(c, scope, v4))
-	must(repo.Publish(c, scope, &v3.ID))
-	if !errors.Is(repo.Publish(c, scope, &v4.ID), ErrFeedbackMemoryStale) {
-		t.Fatal("发布基线变化后旧草稿必须失效")
+	if !errors.Is(repo.SaveVersion(c, scope, v4), ErrFeedbackMemoryStale) {
+		t.Fatal("并发生成不能覆盖新基线")
 	}
+	v4.BaseVersionID = &v3.ID
+	must(repo.SaveVersion(c, scope, v4))
+	if !errors.Is(repo.Publish(c, scope, &v3.ID), ErrFeedbackMemoryStale) {
+		t.Fatal("不能发布被新版替代的草稿")
+	}
+	must(repo.Publish(c, scope, &v4.ID))
 	must(repo.Publish(c, scope, nil))
 	workspace, err = repo.Workspace(c, scope)
 	must(err)
-	if workspace.Published != nil {
+	if workspace.Published == nil || workspace.Memory.Enabled || workspace.Baseline.ID != v4.ID {
 		t.Fatal("停用失败")
+	}
+	must(repo.Enable(c, scope))
+	workspace, err = repo.Workspace(c, scope)
+	must(err)
+	if !workspace.Memory.Enabled || workspace.Published.ID != v4.ID {
+		t.Fatal("停用后无法恢复原发布版本")
 	}
 	original, err := repo.Version(c, v1.ID)
 	must(err)
@@ -157,6 +183,94 @@ func TestFeedbackMemoryIntegration(t *testing.T) {
 	must(err)
 	if history.Total != 4 || len(history.Items) != 1 || history.Items[0].VersionNo != 4 {
 		t.Fatal("版本号或分页错误")
+	}
+	// 人工编辑发布版另存草稿，草稿并发编辑与发布必须校验用户已审阅的修订。
+	draft, err := repo.SaveDraft(c, scope, v4, v4.Items, "人工修正", 0, workspace.Memory.Revision)
+	must(err)
+	if draft.ID == v4.ID || draft.Status != "draft" || draft.VersionNo != 5 {
+		t.Fatal("编辑发布版没有另存草稿")
+	}
+	updated, err := repo.SaveDraft(c, scope, draft, draft.Items, "二次修正", 0, workspace.Memory.Revision)
+	must(err)
+	if updated.EditRevision != 1 {
+		t.Fatal("编辑修订未递增")
+	}
+	if _, err := repo.SaveDraft(c, scope, draft, draft.Items, "旧页面覆盖", 0, workspace.Memory.Revision); !errors.Is(err, ErrFeedbackMemoryStale) {
+		t.Fatal("旧编辑覆盖了新正文")
+	}
+	if !errors.Is(repo.Publish(c, scope, &draft.ID, 0), ErrFeedbackMemoryStale) {
+		t.Fatal("发布了未审阅的编辑修订")
+	}
+	must(repo.Publish(c, scope, &draft.ID, 1))
+	original, err = repo.Version(c, v4.ID)
+	must(err)
+	if original.PromptText != "核实材料" {
+		t.Fatal("编辑污染了已发布正文")
+	}
+	// 删除保留撤销标记与历史引用，评论回到可导入位置。
+	entryID := workspace.Entries[0].ID
+	must(repo.DeleteEntry(c, scope, entryID))
+	workspace, err = repo.Workspace(c, scope)
+	must(err)
+	if len(workspace.DeletedEntries) != 1 {
+		t.Fatal("删除没有保留撤销标记")
+	}
+	returned, err := repo.Comments(c, scope, dto.FeedbackMemoryCommentQuery{})
+	must(err)
+	if returned.Total != 1 || returned.Items[0].Imported {
+		t.Fatal("删除评论素材后未恢复可导入状态")
+	}
+	// 弃用默认隐藏，恢复筛选可找回，归档与租户状态独立且不使当前草稿失效。
+	before := workspace.Memory.Revision
+	must(repo.SetCommentDeprecated(c, commentID, dto.FeedbackMemoryCommentStateRequest{FeedbackMemoryScope: scope, Deprecated: true}))
+	available, err := repo.Comments(c, scope, dto.FeedbackMemoryCommentQuery{})
+	must(err)
+	if available.Total != 0 {
+		t.Fatal("默认没有隐藏弃用建议")
+	}
+	deprecated, err := repo.Comments(c, scope, dto.FeedbackMemoryCommentQuery{Deprecation: "deprecated"})
+	must(err)
+	if deprecated.Total != 1 || !deprecated.Items[0].Deprecated {
+		t.Fatal("弃用筛选不可恢复")
+	}
+	archiveComments, err := repo.Comments(c, secondScope, dto.FeedbackMemoryCommentQuery{})
+	must(err)
+	if archiveComments.Total != 1 {
+		t.Fatal("弃用状态泄漏到归档模块")
+	}
+	if !errors.Is(repo.SetCommentDeprecated(c2, commentID, dto.FeedbackMemoryCommentStateRequest{FeedbackMemoryScope: scope, Deprecated: true}), gorm.ErrRecordNotFound) {
+		t.Fatal("跨租户弃用成功")
+	}
+	if !errors.Is(repo.ImportComments(c, dto.FeedbackMemoryImportRequest{FeedbackMemoryScope: scope, CommentIDs: []uuid.UUID{commentID}}), gorm.ErrRecordNotFound) {
+		t.Fatal("可直接导入已弃用建议")
+	}
+	must(repo.SetCommentDeprecated(c, commentID, dto.FeedbackMemoryCommentStateRequest{FeedbackMemoryScope: scope}))
+	workspace, err = repo.Workspace(c, scope)
+	must(err)
+	if workspace.Memory.Revision != before {
+		t.Fatal("弃用原建议不应修改素材修订号")
+	}
+	// 重新导入获得新的素材身份，并再次从导入列表隐藏。
+	must(repo.ImportComments(c, dto.FeedbackMemoryImportRequest{FeedbackMemoryScope: scope, CommentIDs: []uuid.UUID{commentID}}))
+	available, err = repo.Comments(c, scope, dto.FeedbackMemoryCommentQuery{Deprecation: "all"})
+	must(err)
+	if available.Total != 0 {
+		t.Fatal("重新导入后未隐藏评论")
+	}
+	workspace, err = repo.Workspace(c, scope)
+	must(err)
+	for _, row := range workspace.Entries {
+		if row.SourceID != nil && *row.SourceID == commentID && row.ID == entryID {
+			t.Fatal("重新导入复用了已撤销的来源身份")
+		}
+	}
+	cleared, err := repo.SaveDraft(c, scope, updated, []byte("[]"), "", updated.EditRevision, workspace.Memory.Revision)
+	must(err)
+	must(repo.Publish(c, scope, &cleared.ID, cleared.EditRevision))
+	workspace, err = repo.Workspace(c, scope)
+	must(err)
+	if workspace.Published.PromptText != "" {
+		t.Fatal("最后一条记忆不能显式清空")
 	}
 	// 验证 AI 辅助操作无 process_id 时仍可聚合、筛选、读详情；历史规则导入归入辅助场景。
 	logs := NewLLMMessageLogRepo(db)
@@ -237,5 +351,57 @@ func TestFeedbackMemoryIntegration(t *testing.T) {
 	must(db.Raw("SELECT to_regclass('feedback_memories')::text").Scan(&table).Error)
 	if table != nil && strings.TrimSpace(*table) != "" {
 		t.Fatal("迁移回滚失败")
+	}
+}
+
+// TestFeedbackMemoryLifecycleMigration 验证旧停用数据恢复指针但保持停用，植入状态回填及迁移可回退重放。
+func TestFeedbackMemoryLifecycleMigration(t *testing.T) {
+	dsn := os.Getenv("FEEDBACK_MEMORY_TEST_DSN")
+	if dsn == "" {
+		t.Skip("未配置隔离测试库")
+	}
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, _ := db.DB()
+	defer sqlDB.Close()
+	db = db.Begin()
+	defer db.Rollback()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(db.Exec("CREATE TABLE tenants(id uuid PRIMARY KEY)").Error)
+	for _, name := range []string{"000085_feedback_memory.up.sql"} {
+		raw, err := os.ReadFile("../../../db/migrations/" + name)
+		must(err)
+		must(db.Exec(string(raw)).Error)
+	}
+	tid, mid, eid, vid := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	must(db.Exec("INSERT INTO tenants VALUES (?)", tid).Error)
+	must(db.Exec("INSERT INTO feedback_memories(id,tenant_id,module,process_type,last_version,created_at,updated_at) VALUES (?,?,'audit','100',1,?,?)", mid, tid, apptime.Now(), apptime.Now()).Error)
+	must(db.Exec("INSERT INTO feedback_memory_entries(id,tenant_id,memory_id,source_type,content,created_at,updated_at) VALUES (?,?,?,'manual','旧素材',?,?)", eid, tid, mid, apptime.Now(), apptime.Now()).Error)
+	items := `[{"content":"旧记忆","source_refs":["` + eid.String() + `"]}]`
+	must(db.Exec("INSERT INTO feedback_memory_versions(id,tenant_id,memory_id,version_no,input_revision,status,items,system_prompt,user_prompt,prompt_text,created_at) VALUES (?,?,?,1,0,'published',?,'系统','输入','旧记忆',?)", vid, tid, mid, items, apptime.Now()).Error)
+	up, err := os.ReadFile("../../../db/migrations/000088_feedback_memory_lifecycle.up.sql")
+	must(err)
+	down, err := os.ReadFile("../../../db/migrations/000088_feedback_memory_lifecycle.down.sql")
+	must(err)
+	for i := 0; i < 2; i++ {
+		must(db.Exec(string(up)).Error)
+		var m model.FeedbackMemory
+		must(db.First(&m, "id = ?", mid).Error)
+		if m.Enabled || m.PublishedVersionID == nil || *m.PublishedVersionID != vid {
+			t.Fatal("旧停用记录未恢复来源基线或被意外启用")
+		}
+		var entry model.FeedbackMemoryEntry
+		must(db.First(&entry, "id = ?", eid).Error)
+		if entry.ImplantedVersionID == nil || *entry.ImplantedVersionID != vid {
+			t.Fatal("旧素材植入状态未回填")
+		}
+		must(db.Exec(string(down)).Error)
 	}
 }

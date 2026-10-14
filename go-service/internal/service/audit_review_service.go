@@ -720,7 +720,7 @@ func (s *AuditExecuteService) processAuditJob(
 	}
 
 	extractionReq := BuildExtractionPrompt(&aiConfig, aiReasoning, mergedRulesText)
-	applyFeedbackMemory(extractionReq, feedbackMemoryText)
+	prepareFeedbackMemoryExtraction(extractionReq)
 	extractionReq.Temperature = 0.1
 	extractionReq.MaxTokens = tenant.MaxTokensPerRequest
 	extractionReq.ModelConfig = modelCfg
