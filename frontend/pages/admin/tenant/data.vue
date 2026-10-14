@@ -312,6 +312,7 @@ const summaryHasActiveFilters = computed(() =>
     !!summaryFilterDateRange.value)
 
 const llmHasActiveFilters = computed(() =>
+    activeLLMSubTab.value !== 'all' ||
     !!llmSearch.value ||
     !!llmFilterOperator.value ||
     !!llmFilterCallType.value ||
@@ -589,6 +590,33 @@ function getLLMCallTypeLabel(value: string) {
   return map[value] || value || '-'
 }
 
+function getLLMRequestTypeColor(value: string): string {
+  const map: Record<string, string> = {
+    audit: 'blue',
+    archive: 'green',
+    summary: 'orange',
+    chat: 'cyan',
+    feedback_memory: 'purple',
+    rule_assist: 'geekblue',
+    sql_assist: 'volcano',
+  }
+  return map[value] || 'default'
+}
+
+function getCallTypeLabels(callType?: string): Array<{ label: string; color: string }> {
+  if (!callType) return []
+  const types = callType.split(',').map(s => s.trim()).filter(Boolean)
+  return types.map(t => {
+    if (t === 'reasoning') {
+      return { label: getLLMCallTypeLabel('reasoning'), color: 'geekblue' }
+    }
+    if (t === 'structured') {
+      return { label: getLLMCallTypeLabel('structured'), color: 'blue' }
+    }
+    return { label: t, color: 'default' }
+  })
+}
+
 function getLLMModelLabel(item: LLMLogItem) {
   return item.model_display_name || item.model_name || '-'
 }
@@ -779,6 +807,7 @@ function clearSummaryFilters() {
 }
 
 function clearLLMFilters() {
+  activeLLMSubTab.value = 'all'
   llmSearch.value = ''
   llmFilterOperator.value = ''
   llmFilterCallType.value = undefined
@@ -1263,6 +1292,11 @@ watch(() => summaryFilterChannel.value, loadSummaryStats)
 // 切换审核子标签时重置分页到第一页
 watch(activeAuditSubTab, () => {
   auditPage.value = 1
+})
+
+// 切换 AI 调用场景子标签时重置分页到第一页
+watch(activeLLMSubTab, () => {
+  llmPage.value = 1
 })
 
 watch(activeTab, (tab) => {
@@ -2439,17 +2473,21 @@ onMounted(async () => {
             </template>
           </a-input>
 
-          <a-input
-              v-model:value="llmFilterOperator"
-              :placeholder="t('admin.data.filterOperator')"
-              allow-clear
+          <a-select
+              v-model:value="activeLLMSubTab"
+              :placeholder="t('admin.data.llmBusinessType')"
               style="flex: 1; min-width: 140px;"
-              @update:value="llmPage = 1"
+              @change="llmPage = 1"
           >
-            <template #prefix>
-              <SearchOutlined style="color: var(--color-text-tertiary);" />
-            </template>
-          </a-input>
+            <a-select-option value="all">{{ t('admin.data.llmTab.all') }}</a-select-option>
+            <a-select-option value="audit">{{ t('admin.data.llmTab.audit') }}</a-select-option>
+            <a-select-option value="archive">{{ t('admin.data.llmTab.archive') }}</a-select-option>
+            <a-select-option value="summary">{{ t('admin.data.llmTab.summary') }}</a-select-option>
+            <a-select-option value="chat">{{ t('admin.data.llmTab.chat') }}</a-select-option>
+            <a-select-option value="feedback_memory">{{ t('admin.data.llmTab.feedback_memory') }}</a-select-option>
+            <a-select-option value="rule_assist">{{ t('admin.data.llmTab.rule_assist') }}</a-select-option>
+            <a-select-option value="sql_assist">{{ t('admin.data.llmTab.sql_assist') }}</a-select-option>
+          </a-select>
 
           <a-select
               v-model:value="llmFilterCallType"
@@ -2461,6 +2499,18 @@ onMounted(async () => {
             <a-select-option value="reasoning">{{ t('admin.data.llmCallReasoning') }}</a-select-option>
             <a-select-option value="structured">{{ t('admin.data.llmCallStructured') }}</a-select-option>
           </a-select>
+
+          <a-input
+              v-model:value="llmFilterOperator"
+              :placeholder="t('admin.data.filterOperator')"
+              allow-clear
+              style="flex: 1; min-width: 140px;"
+              @update:value="llmPage = 1"
+          >
+            <template #prefix>
+              <SearchOutlined style="color: var(--color-text-tertiary);" />
+            </template>
+          </a-input>
 
           <a-range-picker
               v-model:value="llmFilterDateRange"
@@ -2479,18 +2529,22 @@ onMounted(async () => {
       <div class="data-table-card">
         <table class="data-table data-table--llm data-table--with-actions">
           <colgroup>
-            <col style="width: 100px;" />
-            <col style="width: 240px;" />
+            <col style="width: 110px;" />
+            <col style="width: 130px;" />
+            <col style="width: 220px;" />
+            <col style="width: 140px;" />
             <col style="width: 80px;" />
-            <col style="width: 100px;" />
-            <col style="width: 300px;" />
-            <col style="width: 150px;" />
+            <col style="width: 90px;" />
+            <col style="width: 160px;" />
+            <col style="width: 140px;" />
             <col style="width: 56px;" />
           </colgroup>
           <thead>
           <tr>
             <th>{{ t('admin.data.llmBusinessType') }}</th>
+            <th>{{ t('admin.data.thWorkflowCode') }}</th>
             <th>{{ t('admin.data.llmBusinessTitle') }}</th>
+            <th>{{ t('admin.data.thCallType') }}</th>
             <th>{{ t('admin.data.llmProcessCount') }}</th>
             <th>{{ t('admin.data.thTokens') }}</th>
             <th>{{ t('admin.data.thOperator') }}</th>
@@ -2500,16 +2554,36 @@ onMounted(async () => {
           </thead>
           <tbody>
           <tr v-if="llmLoading">
-            <td colspan="7" class="empty-cell">{{ t('admin.data.loading') }}</td>
+            <td colspan="9" class="empty-cell">{{ t('admin.data.loading') }}</td>
           </tr>
           <tr v-else v-for="item in llmProcesses" :key="item.process_id">
             <td>
-              <a-tag>{{ getLLMRequestTypeLabel(item.request_type) }}</a-tag>
+              <a-tag :color="getLLMRequestTypeColor(item.request_type)">
+                {{ getLLMRequestTypeLabel(item.request_type) }}
+              </a-tag>
+            </td>
+            <td>
+              <OverflowTooltip :text="item.process_id || '-'" block>
+                <span class="text-mono" data-overflow-check>{{ item.process_id || '-' }}</span>
+              </OverflowTooltip>
             </td>
             <td class="table-title-cell">
               <OverflowTooltip :text="item.process_title || '-'" block>
-                <span class="table-clamp" data-overflow-check>{{ item.process_title || '-' }}</span><small v-if="item.business_kind === 'process'" class="llm-process-reference">{{ item.process_id }}</small>
+                <span class="table-clamp" data-overflow-check>{{ item.process_title || '-' }}</span>
               </OverflowTooltip>
+            </td>
+            <td>
+              <div v-if="getCallTypeLabels(item.call_type).length" style="display: flex; flex-wrap: wrap; gap: 4px;">
+                <a-tag
+                    v-for="ct in getCallTypeLabels(item.call_type)"
+                    :key="ct.label"
+                    :color="ct.color"
+                    style="margin-right: 0;"
+                >
+                  {{ ct.label }}
+                </a-tag>
+              </div>
+              <span v-else class="text-secondary">-</span>
             </td>
             <td>
               <OverflowTooltip :text="String(item.call_count)" block>{{ item.call_count }}</OverflowTooltip>
@@ -2547,7 +2621,7 @@ onMounted(async () => {
             </td>
           </tr>
           <tr v-if="!llmLoading && llmProcesses.length === 0">
-            <td colspan="7" class="empty-cell">{{ t('admin.data.noData') }}</td>
+            <td colspan="9" class="empty-cell">{{ t('admin.data.noData') }}</td>
           </tr>
           </tbody>
         </table>

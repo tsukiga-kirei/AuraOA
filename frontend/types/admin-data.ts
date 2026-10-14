@@ -295,6 +295,7 @@ export interface LLMProcessItem {
   business_kind: 'process' | 'chat' | 'operation'
   process_id: string
   process_title: string
+  call_type?: string
   call_count: number
   total_tokens: number
   latest_call_at: string
