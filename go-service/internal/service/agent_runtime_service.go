@@ -249,6 +249,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 	if session.ProcessID != nil && *session.ProcessID != "" {
 		systemPrompt += fmt.Sprintf("\n\n当前上下文绑定 OA 流程 ID: %s。在用户询问时可优先围绕该流程进行分析或查询。", *session.ProcessID)
 	}
+	systemPrompt += "\n\n【系统防幻觉约束】在多轮对话中，你必须严格依据实际调用工具获取的数据或上下文明确记录的事实进行作答。若用户追问的某些具体数值、明细或状态在历史工具结果及上下文中未包含，切勿凭空猜测或伪造，应当明确告知用户尚未获取，并在必要时主动调用相应工具查询。"
 	systemPrompt = replaceSystemPromptVariables(systemPrompt)
 
 	// 5. 保存用户消息到数据库
@@ -279,10 +280,33 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		})
 	}
 
-	// 6. 构造历史消息上下文
+	// 6. 构造历史消息上下文（根据智能体 tool_history_turns 恢复近期工具执行明细）
 	historyMsgs, err := s.chatRepo.ListMessagesBySession(tenantID, sessionID)
 	if err != nil {
 		return fmt.Errorf("读取历史消息失败: %w", err)
+	}
+
+	toolHistoryTurns := agent.ToolHistoryTurns
+	if toolHistoryTurns < 0 {
+		toolHistoryTurns = 3
+	}
+
+	// 找出需要保留工具明细的历史 Assistant 消息 ID
+	eligibleAssistantIDs := make(map[uuid.UUID]bool)
+	if toolHistoryTurns > 0 {
+		var assistantIDs []uuid.UUID
+		for _, m := range historyMsgs {
+			if m.Role == "assistant" {
+				assistantIDs = append(assistantIDs, m.ID)
+			}
+		}
+		startIdx := len(assistantIDs) - toolHistoryTurns
+		if startIdx < 0 {
+			startIdx = 0
+		}
+		for i := startIdx; i < len(assistantIDs); i++ {
+			eligibleAssistantIDs[assistantIDs[i]] = true
+		}
 	}
 
 	var conversation []ai.ChatMessage
@@ -294,6 +318,71 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		historyMsgs = historyMsgs[len(historyMsgs)-40:]
 	}
 	for _, m := range historyMsgs {
+		if m.Role == "assistant" && eligibleAssistantIDs[m.ID] {
+			var records []ToolExecutionRecord
+			if len(m.ToolCalls) > 0 && string(m.ToolCalls) != "[]" && string(m.ToolCalls) != "null" {
+				_ = json.Unmarshal(m.ToolCalls, &records)
+			}
+			if len(records) > 0 {
+				var aiToolCalls []ai.ToolCall
+				for idx, rec := range records {
+					callID := rec.ToolCallID
+					if callID == "" {
+						callID = fmt.Sprintf("call_%s_%d", m.ID.String()[:8], idx)
+					}
+					args := rec.Arguments
+					if args == "" {
+						args = "{}"
+					}
+					modelName := getToolModelName(rec.ToolCode)
+					aiToolCalls = append(aiToolCalls, ai.ToolCall{
+						ID:   callID,
+						Type: "function",
+						Function: ai.ToolCallFunction{
+							Name:      modelName,
+							Arguments: args,
+						},
+					})
+				}
+
+				// 追加发起工具调用的 Assistant 消息
+				conversation = append(conversation, ai.ChatMessage{
+					Role:             "assistant",
+					Content:          "",
+					ReasoningContent: m.ReasoningContent,
+					ToolCalls:        aiToolCalls,
+				})
+
+				// 逐一回填精简后的 Tool 结果消息
+				for idx, rec := range records {
+					callID := rec.ToolCallID
+					if callID == "" {
+						callID = fmt.Sprintf("call_%s_%d", m.ID.String()[:8], idx)
+					}
+					toolContent := CompactToolPayload(rec.ToolCode, rec.Payload)
+					if rec.Status == "error" {
+						toolContent = fmt.Sprintf("{\"error\": %q}", toolContent)
+					}
+					modelName := getToolModelName(rec.ToolCode)
+					conversation = append(conversation, ai.ChatMessage{
+						Role:       "tool",
+						Name:       modelName,
+						ToolCallID: callID,
+						Content:    toolContent,
+					})
+				}
+
+				// 追加该轮助手的最终文本回复
+				if m.Content != "" {
+					conversation = append(conversation, ai.ChatMessage{
+						Role:    "assistant",
+						Content: m.Content,
+					})
+				}
+				continue
+			}
+		}
+
 		conversation = append(conversation, ai.ChatMessage{
 			Role:             m.Role,
 			Content:          m.Content,

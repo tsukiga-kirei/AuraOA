@@ -14,6 +14,7 @@ type EffectiveAgentDTO struct {
 	Name           string              `json:"name"`
 	Description    string              `json:"description"`
 	IsSystem       bool                `json:"is_system"`
+	ToolHistoryTurns int               `json:"tool_history_turns"`
 	QuickQuestions []QuickQuestionItem `json:"quick_questions"`
 	ToolCodes      []string            `json:"tool_codes"`
 }
