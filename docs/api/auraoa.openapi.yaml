@@ -9033,6 +9033,7 @@ components:
         value_type:
           type: string
           enum: [text, number, date, boolean, choice, file]
+          description: 界面仅提供text/number/date/choice/file，复选框按choice原始编码比较；boolean仅兼容已有配置，不再提供新增入口。
         operator:
           type: string
           enum: [eq, ne, gt, gte, lt, lte, contains, not_contains, is_empty, not_empty]

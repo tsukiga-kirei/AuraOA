@@ -13,7 +13,7 @@ new Function('exports', transpile(fs.readFileSync(new URL('../utils/queryTrigger
 
 test('trigger field metadata selects suitable types and empty checks require no value', () => {
   for (const [field_type, type] of [['number', 'number'], ['decimal', 'number'], ['timestamp', 'date'],
-    ['checkbox', 'boolean'], ['select', 'choice'], ['file', 'file'], ['textarea', 'text']]) {
+    ['checkbox', 'choice'], ['boolean', 'choice'], ['select', 'choice'], ['file', 'file'], ['textarea', 'text']]) {
     assert.equal(helpers.queryTriggerType({ field_type }), type)
   }
   assert.equal(helpers.queryTriggerType(), 'text')
@@ -77,12 +77,18 @@ test('trigger editor changes input controls with field type and clears stale com
     assert.equal(byType('a-input-number'), undefined)
     fieldSelect().props.onChange('main:checkbox')
     await vue.nextTick()
-    assert.equal(trigger.value.value_type, 'boolean')
+    assert.equal(trigger.value.value_type, 'choice')
+    assert.ok(byType('a-input'))
     assert.equal(byType('a-date-picker'), undefined)
     fieldSelect().props.onChange('main:file')
     await vue.nextTick()
     assert.equal(trigger.value.operator, 'is_empty')
     assert.equal(nodes().some(node => node.props?.['aria-label'] === 'query.triggerValue'), false)
+    trigger.value = { field: 'main:checkbox', value_type: 'boolean', operator: 'eq', value: 'true' }
+    await vue.nextTick()
+    assert.equal(nodes().some(node => node.type === 'a-select-option' && node.props.value === 'boolean'), false)
+    assert.equal(byType('a-input').props.disabled, true)
+    assert.equal(trigger.value.value_type, 'boolean', 'existing conditions must not silently change meaning')
     byType('a-switch').props.onChange(false)
     await vue.nextTick()
     assert.equal(trigger.value, undefined)
