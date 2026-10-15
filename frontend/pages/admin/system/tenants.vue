@@ -761,7 +761,6 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
   var AURA_EMBED_ORIGIN = ${JSON.stringify(embedOrigin.value)};
   var EMBED_ACCESS_TOKEN = ${JSON.stringify(token)};
   var SHOW_ON_DESKTOP = false; // 是否在电脑端启用本脚本的按钮和弹窗；移动端不受影响
-  var USE_NATIVE_MOBILE_DIALOG = false; // true=使用 OA 原生弹窗（兼容模式，无卷曲动画）；默认使用联动弹层
   var AUTO_RUN_BEFORE_OPEN = false; // true=进入表单即自动审/总结（仍受「打开即审」等配置约束）；false=点开详情才审（默认）
   var BUTTON_CONTAINER_ID = 'getMyBt';
   var FLOAT_POSITION_MOBILE = 'bottom-left'; // 移动端浮动位置：'bottom-left'（左下角）或 'top-right'（右上角）
@@ -909,9 +908,6 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
         ".aura-embed-dialog-close:focus-visible{outline:2px solid #64748b;outline-offset:2px;}" +
         ".aura-embed-dialog-frame{width:100%;flex:1;min-height:0;border:0;display:block;background:#f8fafc;}" +
         ".aura-embed-genie-layer{position:fixed;inset:0;z-index:2147483647;pointer-events:none;overflow:hidden;}" +
-        ".aura-embed-dialog-overlay--mobile{padding:10px 8px;padding:max(10px,env(safe-area-inset-top)) 8px max(10px,env(safe-area-inset-bottom));}" +
-        ".aura-embed-dialog-overlay--mobile .aura-embed-dialog-panel{width:100%;height:100%;max-height:none;border-radius:20px;}" +
-        ".aura-embed-dialog-overlay--mobile .aura-embed-dialog-header{padding:10px 14px;}" +
         '@media(prefers-reduced-motion:reduce){.aura-status-button{transition:none;animation:none!important;}.aura-status-button::before,.aura-status-button::after,.aura-status-icon,.aura-status-copy,.aura-status-text,.aura-status-score,.aura-status-arrow,.aura-status-icon-layer,.aura-status-copy-inner{animation:none!important;opacity:1!important;transform:none!important;filter:none!important;}.aura-status-icon svg,.aura-status-icon svg>*{animation:none!important;stroke-dashoffset:0!important;}}';
       document.head.appendChild(style);
     }
@@ -1687,11 +1683,16 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
     };
   }
 
-  // 单功能和双功能共用详情入口；原生模式只负责隐藏/恢复按钮，由 OA 管理弹窗。
+  // 单功能和双功能共用入口：移动端始终遵循泛微弹窗协议，电脑端保留联动弹层。
   function openAnimatedEmbedDialog(type, targetUrl, trigger, onClosed) {
     if (activeEmbedSurface) return;
     var titleText = type === 'summary' ? 'AI 流程总结' : 'AI 流程审核';
-    if (mobileClient && USE_NATIVE_MOBILE_DIALOG && window.weaJs && typeof window.weaJs.showDialog === 'function') {
+    if (mobileClient) {
+      // 保留原集成的降级方式：没有泛微弹窗 API 时打开独立页面，不在 OA 内创建 iframe。
+      if (!window.weaJs || typeof window.weaJs.showDialog !== 'function') {
+        window.open(targetUrl, '_blank');
+        return;
+      }
       var nativeButtons = concealEmbedButtons(trigger);
       var nativeSurface = {};
       activeEmbedSurface = nativeSurface;
@@ -1713,15 +1714,19 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
         return;
       } catch (error) {
         finishNative(false);
-        // 原生弹窗不可用时回退到脚本弹层，确保入口不会永久隐藏。
-        console.warn('[aura-embed-mobile] OA 原生弹窗打开失败，已使用内嵌弹层');
+        // 泛微 API 抛错时恢复入口，留在原表单重试，不擅自切换弹窗实现。
+        console.warn('[aura-embed-mobile] 泛微原生弹窗打开失败，已恢复按钮');
+        if (typeof WfForm !== 'undefined' && WfForm.showMessage) {
+          WfForm.showMessage('详情打开失败，请稍后重试', 2, 3);
+        }
       }
+      return;
     }
 
     var previousFocus = document.activeElement;
     var overlay = document.createElement('div');
     overlay.id = 'auraDesktopEmbedDialog';
-    overlay.className = 'aura-embed-dialog-overlay' + (mobileClient ? ' aura-embed-dialog-overlay--mobile' : '');
+    overlay.className = 'aura-embed-dialog-overlay';
     var panel = document.createElement('div');
     panel.className = 'aura-embed-dialog-panel';
     panel.setAttribute('role', 'dialog');
