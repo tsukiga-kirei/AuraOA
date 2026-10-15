@@ -145,7 +145,6 @@ async function run(source, payload, httpOK = true, device = {}) {
     },
   }
   const win = {
-    location: { href: 'https://oa.example.com/workflow#/form/614309' },
     weaJs: {
       showDialog: (url, opts) => {
         if (device.nativeThrows) throw new Error('OA unavailable')
@@ -160,7 +159,6 @@ async function run(source, payload, httpOK = true, device = {}) {
   }
   if (device.noNative) delete win.weaJs
   state.group = groupEl
-  state.location = win.location
   state.document = document
   state.nodes = nodesById
   state.frames = new Map()
@@ -306,7 +304,8 @@ for (const origin of ['export', 'template']) {
         assert.equal(state.dialogOpts[0].style.width, '100%')
         assert.equal(state.dialogOpts[0].style.height, '100%')
         assert.equal(state.elements.length, 0, 'mobile must not create an iframe overlay')
-        assert.equal(state.group.style.opacity, '0')
+        assert.equal(state.group.style.opacity, '')
+        assert.equal(state.group.inert, false)
       })
     }
     test(`${origin} ${type}: configuration absence preserves the business explanation`, async () => {
@@ -521,11 +520,11 @@ for (const origin of ['export', 'template']) {
       assert.equal(state.requests.length, before, 'leaving OA must not start another refresh')
     })
 
-    test(`${origin} ${type}: mobile native dialog restores on callback and failure without creating an iframe`, async () => {
+    test(`${origin} ${type}: mobile native dialog keeps buttons visible on callback and failure without creating an iframe`, async () => {
       const state = await run(source, payload)
       state.click(trigger)
       assert.equal(state.dialogOpts.length, 1)
-      assert.equal(state.group.style.opacity, '0')
+      assert.equal(state.group.style.opacity, '')
       const before = state.requests.length
       state.dialogOpts[0].callback()
       state.dialogOpts[0].callback()
@@ -546,7 +545,7 @@ for (const origin of ['export', 'template']) {
       assert.equal(failed.messages.length, 2, 'failed native opening must release the click lock')
     })
 
-    test(`${origin} ${type}: native cancel restores buttons and stale callbacks cannot close a reopened dialog`, async () => {
+    test(`${origin} ${type}: native cancel only refreshes once and never changes button visibility`, async () => {
       const state = await run(source, payload)
       state.click(trigger)
       const first = state.dialogOpts[0]
@@ -559,42 +558,31 @@ for (const origin of ['export', 'template']) {
       assert.equal(state.group.style.pointerEvents, '')
       assert.equal(state.group.inert, false)
       assert.equal(state.requests.length, before + 1)
-      assert.equal(state.windowListeners.hashchange.length, 0)
-      assert.equal(state.windowListeners.popstate.length, 0)
       state.click(trigger)
       assert.equal(state.dialogOpts.length, 2)
       first.onCancel()
-      assert.equal(state.group.style.opacity, '0')
+      assert.equal(state.group.style.opacity, '')
       state.dialogOpts[1].onCancel()
       assert.equal(state.group.inert, false)
     })
 
-    test(`${origin} ${type}: native route return restores buttons without a dialog callback`, async () => {
-      for (const event of ['hashchange', 'popstate']) {
-        const state = await run(source, payload)
-        const formUrl = state.location.href
-        const dispatch = () => [...state.windowListeners[event]].forEach(fn => fn())
-        state.click(trigger)
-        dispatch()
-        assert.equal(state.group.style.opacity, '0', 'unchanged route must not restore an open dialog')
-        state.location.href = formUrl + '/dialog'
-        dispatch()
-        assert.equal(state.group.inert, true)
-        state.location.href += '/details'
-        dispatch()
-        assert.equal(state.group.style.opacity, '0', 'other routes must not restore the buttons')
-        const before = state.requests.length
-        state.location.href = formUrl
-        dispatch()
-        state.dialogOpts[0].onCancel()
-        await flush(state)
-        assert.equal(state.group.style.opacity, '')
-        assert.equal(state.group.inert, false)
-        assert.equal(state.requests.length, before + 1)
-        assert.equal(state.windowListeners[event].length, 0)
-        state.click(trigger)
-        assert.equal(state.dialogOpts.length, 2)
-      }
+    test(`${origin} ${type}: mobile buttons stay visible and reopen even without close callbacks or route events`, async () => {
+      const state = await run(source, payload)
+      const before = state.requests.length
+      state.click(trigger)
+      // 模拟泛微右上角 X 静默关闭：不调用 callback、onCancel，也不派发路由事件。
+      assert.equal(state.group.style.opacity, '')
+      assert.equal(state.group.style.transform, '')
+      assert.equal(state.group.style.pointerEvents, '')
+      assert.equal(state.group.inert, false)
+      state.click(trigger)
+      assert.equal(state.dialogOpts.length, 2, 'missing native close callbacks must never lock the entry')
+      assert.equal(state.group.style.opacity, '')
+      assert.equal(state.group.inert, false)
+      assert.equal(state.requests.length, before, 'opening must not pretend that the previous dialog emitted a close event')
+      assert.equal((state.windowListeners.hashchange || []).length, 0)
+      assert.equal((state.windowListeners.popstate || []).length, 0)
+      assert.equal((state.windowListeners.pagehide || []).length, 0)
     })
 
     test(`${origin} ${type}: reduced motion skips layers and resize settles an in-flight surface`, async () => {
@@ -639,12 +627,11 @@ for (const origin of ['export', 'template']) {
         assert.equal(state.elements.length, 0)
         assert.equal(state.document.documentElement.style.overflow, 'auto')
         const before = state.requests.length
-        ;[...state.windowListeners.pagehide].forEach(fn => fn())
         state.dialogOpts[0].callback()
         await flush(state)
         assert.equal(state.group.inert, false)
         assert.equal(state.group.style.opacity, '')
-        assert.equal(state.requests.length, before)
+        assert.equal(state.requests.length, before + 1)
       }
       const state = await run(desktopSource, payload, true, { ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', touch: 10 })
       state.click(trigger)

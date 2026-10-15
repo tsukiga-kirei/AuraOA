@@ -948,45 +948,23 @@
         window.open(targetUrl, '_blank');
         return;
       }
-      var nativeButtons = concealEmbedButtons(trigger);
-      var nativeSurface = {};
-      var nativeFormUrl = window.location.href;
-      var nativeRouteLeft = false;
-      activeEmbedSurface = nativeSurface;
-      nativeButtons.paint(0);
-      function finishNative(refresh) {
-        if (activeEmbedSurface !== nativeSurface) return;
-        nativeButtons.restore();
-        activeEmbedSurface = null;
-        window.removeEventListener('pagehide', onNativePageHide);
-        window.removeEventListener('hashchange', onNativeRouteChange);
-        window.removeEventListener('popstate', onNativeRouteChange);
-        if (refresh) onClosed();
+      // 移动端关闭回调不可靠，因此不隐藏按钮、不设置等待关闭才能释放的点击锁。
+      // 保留可拖动入口；确认/取消回调只用于刷新状态，不影响按钮可见性。
+      var nativeRefreshed = false;
+      function refreshNativeStatus() {
+        if (nativeRefreshed) return;
+        nativeRefreshed = true;
+        onClosed();
       }
-      function onNativePageHide() { finishNative(false); }
-      // 部分移动端用路由承载弹窗；只在离开后回到原表单时恢复，避免打开时误恢复。
-      function onNativeRouteChange() {
-        if (window.location.href !== nativeFormUrl) {
-          nativeRouteLeft = true;
-        } else if (nativeRouteLeft) {
-          finishNative(true);
-        }
-      }
-      window.addEventListener('pagehide', onNativePageHide);
-      window.addEventListener('hashchange', onNativeRouteChange);
-      window.addEventListener('popstate', onNativeRouteChange);
       try {
         window.weaJs.showDialog(targetUrl, {
           title: titleText, moduleName: 'workflow', style: { width: '100%', height: '100%' },
-          callback: function () { finishNative(true); },
-          onCancel: function () { finishNative(true); }
+          callback: refreshNativeStatus,
+          onCancel: refreshNativeStatus
         });
-        onNativeRouteChange();
-        return;
       } catch (error) {
-        finishNative(false);
-        // 泛微 API 抛错时恢复入口，留在原表单重试，不擅自切换弹窗实现。
-        console.warn('[aura-embed-mobile] 泛微原生弹窗打开失败，已恢复按钮');
+        // 泛微 API 抛错时留在原表单重试，不擅自切换弹窗实现。
+        console.warn('[aura-embed-mobile] 泛微原生弹窗打开失败');
         if (typeof WfForm !== 'undefined' && WfForm.showMessage) {
           WfForm.showMessage('详情打开失败，请稍后重试', 2, 3);
         }
