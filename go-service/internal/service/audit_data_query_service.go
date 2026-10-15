@@ -57,23 +57,26 @@ type QueryPreviewRequest struct {
 	Parameters map[string]interface{}                 `json:"parameters"`
 	ProcessID  string                                 `json:"process_id"`
 	Bindings   map[string]model.AuditDataQueryBinding `json:"bindings"`
+	Trigger    *model.AuditDataQueryTrigger           `json:"trigger,omitempty"`
 }
 
 // QueryEvidence 保存当次查询上下文，作为可追溯的业务证据。
 type QueryEvidence struct {
-	ApplicabilityCondition string                 `json:"applicability_condition,omitempty"`
-	RuleID                 string                 `json:"rule_id,omitempty"`
-	RuleContent            string                 `json:"rule_content,omitempty"`
-	QueryID                string                 `json:"query_id,omitempty"`
-	VersionNo              int                    `json:"version_no"`
-	Name                   string                 `json:"name"`
-	Description            string                 `json:"description"`
-	Parameters             map[string]interface{} `json:"parameters"`
-	QueriedAt              string                 `json:"queried_at"`
-	Status                 string                 `json:"status"`
-	Error                  string                 `json:"error,omitempty"`
-	Result                 *oa.AuditQueryResult   `json:"result,omitempty"`
-	ModelText              string                 `json:"model_text"`
+	ApplicabilityCondition string                       `json:"applicability_condition,omitempty"`
+	RuleID                 string                       `json:"rule_id,omitempty"`
+	RuleContent            string                       `json:"rule_content,omitempty"`
+	QueryID                string                       `json:"query_id,omitempty"`
+	VersionNo              int                          `json:"version_no"`
+	Name                   string                       `json:"name"`
+	Description            string                       `json:"description"`
+	Parameters             map[string]interface{}       `json:"parameters"`
+	QueriedAt              string                       `json:"queried_at"`
+	Status                 string                       `json:"status"`
+	Trigger                *model.AuditDataQueryTrigger `json:"trigger,omitempty"`
+	TriggerMatched         *bool                        `json:"trigger_matched,omitempty"`
+	Error                  string                       `json:"error,omitempty"`
+	Result                 *oa.AuditQueryResult         `json:"result,omitempty"`
+	ModelText              string                       `json:"model_text"`
 }
 
 // QueryAssistPreviewSummary 只传递最近预览的诊断摘要，不向 SQL 助手发送业务数据行。
@@ -561,6 +564,9 @@ func (s *AuditDataQueryService) ValidateReferences(c *gin.Context, raw []byte) e
 		return newServiceError(errcode.ErrParamValidation, "每条规则最多引用8项查询")
 	}
 	for _, ref := range refs {
+		if err := validateQueryTrigger(ref.Trigger); err != nil {
+			return newServiceError(errcode.ErrParamValidation, err.Error())
+		}
 		id, err := uuid.Parse(ref.QueryID)
 		if err != nil {
 			return newServiceError(errcode.ErrParamValidation, "查询版本引用无效")
@@ -729,6 +735,12 @@ func normalizeQueryParameter(p model.AuditDataQueryParameter, value interface{},
 
 // Preview 执行手工测试或真实流程绑定，返回模型数据和预览证据。
 func (s *AuditDataQueryService) Preview(c *gin.Context, req QueryPreviewRequest) (*QueryEvidence, error) {
+	if err := validateQueryTrigger(req.Trigger); err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, err.Error())
+	}
+	if req.Trigger != nil && (req.VersionNo <= 0 || strings.TrimSpace(req.ProcessID) == "") {
+		return nil, newServiceError(errcode.ErrParamValidation, "查询触发条件须使用发布版本及测试流程预览")
+	}
 	def := req.Definition
 	if req.VersionNo > 0 {
 		stored, err := s.Definition(c, req.QueryID, req.VersionNo)
@@ -774,6 +786,7 @@ func (s *AuditDataQueryService) Preview(c *gin.Context, req QueryPreviewRequest)
 		return nil, newServiceError(errcode.ErrParamValidation, "查询方言与租户 OA 数据库不一致")
 	}
 	values := map[string]interface{}{}
+	var triggerMatched *bool
 	if req.ProcessID != "" {
 		adapter, er := s.external.getOAAdapter(c.Request.Context(), t, false)
 		if er != nil {
@@ -783,7 +796,7 @@ func (s *AuditDataQueryService) Preview(c *gin.Context, req QueryPreviewRequest)
 		if er != nil {
 			return nil, newServiceError(errcode.ErrOAQueryFailed, "读取测试流程失败")
 		}
-		values, err = resolveQueryBindings(def, req.Bindings, pd, req.ProcessID)
+		values, triggerMatched, err = prepareTriggeredQueryInputs(def, req.Bindings, req.Trigger, pd, req.ProcessID)
 	} else {
 		for _, p := range def.Parameters {
 			if value, supplied := req.Parameters[p.Name]; supplied {
@@ -802,13 +815,18 @@ func (s *AuditDataQueryService) Preview(c *gin.Context, req QueryPreviewRequest)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrParamValidation, err.Error())
 	}
-	result, err := e.QueryAuditData(c.Request.Context(), def.SQL, values, def.MaxRows, def.MaxChars)
-	if err != nil {
-		return nil, newServiceError(errcode.ErrOAQueryFailed, err.Error())
-	}
 	evidence := &QueryEvidence{
 		QueryID: req.QueryID, VersionNo: req.VersionNo, Name: def.Name, Description: def.Description,
-		Parameters: values, QueriedAt: apptime.FormatRFC3339(apptime.Now()), Status: "success", Result: result,
+		Parameters: values, QueriedAt: apptime.FormatRFC3339(apptime.Now()), Status: "success",
+		Trigger: req.Trigger, TriggerMatched: triggerMatched,
+	}
+	if triggerMatched != nil && !*triggerMatched {
+		evidence.Status = "skipped"
+	} else {
+		evidence.Result, err = e.QueryAuditData(c.Request.Context(), def.SQL, values, def.MaxRows, def.MaxChars)
+		if err != nil {
+			return nil, newServiceError(errcode.ErrOAQueryFailed, err.Error())
+		}
 	}
 	evidence.ModelText = formatQueryEvidence(*evidence)
 	if savedID != uuid.Nil {
@@ -833,6 +851,14 @@ func (s *AuditDataQueryService) Preview(c *gin.Context, req QueryPreviewRequest)
 func formatQueryEvidence(e QueryEvidence) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "【数据记忆：%s】\n查询版本：v%d\n数据说明：%s\n查询时点：%s\n状态：%s\n", e.Name, e.VersionNo, e.Description, e.QueriedAt, e.Status)
+	b.WriteString(formatQueryTrigger(e.Trigger))
+	if queryEvidenceSkipped(e) {
+		b.WriteString("查询触发条件未满足，本项记忆未查询。不代表数据库没有记录，也不代表本条规则通过；请结合其余已知资料判断规则。\n")
+		return b.String()
+	}
+	if e.TriggerMatched != nil && *e.TriggerMatched {
+		b.WriteString("查询触发条件已满足。\n")
+	}
 	if e.Status != "success" {
 		b.WriteString("数据不可用：" + e.Error + "\n不得将查询失败解释为没有记录或规则通过。若其他已知证据明确表明适用前提不满足，则仍按适用前提说明直接通过。\n")
 		return b.String()
@@ -1152,62 +1178,63 @@ func (s *AuditDataQueryService) ResolveRules(c *gin.Context, processID string, p
 			if !ref.Enabled {
 				continue
 			}
-			executed++
 			ev := QueryEvidence{
 				RuleID: rule.ID.String(), RuleContent: rule.RuleContent, QueryID: ref.QueryID,
 				ApplicabilityCondition: rule.ApplicabilityCondition,
 				VersionNo:              ref.VersionNo, Name: "审核数据查询",
 				QueriedAt: apptime.FormatRFC3339(apptime.Now()), Status: "failed",
+				Trigger: ref.Trigger,
 			}
-			if executed > 20 {
-				ev.Error = "本次审核超过20项查询，未执行该项"
-			} else {
-				def, err := s.Definition(cc, ref.QueryID, ref.VersionNo)
-				if err == nil {
-					ev.Name = def.Name
-					ev.Description = def.Description
-					needsRaw := false
-					for _, parameter := range def.Parameters {
-						binding, ok := queryParameterBinding(parameter, ref.Bindings)
-						if ok && binding.Source == "field" {
-							needsRaw = true
-							break
-						}
+			def, err := s.Definition(cc, ref.QueryID, ref.VersionNo)
+			if err == nil {
+				ev.Name = def.Name
+				ev.Description = def.Description
+				needsRaw := ref.Trigger != nil
+				for _, parameter := range def.Parameters {
+					binding, ok := queryParameterBinding(parameter, ref.Bindings)
+					if ok && binding.Source == "field" {
+						needsRaw = true
+						break
 					}
-					if needsRaw && !rawLoaded {
-						rawLoaded = true
-						tenant, tenantErr := s.tenant(cc)
-						rawError = tenantErr
+				}
+				if needsRaw && !rawLoaded {
+					rawLoaded = true
+					tenant, tenantErr := s.tenant(cc)
+					rawError = tenantErr
+					if rawError == nil {
+						adapter, adapterErr := s.external.getOAAdapter(ctx, tenant, false)
+						rawError = adapterErr
 						if rawError == nil {
-							adapter, adapterErr := s.external.getOAAdapter(ctx, tenant, false)
-							rawError = adapterErr
-							if rawError == nil {
-								rawData, rawError = adapter.FetchProcessData(ctx, processID)
-							}
-						}
-					}
-					if needsRaw && rawError != nil {
-						err = fmt.Errorf("读取原始参数字段失败：%w", rawError)
-					} else {
-						ev.Parameters, err = resolveQueryBindings(*def, ref.Bindings, rawData, processID)
-					}
-					if err == nil {
-						var executor oa.AuditQueryExecutor
-						executor, _, err = s.executor(cc)
-						if err == nil {
-							if executor.AuditQueryDialect() != def.Dialect {
-								err = fmt.Errorf("查询方言与当前数据源不一致")
-							} else {
-								ev.Result, err = executor.QueryAuditData(ctx, def.SQL, ev.Parameters, def.MaxRows, def.MaxChars)
-							}
+							rawData, rawError = adapter.FetchProcessData(ctx, processID)
 						}
 					}
 				}
-				if err != nil {
-					ev.Error = err.Error()
+				if needsRaw && rawError != nil {
+					err = fmt.Errorf("读取原始参数字段失败：%w", rawError)
 				} else {
-					ev.Status = "success"
+					ev.Parameters, ev.TriggerMatched, err = prepareTriggeredQueryInputs(*def, ref.Bindings, ref.Trigger, rawData, processID)
 				}
+				if err == nil && ev.TriggerMatched != nil && !*ev.TriggerMatched {
+					ev.Status = "skipped"
+				} else if err == nil && executed >= 20 {
+					err = fmt.Errorf("本次审核超过20项查询，未执行该项")
+				} else if err == nil {
+					executed++
+					var executor oa.AuditQueryExecutor
+					executor, _, err = s.executor(cc)
+					if err == nil {
+						if executor.AuditQueryDialect() != def.Dialect {
+							err = fmt.Errorf("查询方言与当前数据源不一致")
+						} else {
+							ev.Result, err = executor.QueryAuditData(ctx, def.SQL, ev.Parameters, def.MaxRows, def.MaxChars)
+						}
+					}
+				}
+			}
+			if err != nil {
+				ev.Error = err.Error()
+			} else if ev.Status != "skipped" {
+				ev.Status = "success"
 			}
 			ev.ModelText = formatQueryEvidence(ev)
 			evidence = append(evidence, ev)
@@ -1229,6 +1256,12 @@ func SanitizeQueryEvidence(items []QueryEvidence) {
 		item.RuleContent = sanitize.SanitizeText(item.RuleContent)
 		item.ApplicabilityCondition = sanitize.SanitizeText(item.ApplicabilityCondition)
 		item.Error = sanitize.SanitizeText(item.Error)
+		if item.Trigger != nil {
+			trigger := *item.Trigger
+			trigger.FieldLabel = sanitize.SanitizeText(trigger.FieldLabel)
+			trigger.Value = sanitize.SanitizeText(trigger.Value)
+			item.Trigger = &trigger
+		}
 		for key, value := range item.Parameters {
 			switch text := value.(type) {
 			case string:
@@ -1258,6 +1291,9 @@ func GuardQueryEvidence(result *model.AuditResultJSON, evidence []QueryEvidence)
 		return
 	}
 	for _, e := range evidence {
+		if queryEvidenceSkipped(e) {
+			continue
+		}
 		if e.Status != "success" || e.Result == nil || e.Result.Truncated {
 			if auditRulePassedForUnmetCondition(result, e) {
 				continue
@@ -1282,6 +1318,9 @@ func GuardArchiveQueryEvidence(result *model.ArchiveResultJSON, evidence []Query
 		return
 	}
 	for _, e := range evidence {
+		if queryEvidenceSkipped(e) {
+			continue
+		}
 		if e.Status != "success" || e.Result == nil || e.Result.Truncated {
 			if archiveRulePassedForUnmetCondition(result, e) {
 				continue

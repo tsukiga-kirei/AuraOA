@@ -9014,6 +9014,32 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/AuditQueryBinding'
+        trigger:
+          $ref: '#/components/schemas/AuditQueryTrigger'
+    AuditQueryTrigger:
+      type: object
+      nullable: true
+      required: [field, value_type, operator]
+      description: 当前引用的单字段查询前提；省略或null时始终查询。读取原始流程值后先判断，未命中则不绑定SQL参数、不查询历史数据。
+      properties:
+        field:
+          type: string
+          maxLength: 200
+          pattern: '^[A-Za-z_][A-Za-z0-9_]*:[A-Za-z_][A-Za-z0-9_]*$'
+          description: main:字段 或 明细表名:字段，大小写不敏感
+        field_label:
+          type: string
+          maxLength: 200
+        value_type:
+          type: string
+          enum: [text, number, date, boolean, choice, file]
+        operator:
+          type: string
+          enum: [eq, ne, gt, gte, lt, lte, contains, not_contains, is_empty, not_empty]
+          description: 文本支持等于/不等于/包含；数字及日期支持大小比较；布尔支持等于/不等于；选项按完整编码包含；附件仅空值判断。所有类型支持空/非空，类型不匹配拒绝保存。
+        value:
+          type: string
+          description: 除空/非空以外必填，最多4000字节。日期按应用时区自然日，数字精确比较，布尔使用true/false，选项填写一个OA原始编码。
     AuditQueryCheck:
       type: object
       properties:
@@ -9095,6 +9121,12 @@ components:
           enum:
           - success
           - failed
+          - skipped
+        trigger:
+          $ref: '#/components/schemas/AuditQueryTrigger'
+        trigger_matched:
+          type: boolean
+          description: 配置触发条件且成功判断时返回；false时status=skipped，无result，不表示空查询结果或规则通过。判断错误仍为失败证据。
         error:
           type: string
         result:
@@ -9191,6 +9223,8 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/AuditQueryBinding'
+        trigger:
+          $ref: '#/components/schemas/AuditQueryTrigger'
     AuditQueryAssistRequest:
       type: object
       required:

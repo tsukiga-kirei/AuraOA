@@ -71,6 +71,16 @@ type AuditDataQueryReference struct {
 	VersionNo int                              `json:"version_no"`
 	Enabled   bool                             `json:"enabled"`
 	Bindings  map[string]AuditDataQueryBinding `json:"bindings"`
+	Trigger   *AuditDataQueryTrigger           `json:"trigger,omitempty"`
+}
+
+// AuditDataQueryTrigger 是当前规则引用的单字段查询前提，未设置时始终查询。
+type AuditDataQueryTrigger struct {
+	Field      string `json:"field"`
+	FieldLabel string `json:"field_label,omitempty"`
+	ValueType  string `json:"value_type"` // text / number / date / boolean / choice / file
+	Operator   string `json:"operator"`   // eq / ne / gt / gte / lt / lte / contains / not_contains / is_empty / not_empty
+	Value      string `json:"value,omitempty"`
 }
 
 // AuditDataQueryBinding 的 field 使用 main:字段或明细表:字段，系统值由服务端解析。

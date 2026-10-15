@@ -5,6 +5,7 @@ import type {
   QueryCheck,
   QueryEvidence,
   QueryBinding,
+  QueryTrigger,
   QueryPrompts,
   QueryAssist,
   QueryColumn,
@@ -61,6 +62,7 @@ export const useAuditDataQueryApi = () => {
       parameters?: Record<string, unknown>
       process_id?: string
       bindings?: Record<string, QueryBinding>
+      trigger?: QueryTrigger
     }) => authFetch<QueryEvidence>(`${root}/preview`, { method: 'POST', body }),
     schema: (table: string) =>
       authFetch<{ table: string; dialect: string; columns: QueryColumn[] }>(`${root}/schema`, {

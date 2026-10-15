@@ -161,7 +161,8 @@ test('applyRuleConflictStrategy works for skip, overwrite, and append', () => {
 })
 
 test('rule import retains immutable query version and bindings', () => {
-  const reference = { query_id: 'query-1', version_no: 2, enabled: true, bindings: { person: { source: 'field', field: 'main:person' } } }
+  const reference = { query_id: 'query-1', version_no: 2, enabled: true, bindings: { person: { source: 'field', field: 'main:person' } },
+    trigger: { field: 'main:amount', value_type: 'number', operator: 'gte', value: '5000' } }
   const existing = [{ id: '1', rule_content: '预算核验', data_queries: [reference] }]
   const preserved = applyRuleConflictStrategy(existing, [{ rule_content: '预算核验' }], 'overwrite', () => 'new')
   assert.deepEqual(preserved[0].data_queries, [reference])

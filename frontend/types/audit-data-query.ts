@@ -75,6 +75,20 @@ export interface QueryReference {
   version_no: number
   enabled: boolean
   bindings: Record<string, QueryBinding>
+  trigger?: QueryTrigger
+}
+export interface QueryFieldOption {
+  value: string
+  label: string
+  field_type?: string
+}
+/** 引用中的单字段触发条件；未设置表示始终查询。 */
+export interface QueryTrigger {
+  field: string
+  field_label?: string
+  value_type: 'text' | 'number' | 'date' | 'boolean' | 'choice' | 'file'
+  operator: 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'not_contains' | 'is_empty' | 'not_empty'
+  value?: string
 }
 /** 当前流程配置对数据记忆的引用；同一流程可能有多条规则。 */
 export interface QueryUsageReference {
@@ -105,6 +119,8 @@ export interface QueryEvidence {
   parameters: Record<string, unknown>
   queried_at: string
   status: string
+  trigger?: QueryTrigger
+  trigger_matched?: boolean
   error?: string
   result?: {
     columns: QueryColumn[]

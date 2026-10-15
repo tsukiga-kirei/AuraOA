@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { message } from 'ant-design-vue'
 import type { ExternalContextMount } from '~/types/external-context'
-import type { QueryReference } from '~/types/audit-data-query'
+import type { QueryReference, QueryFieldOption } from '~/types/audit-data-query'
+import { queryTriggerError } from '~/utils/queryTrigger'
 
 const { t } = useI18n()
 const { authFetch } = useAuth()
 
-type FieldOption = { value: string; label: string }
+type FieldOption = QueryFieldOption
 type ProcessFields = {
   main_fields?: { field_key: string; field_name: string; field_type?: string }[]
   detail_tables?: { table_name: string; table_label?: string; fields?: { field_key: string; field_name: string; field_type?: string }[] }[]
@@ -33,6 +34,7 @@ const props = withDefaults(defineProps<{
     data_queries?: QueryReference[]
   } | null
   fieldOptions?: FieldOption[]
+  triggerFieldOptions?: FieldOption[]
   contextTestEndpoint?: string
   workflowFieldsEndpoint?: string
   workflowSearchEndpoint?: string
@@ -390,6 +392,11 @@ const insertCustomSQLVariable = (variable: string) => {
 
 // 提交表单数据给父组件处理
 const handleSave = () => {
+  const triggerError = form.value.data_queries.map(reference => queryTriggerError(reference.trigger)).find(Boolean)
+  if (triggerError) {
+    message.warning(t(triggerError))
+    return
+  }
   form.value.context_enabled = form.value.context_mounts.length > 0
   emit('save', { ...form.value })
 }
@@ -584,7 +591,7 @@ const handleSave = () => {
         </div>
         <pre v-if="contextPreview.model" class="context-preview">{{ contextPreview.model }}</pre>
       </div>
-      <RuleDataQueryEditor v-model="form.data_queries" :field-options="fieldOptions" />
+      <RuleDataQueryEditor v-model="form.data_queries" :field-options="fieldOptions" :trigger-field-options="triggerFieldOptions || fieldOptions" />
     </a-form>
   </a-modal>
 
