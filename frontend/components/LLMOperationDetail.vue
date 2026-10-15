@@ -25,15 +25,40 @@ const warnings = computed(() => Array.isArray(output.value?.warnings) ? output.v
     <a-alert type="info" show-icon :message="t('admin.data.llmOperationHint')" />
     <div class="operation-usage"><span>{{ t('admin.data.llmInputTokens') }} <strong>{{ item.input_tokens }}</strong></span><span>{{ t('admin.data.llmOutputTokens') }} <strong>{{ item.output_tokens }}</strong></span></div>
     <h4>{{ t('admin.data.llmOperationResult') }}</h4>
-    <a-alert v-for="(warning, index) in warnings" :key="index" type="warning" show-icon :message="warning" class="operation-warning" />
-    <template v-if="typeof output?.sql === 'string'"><h5>{{ t('admin.data.llmSQL') }}</h5><pre>{{ output.sql }}</pre><p v-if="typeof output.explanation === 'string'">{{ output.explanation }}</p></template>
-    <article v-for="(row, index) in rows" :key="index" class="operation-row"><strong>{{ index + 1 }}.</strong><div><p v-if="row.condition" class="operation-condition">{{ t('feedbackMemory.condition') }}：{{ row.condition }}</p><p>{{ row.content }}</p><small v-if="row.refs.length">{{ t('feedbackMemory.basedOn') }}：{{ row.refs.join(' · ') }}</small></div></article>
-    <pre v-if="!rows.length && typeof output?.sql !== 'string'">{{ item.response_content || t('admin.data.llmNoPrompt') }}</pre>
+    <CopyableContent v-for="(warning, index) in warnings" :key="index" :text="warning">
+      <a-alert type="warning" show-icon :message="warning" class="operation-warning" />
+    </CopyableContent>
+    <template v-if="typeof output?.sql === 'string'">
+      <h5>{{ t('admin.data.llmSQL') }}</h5>
+      <CopyableContent :text="output.sql"><pre>{{ output.sql }}</pre></CopyableContent>
+      <CopyableContent v-if="typeof output.explanation === 'string'" :text="output.explanation">
+        <p>{{ output.explanation }}</p>
+      </CopyableContent>
+    </template>
+    <article v-for="(row, index) in rows" :key="index" class="operation-row">
+      <strong>{{ index + 1 }}.</strong>
+      <CopyableContent :text="[row.condition && `${t('feedbackMemory.condition')}：${row.condition}`, row.content, row.refs.length && `${t('feedbackMemory.basedOn')}：${row.refs.join(' · ')}`].filter(Boolean).join('\n')">
+        <p v-if="row.condition" class="operation-condition">{{ t('feedbackMemory.condition') }}：{{ row.condition }}</p>
+        <p>{{ row.content }}</p>
+        <small v-if="row.refs.length">{{ t('feedbackMemory.basedOn') }}：{{ row.refs.join(' · ') }}</small>
+      </CopyableContent>
+    </article>
+    <CopyableContent v-if="!rows.length && typeof output?.sql !== 'string'" :text="item.response_content">
+      <pre>{{ item.response_content || t('admin.data.llmNoPrompt') }}</pre>
+    </CopyableContent>
     <a-collapse ghost>
-      <a-collapse-panel key="system" :header="t('admin.data.llmSystemPrompt')"><pre>{{ item.system_prompt }}</pre></a-collapse-panel>
-      <a-collapse-panel key="input" :header="t('admin.data.llmUserPrompt')"><pre>{{ item.user_prompt }}</pre></a-collapse-panel>
-      <a-collapse-panel v-if="item.reasoning_content" key="reasoning" :header="t('admin.data.llmReasoningContent')"><pre>{{ item.reasoning_content }}</pre></a-collapse-panel>
-      <a-collapse-panel key="response" :header="t('admin.data.llmRawResponse')"><pre>{{ item.response_content }}</pre></a-collapse-panel>
+      <a-collapse-panel key="system" :header="t('admin.data.llmSystemPrompt')">
+        <CopyableContent :text="item.system_prompt"><pre>{{ item.system_prompt }}</pre></CopyableContent>
+      </a-collapse-panel>
+      <a-collapse-panel key="input" :header="t('admin.data.llmUserPrompt')">
+        <CopyableContent :text="item.user_prompt"><pre>{{ item.user_prompt }}</pre></CopyableContent>
+      </a-collapse-panel>
+      <a-collapse-panel v-if="item.reasoning_content" key="reasoning" :header="t('admin.data.llmReasoningContent')">
+        <CopyableContent :text="item.reasoning_content"><pre>{{ item.reasoning_content }}</pre></CopyableContent>
+      </a-collapse-panel>
+      <a-collapse-panel key="response" :header="t('admin.data.llmRawResponse')">
+        <CopyableContent :text="item.response_content"><pre>{{ item.response_content }}</pre></CopyableContent>
+      </a-collapse-panel>
     </a-collapse>
   </div>
 </template>

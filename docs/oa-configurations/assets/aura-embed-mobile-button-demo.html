@@ -219,10 +219,10 @@
     }
     .aura-status-button,
     .aura-is-compact.aura-status-button {
-      min-height: 38px !important;
-      padding: 5px 8px 5px 5px !important;
+      min-height: 44px !important;
+      padding: 7px 12px 7px 7px !important;
       gap: 6px !important;
-      border-radius: 12px !important;
+      border-radius: 16px !important;
     }
     .aura-status-score,
     .aura-is-compact .aura-status-score {
@@ -241,8 +241,8 @@
     .aura-is-compact.aura-status-button--icon-only {
       padding: 5px !important;
       gap: 0 !important;
-      min-width: 38px !important;
-      width: 38px !important;
+      min-width: 44px;
+      width: 44px;
       justify-content: center !important;
     }
     .aura-status-button--icon-only .aura-status-copy,
@@ -280,7 +280,7 @@
       font: 600 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
       letter-spacing: .2px;
       white-space: nowrap;
-      box-shadow: var(--aura-status-shadow, 0 4px 16px rgba(15, 23, 42, .08)), 0 0 12px var(--aura-status-tint, transparent);
+      box-shadow: 0 6px 20px rgba(15, 23, 42, .08);
       backdrop-filter: blur(8px);
       -webkit-backdrop-filter: blur(8px);
       opacity: 0;
@@ -334,8 +334,8 @@
       cursor: pointer;
       touch-action: manipulation;
       -webkit-tap-highlight-color: transparent;
-      transition: background-color .45s ease, color .22s ease, width .52s cubic-bezier(.22, .7, .2, 1), transform .18s ease;
-      animation: auraBorderBreath 2.2s ease-in-out infinite;
+      transition: background-color .45s ease, border-color .45s ease, box-shadow .45s ease, color .45s ease, width .52s cubic-bezier(.22, 1, .36, 1), transform .25s ease;
+      animation: none;
     }
 
     .aura-status-button::before {
@@ -393,8 +393,8 @@
     .aura-status-icon svg { display: block; width: 18px; height: 18px; transform-origin: center; }
     .aura-status-icon-layer { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; }
     .aura-status-icon-layer svg { display: block; width: 18px; height: 18px; transform-origin: center; }
-    .aura-status-icon-layer--out { position: absolute; inset: 0; animation: auraIconSwapOut .3s ease both; }
-    .aura-status-icon-layer--in { animation: auraIconSwapIn .42s cubic-bezier(.22, .7, .2, 1) both; }
+    .aura-status-icon-layer--out { position: absolute; inset: 0; animation: auraIconSwapOut .24s ease both; }
+    .aura-status-icon-layer--in { animation: auraIconSwapIn .48s cubic-bezier(.22, 1, .36, 1) both; }
 
     .aura-status-copy { display: flex; align-items: center; min-width: 0; overflow: hidden; }
     .aura-status-copy-inner { display: inline-flex; align-items: center; gap: 9px; white-space: nowrap; }
@@ -409,7 +409,7 @@
       gap: 2px;
       flex: none;
       padding-left: 10px;
-      border-left: 1px solid #e8edf3;
+      border-left: 1px solid var(--aura-status-border);
       color: var(--aura-status-color);
       font-variant-numeric: tabular-nums;
       transition: color .45s ease;
@@ -428,14 +428,14 @@
     .aura-status-button[aria-disabled="true"]:not(.aura-status-button--loading) { color: var(--aura-status-color); }
     .aura-status-button[aria-disabled="true"]:not(.aura-status-button--loading)::before { animation: none; opacity: .12; }
 
-    .aura-status-button--enter { animation: auraButtonEnter .62s cubic-bezier(.22, .7, .2, 1) both, auraBorderBreath 2.2s ease-in-out infinite; }
+    .aura-status-button--enter { animation: auraButtonEnter .62s cubic-bezier(.22, .7, .2, 1) both; }
     .aura-status-button--enter .aura-status-icon { opacity: 0; transform: scale(.76); animation: auraIconEnter .38s cubic-bezier(.22, .7, .2, 1) .36s both; }
     .aura-status-button--enter .aura-status-copy, .aura-status-button--enter .aura-status-text { opacity: 0; transform: translate3d(-5px, 0, 0); animation: auraTextEnter .34s ease-out .53s both; }
     .aura-status-button--enter .aura-status-score { opacity: 0; transform: translate3d(-4px, 0, 0); animation: auraTextEnter .34s ease-out .6s both; }
     .aura-status-button--enter .aura-status-arrow { opacity: 0; transform: translate3d(-3px, 0, 0); animation: auraTextEnter .34s ease-out .66s both; }
 
     .aura-status-button--enter.aura-status-button--loading,
-    .aura-status-button--enter.aura-status-button--running { animation: auraButtonEnterSoft .4s cubic-bezier(.22, .7, .2, 1) both, auraBorderBreath 2.2s ease-in-out infinite; }
+    .aura-status-button--enter.aura-status-button--running { animation: auraButtonEnterSoft .4s cubic-bezier(.22, .7, .2, 1) both; }
     .aura-status-button--enter.aura-status-button--loading .aura-status-icon,
     .aura-status-button--enter.aura-status-button--running .aura-status-icon,
     .aura-status-button--enter.aura-status-button--loading .aura-status-copy,
@@ -455,7 +455,7 @@
     .aura-status-button--morph.aura-status-button--enter-fade .aura-status-icon-layer--in svg>* { stroke-dasharray: 1; stroke-dashoffset: 1; }
 
     .aura-status-button--loading .aura-status-icon>svg, .aura-status-button--loading .aura-status-icon-layer--in svg { animation: auraBtnSpin .9s linear infinite; }
-    .aura-status-button--running .aura-status-icon>svg .aura-running-star, .aura-status-button--running .aura-status-icon-layer--in .aura-running-star { transform-box: fill-box; transform-origin: center; animation: auraStarSpin 1.6s linear infinite; }
+    .aura-status-button--running .aura-status-icon>svg .aura-running-star, .aura-status-button--running .aura-status-icon-layer--in .aura-running-star { transform-box: fill-box; transform-origin: center; animation: auraStarSpin 3.6s cubic-bezier(.45, 0, .55, 1) infinite; }
 
     .aura-status-button--enter.aura-status-button--enter-shake .aura-status-icon svg>*, .aura-status-button--morph.aura-status-button--enter-shake .aura-status-icon-layer--in svg>* { animation: auraDraw .34s cubic-bezier(.22, .7, .2, 1) .08s forwards; }
     .aura-status-button--enter.aura-status-button--enter-shake .aura-status-icon svg>:nth-child(2), .aura-status-button--morph.aura-status-button--enter-shake .aura-status-icon-layer--in svg>:nth-child(2) { animation-delay: .22s; }
@@ -467,7 +467,7 @@
 
     @keyframes auraBtnSpin { to { transform: rotate(360deg); } }
     @keyframes auraDraw { to { stroke-dashoffset: 0; } }
-    @keyframes auraStarSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes auraStarSpin { 0% { transform: rotate(0deg) scale(.9); } 50% { transform: rotate(180deg) scale(1); } 100% { transform: rotate(360deg) scale(.9); } }
     @keyframes auraButtonEnter {
       0% { opacity: 0; transform: translate3d(-10px, 6px, 0) scale(.78); filter: blur(2px); }
       55% { opacity: 1; transform: translate3d(1px, -1px, 0) scale(1.035); filter: blur(0); }
@@ -492,15 +492,10 @@
       0%, 100% { opacity: .22; transform: scale(.985); }
       50% { opacity: .48; transform: scale(1.01); }
     }
-    @keyframes auraBorderBreath {
-      0%, 100% { box-shadow: 0 0 8px var(--aura-status-color), var(--aura-status-shadow, 0 4px 16px rgba(15, 23, 42, .08)); }
-      50% { box-shadow: 0 0 22px 2px var(--aura-status-color), 0 0 10px var(--aura-status-color), var(--aura-status-shadow, 0 4px 16px rgba(15, 23, 42, .08)); }
-    }
-    @keyframes auraIconSwapOut { to { opacity: 0; transform: scale(.62) rotate(-12deg); } }
+    @keyframes auraIconSwapOut { to { opacity: 0; transform: scale(.78) rotate(-20deg); filter: blur(2px); } }
     @keyframes auraIconSwapIn {
-      0% { opacity: 0; transform: scale(.62) rotate(12deg); }
-      70% { opacity: 1; transform: scale(1.08) rotate(-2deg); }
-      100% { opacity: 1; transform: none; }
+      0% { opacity: 0; transform: scale(.8) rotate(20deg); filter: blur(2px); }
+      100% { opacity: 1; transform: none; filter: blur(0); }
     }
     @keyframes auraCopySwapOut { to { opacity: 0; transform: translateY(8px); filter: blur(2px); } }
     @keyframes auraCopySwapIn {
@@ -512,9 +507,7 @@
 
     @media (hover: hover) {
       .aura-status-button:not([aria-disabled="true"]):not(.aura-status-button--morph):hover {
-        transform: translateY(-2px);
-        border-color: var(--aura-status-color);
-        box-shadow: 0 7px 22px rgba(15, 23, 42, .12);
+        transform: translateY(-1px);
       }
     }
 
@@ -776,8 +769,6 @@
     .aura-demo-reasoning-body p:last-child {
       margin-bottom: 0;
     }
-      background: rgba(100, 116, 139, 0.65);
-    }
 
     /* 内部业务卡片 */
     .aura-demo-substatus-bar {
@@ -994,16 +985,69 @@
       font-size: 12px;
       font-weight: 500;
     }
+
+    /* 动效预览：柔和表面、按钮与详情联动，移动端阅读时完整让位。 */
+    .aura-status-button { box-shadow: 0 4px 12px rgba(15, 23, 42, .07), 0 1px 2px rgba(15, 23, 42, .04); }
+    .aura-status-button::before { animation: none; opacity: .16; }
+    /* 完成态保留一圈小范围的状态色光晕，缓慢呼吸，吸引点击而不遮挡正文。 */
+    .aura-status-button--ready {
+      --aura-halo-soft: color-mix(in srgb, var(--aura-status-color) 14%, transparent);
+      --aura-halo-strong: color-mix(in srgb, var(--aura-status-color) 24%, transparent);
+      box-shadow: 0 0 0 1px var(--aura-halo-soft), 0 0 10px 1px var(--aura-halo-soft), 0 4px 12px rgba(15, 23, 42, .07);
+      animation: auraResultHalo 3.4s ease-in-out .52s infinite;
+    }
+    .aura-status-button--ready.aura-status-button--enter {
+      animation: auraButtonEnter .62s cubic-bezier(.22, .7, .2, 1) both, auraResultHalo 3.4s ease-in-out .62s infinite;
+    }
+    @keyframes auraResultHalo {
+      0%, 100% { box-shadow: 0 0 0 1px var(--aura-halo-soft), 0 0 8px 1px var(--aura-halo-soft), 0 4px 12px rgba(15, 23, 42, .07); }
+      50% { box-shadow: 0 0 0 1px var(--aura-halo-strong), 0 0 13px 2px var(--aura-halo-strong), 0 4px 12px rgba(15, 23, 42, .07); }
+    }
+
+    #auraMobileEmbedFloatContainer { transition: opacity .18s ease, transform .28s cubic-bezier(.22, 1, .36, 1); }
+    #auraMobileEmbedFloatContainer.aura-float--concealed { opacity: 0; transform: scale(.84); pointer-events: none; }
+    .aura-dialog-overlay { visibility: hidden; background: rgba(28, 31, 38, .24); backdrop-filter: none; -webkit-backdrop-filter: none; transition: opacity .24s ease; }
+    .aura-dialog-overlay.aura-dialog--visible { visibility: visible; }
+    .aura-dialog-box, .aura-dialog-overlay.aura-dialog--visible .aura-dialog-box { transform: none; opacity: 1; transition: none; border-radius: 22px; }
+    .aura-dialog-box { height: 86vh; height: 86dvh; }
+    .aura-dialog-close-btn { width: 40px; height: 40px; background: #f5f6f8; }
+    .aura-genie-layer { position: fixed; inset: 0; z-index: 2147483647; pointer-events: none; overflow: hidden; }
+    .aura-dialog-body { overscroll-behavior: contain; }
+    .stage-header { gap: 12px; flex-wrap: wrap; }
+    @media (max-width: 768px) {
+      .demo-wrapper { padding: 24px 16px 160px; }
+      .header h1 { font-size: 22px; }
+      .control-card, .stage-section { padding: 16px; }
+      .aura-dialog-overlay { padding: max(10px, env(safe-area-inset-top)) 8px max(10px, env(safe-area-inset-bottom)); }
+      .aura-dialog-box { width: 100%; height: 100%; max-height: none; border-radius: 20px; }
+      .aura-dialog-header { padding: 12px 16px; gap: 8px; }
+      .aura-dialog-header-left { gap: 6px; flex-wrap: wrap; min-width: 0; }
+      .aura-dialog-body { padding: 16px; }
+      .aura-dialog-footer-toolbar { padding: 10px 12px; flex-wrap: wrap; gap: 8px; }
+      .aura-dialog-segmented { max-width: 100%; flex-wrap: wrap; gap: 4px; }
+      .aura-dialog-segmented-btn { min-height: 36px; white-space: normal; }
+      .aura-demo-process-card { flex-wrap: wrap; }
+      .aura-demo-process-action { flex-direction: row; flex-wrap: wrap; border-left: 0; padding-left: 0; }
+      .aura-demo-foldable-bar { flex-wrap: wrap; gap: 8px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+      .aura-status-button--enter .aura-status-icon,
+      .aura-status-button--enter .aura-status-copy,
+      .aura-status-button--enter .aura-status-text,
+      .aura-status-button--enter .aura-status-score { opacity: 1; transform: none; }
+      .aura-status-icon svg > * { stroke-dashoffset: 0 !important; }
+    }
   </style>
 </head>
 <body>
   <div class="demo-wrapper">
     <div class="header">
-      <h1>AuraOA 嵌入胶囊按钮最新效果预览</h1>
-      <p>紧凑入口：审核显示图标与数字，总结显示文档图标与“总结” · PC 鼠标悬停 / 移动端长按查看详情气泡 · 自由拖拽与原地平滑变形</p>
+      <h1>AuraOA · 轻盈胶囊与神奇展开</h1>
+      <p>完成态微光晕 · 花瓣流转与图标渐变 · 详情从按钮舒展，关闭后卷回原位。桌面与手机均可体验。</p>
       <div class="tip-banner">
         <span class="tip-tag">交互说明</span>
-        <span>👉 全局统一步调：不再展示冗长的文字与箭头，悬浮胶囊可<strong>自由拖拽</strong>；PC 端<strong>鼠标悬停触碰</strong>或移动端<strong>长按 450ms</strong> 显示同主题<strong>详情气泡</strong>；轻触<strong>打开弹窗</strong>。</span>
+        <span>先选择一个状态，再点击悬浮胶囊。打开详情后，悬浮按钮会<strong>自动隐藏</strong>，关闭后恢复；可拖动按钮，更换飞入飞出的起点。手机上长按可查看状态说明。</span>
       </div>
     </div>
 
@@ -1024,7 +1068,7 @@
         <button type="button" data-scene="dual">双按钮独立变形 (审核+总结)</button>
       </div>
 
-      <h2>3. 嵌入详情弹窗优化效果预览（重点：全新顶部、无留白悬浮滚动条、单双卡片自适应）</h2>
+      <h2>3. 点击体验 · 从按钮展开，再卷回原位</h2>
       <div class="btn-row" id="dialogDemoRow">
         <button type="button" class="is-active" data-dialog-scene="suggest-only" style="background: #eff6ff; border-color: #3b82f6; color: #1d4ed8; font-weight: 600;">✨ 打开弹窗：单卡片（仅改动建议，宽屏自动 100% 撑满）</button>
         <button type="button" data-dialog-scene="both">打开弹窗：双卡片（风险项 + 改进建议，两列并排）</button>
@@ -1035,8 +1079,8 @@
     <!-- 舞台实时变形演示 -->
     <div class="stage-section">
       <div class="stage-header">
-        <h3>最新效果 · 胶囊原地平滑变形</h3>
-        <span style="font-size: 12px; color: #94a3b8;">无需重绘整个按钮</span>
+        <h3>状态过渡 · 柔和切换，轻盈落定</h3>
+        <span style="font-size: 12px; color: #94a3b8;">点击胶囊体验展开 / 收起</span>
       </div>
       <div class="stage-canvas">
         <div id="stageGroup" class="aura-status-group"></div>
@@ -1060,7 +1104,7 @@
   </div>
 
   <!-- 全新优化嵌入详情弹窗 DOM 结构 -->
-  <div id="auraOptimizedDialogOverlay" class="aura-dialog-overlay" role="dialog" aria-modal="true">
+  <div id="auraOptimizedDialogOverlay" class="aura-dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="auraDialogTitleText" aria-hidden="true" tabindex="-1" inert>
     <div class="aura-dialog-box">
       <!-- 优化 Header：极简纯净标题、右侧极简关闭按钮，绝不竖排折字 -->
       <div class="aura-dialog-header">
@@ -1070,7 +1114,7 @@
         </div>
         <div class="aura-dialog-header-right">
           <!-- 极简圆形关闭按钮 -->
-          <button type="button" class="aura-dialog-close-btn" id="auraDialogCloseBtn" title="关闭 (Esc)">
+          <button type="button" class="aura-dialog-close-btn" id="auraDialogCloseBtn" aria-label="关闭详情" title="关闭 (Esc)">
             <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
@@ -1217,7 +1261,7 @@
       'aura-status-button--enter', 'aura-status-button--loading', 'aura-status-button--running',
       'aura-status-button--enter-shake', 'aura-status-button--enter-pop', 'aura-status-button--enter-bounce',
       'aura-status-button--enter-rise', 'aura-status-button--enter-fade', 'aura-status-button--morph',
-      'aura-status-button--shine'
+      'aura-status-button--shine', 'aura-status-button--ready'
     ];
 
     var statusConfig = {
@@ -1257,7 +1301,13 @@
       if (status === 'red' || status === 'error') iconPath = '<path pathLength="1" d="M8 8l8 8" stroke-width="2.7"/><path pathLength="1" d="M16 8l-8 8" stroke-width="2.7"/>';
       if (status === 'yellow') iconPath = '<path pathLength="1" d="M12 4.1v9.4" stroke-width="3.6"/><path pathLength="1" d="M12 18.25v.02" stroke-width="4.4"/>';
       if (status === 'disabled') iconPath = '<path pathLength="1" d="M8 10V7a4 4 0 0 1 8 0v3" stroke-width="2.4"/><rect pathLength="1" x="5" y="10" width="14" height="11" rx="3" stroke-width="2.4"/>';
-      if (running) iconPath = '<path class="aura-running-star" d="m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4Z"/>';
+      if (running) {
+        iconPath = '<g class="aura-running-star">';
+        for (var ray = 0; ray < 12; ray++) {
+          iconPath += '<path d="M12 4v4" transform="rotate(' + (ray * 30) + ' 12 12)" stroke-width="2.2" opacity="' + (.5 + (ray % 3) * .22) + '"/>';
+        }
+        iconPath += '</g>';
+      }
       if (fetching) iconPath = '<circle cx="12" cy="12" r="8.1" fill="none" stroke="currentColor" stroke-width="2.7" opacity="0.22"/><path d="M12 3.9a8.1 8.1 0 0 1 0 16.2" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>';
       return iconPath;
     }
@@ -1274,6 +1324,7 @@
     }
     function statusMotionClass(status, isLoading, isEnter) {
       var prefix = isEnter ? ' aura-status-button--enter' : '';
+      if (!isLoading && ['green', 'yellow', 'red'].indexOf(status) !== -1) prefix += ' aura-status-button--ready';
       if (isLoading) return prefix + ' aura-status-button--loading';
       if (status === 'loading') return prefix + ' aura-status-button--running';
       if (status === 'red' || status === 'error') return prefix + ' aura-status-button--enter-shake';
@@ -1308,18 +1359,19 @@
       var parsed = parseButtonLabel(displayText);
       var compactClass = ' aura-is-compact';
       var iconOnlyClass = feature !== 'summary' && !parsed.scoreMatch ? ' aura-status-button--icon-only' : '';
-      return '<button id="' + btnId + '" type="button" class="aura-status-button' + compactClass + iconOnlyClass + statusMotionClass(status, isLoading, isEnter !== false) + '" aria-disabled="' + (unavailable || isLoading ? 'true' : 'false') + '" style="--aura-status-color:' + theme.color + ';--aura-status-tint:' + theme.bg + ';--aura-status-surface:' + theme.surface + ';--aura-status-border:' + theme.border + ';--aura-status-shadow:' + theme.shadow + ';">' +
+      return '<button id="' + btnId + '" type="button" class="aura-status-button' + compactClass + iconOnlyClass + statusMotionClass(status, isLoading, isEnter !== false) + '" aria-label="' + escapeButtonText(displayText) + '" aria-haspopup="dialog" aria-disabled="' + (unavailable || isLoading ? 'true' : 'false') + '" style="--aura-status-color:' + theme.color + ';--aura-status-tint:' + theme.bg + ';--aura-status-surface:' + theme.surface + ';--aura-status-border:' + theme.border + ';--aura-status-shadow:' + theme.shadow + ';">' +
         buttonInnerHtml(feature, status, displayText, isLoading) +
       '</button>';
     }
 
     function createButtonPainter(paint) {
+      var generation = sceneGeneration;
       var timer = null, next = null, shownAt = 0, busy = false;
       function flush() {
         timer = null;
         var payload = next;
         next = null;
-        if (!payload) return;
+        if (!payload || generation !== sceneGeneration) return;
         paint(payload);
         busy = isBusyStatus(payload.status, payload.isLoading);
         if (busy) shownAt = Date.now();
@@ -1366,6 +1418,7 @@
         fromWidth = btn.getBoundingClientRect().width;
       }
       applyButtonTheme(btn, theme);
+      btn.setAttribute('aria-label', displayText);
       btn.setAttribute('aria-disabled', (unavailable || isLoading) ? 'true' : 'false');
       btn.classList.add('aura-is-compact');
       btn.classList.toggle('aura-status-button--icon-only', feature !== 'summary' && !parsed.scoreMatch);
@@ -1736,8 +1789,10 @@
       return painters[id];
     }
 
+    var sceneGeneration = 0;
     var currentScene = 'fast-pass';
     function playScene(name) {
+      var generation = ++sceneGeneration;
       currentScene = name;
       var scene = scenes[name];
       stageGroup.innerHTML = '';
@@ -1751,8 +1806,9 @@
 
       var elapsed = 0;
       scene.steps.forEach(function (step, index) {
-        elapsed += index === 0 ? 0 : (step.wait || scene.delay);
+        elapsed += index === 0 ? 0 : (step.wait == null ? scene.delay : step.wait);
         setTimeout(function () {
+          if (generation !== sceneGeneration) return;
           painterFor(step.id + '_stage')({
             group: stageGroup, id: step.id + '_stage', feature: step.feature, status: step.status, text: step.text, loading: step.loading
           });
@@ -1850,23 +1906,224 @@
       });
     }
 
-    function openOptimizedEmbedDialog(scene, title) {
-      if (title) {
-        document.getElementById('auraDialogTitleText').textContent = title;
+    /* 沿用 credit-copilot 的扫描带卷曲：相邻带共用边界，连续收拢到触发按钮。 */
+    function createDemoGenie(panel, anchor) {
+      var box = panel.getBoundingClientRect();
+      var count = Math.max(24, Math.min(48, Math.ceil(box.height / 18)));
+      var bandHeight = box.height / count;
+      var host = document.createElement('div');
+      host.className = 'aura-genie-layer';
+      host.setAttribute('aria-hidden', 'true');
+      host.inert = true;
+      var slices = [];
+      var appearance = getComputedStyle(panel);
+      // 共用轻量内容轮廓，不复制可交互 DOM；正文在展开落定后淡入。
+      var shapes = [];
+      var styleCache = new Map();
+      panel.querySelectorAll('h3, h4, p, button, .aura-demo-process-card, .aura-demo-insight-card, .aura-demo-rule-item').forEach(function (node) {
+        if (shapes.length >= 28) return;
+        var r = node.getBoundingClientRect();
+        var left = Math.max(r.left, box.left), top = Math.max(r.top, box.top);
+        var right = Math.min(r.right, box.right), bottom = Math.min(r.bottom, box.bottom);
+        for (var parent = node.parentElement; parent && parent !== panel; parent = parent.parentElement) {
+          var style = styleCache.get(parent);
+          if (!style) { style = getComputedStyle(parent); styleCache.set(parent, style); }
+          if (style.overflowY !== 'visible') {
+            var bounds = parent.getBoundingClientRect();
+            top = Math.max(top, bounds.top); bottom = Math.min(bottom, bounds.bottom);
+          }
+        }
+        if (right <= left || bottom <= top) return;
+        var text = node.matches('h3, h4, p');
+        var height = text ? Math.min(5, bottom - top) : bottom - top;
+        shapes.push('<rect x="' + (left - box.left) + '" y="' + (top - box.top + (text ? (bottom - top - height) / 2 : 0)) + '" width="' + (text ? Math.min(right - left, box.width * .4) : right - left) + '" height="' + height + '" rx="' + Math.min(10, height / 2) + '" fill="' + (text ? '#c2c9d3' : '#edf1f6') + '"/>');
+      });
+      var impression = 'url("data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="' + box.width + '" height="' + box.height + '">' + shapes.join('') + '</svg>') + '")';
+      for (var i = 0; i < count; i++) {
+        var slice = document.createElement('div');
+        Object.assign(slice.style, { position: 'absolute', left: '0', top: '0', width: box.width + 'px', height: (bandHeight + (i === count - 1 ? 0 : .5)) + 'px', overflow: 'hidden', transformOrigin: '0 0', willChange: 'transform' });
+        var shell = document.createElement('div');
+        Object.assign(shell.style, { width: box.width + 'px', height: box.height + 'px', backgroundColor: appearance.backgroundColor, backgroundImage: impression, borderRadius: appearance.borderRadius, transform: 'translateY(' + (-i * bandHeight) + 'px)' });
+        slice.appendChild(shell);
+        host.appendChild(slice);
+        slices.push(slice);
       }
+      document.body.appendChild(host);
+      var clamp = function (n, lo, hi) { return Math.max(lo, Math.min(hi, n)); };
+      var mix = function (a, b, t) { return a + (b - a) * t; };
+      var cx = anchor.left + anchor.width / 2, cy = anchor.top + anchor.height / 2;
+      var mouth = clamp(Math.round((cy - box.top) / box.height * count - .5), 0, count - 1);
+      var maxDistance = Math.max(mouth, count - 1 - mouth, 1);
+      return {
+        destroy: function () { host.remove(); },
+        apply: function (progress, closing, opacity) {
+          var amounts = [], heights = [], tops = [], centers = [];
+          for (var j = 0; j < count; j++) {
+            var t = clamp((progress - Math.abs(j - mouth) / maxDistance * .16) / .84, 0, 1);
+            var amount = t * t * (3 - 2 * t);
+            amounts.push(amount);
+            heights.push(mix(bandHeight, anchor.height / count, amount));
+          }
+          tops[mouth] = mix(box.top + (mouth + .5) * bandHeight, cy, amounts[mouth]) - heights[mouth] / 2;
+          for (var j = mouth - 1; j >= 0; j--) tops[j] = tops[j + 1] - heights[j];
+          for (var j = mouth + 1; j < count; j++) tops[j] = tops[j - 1] + heights[j - 1];
+          var shift = anchor.height / count * (mouth + .5 - count / 2) * progress;
+          for (var j = 0; j < count; j++) {
+            var width = mix(box.width, clamp(anchor.width / box.width, .04, 1) * box.width, amounts[j]);
+            var x = mix(box.left + box.width / 2, cx, amounts[j]);
+            centers.push({ left: x - width / 2, right: x + width / 2, y: tops[j] + shift + heights[j] / 2 });
+          }
+          var edges = [{ left: centers[0].left, right: centers[0].right, y: centers[0].y - heights[0] / 2 }];
+          for (var j = 1; j < count; j++) edges.push({ left: (centers[j - 1].left + centers[j].left) / 2, right: (centers[j - 1].right + centers[j].right) / 2, y: centers[j].y - heights[j] / 2 });
+          edges.push({ left: centers[count - 1].left, right: centers[count - 1].right, y: centers[count - 1].y + heights[count - 1] / 2 });
+          slices.forEach(function (slice, j) {
+            var top = edges[j], bottom = edges[j + 1];
+            var width = top.right - top.left;
+            var ratio = width / Math.max(.001, bottom.right - bottom.left);
+            var matrix = [width / box.width, 0, 0, 0, (bottom.left * ratio - top.left) / bandHeight, (bottom.y * ratio - top.y) / bandHeight, 0, (ratio - 1) / bandHeight, 0, 0, 1, 0, top.left, top.y, 0, 1];
+            slice.style.transform = 'matrix3d(' + matrix.join(',') + ')';
+          });
+          var tail = progress > .88 ? 1 - Math.pow((progress - .88) / .12, 2) : 1;
+          host.style.opacity = opacity * tail;
+        }
+      };
+    }
+
+    var dialogPanel = dialogOverlay.querySelector('.aura-dialog-box');
+    var dialogOpen = false, dialogProgress = 1, dialogFrame = 0, dialogLayer = null;
+    var dialogTrigger = null, dialogAnchor = null, previousOverflow = '';
+    var demoContent = document.querySelector('.demo-wrapper');
+
+    // 对三次贝塞尔的时间轴求解，展开快速响应后缓慢落定，收起平稳加速后减速。
+    function dialogEase(time, closing) {
+      var x1 = closing ? .35 : .22, y1 = closing ? 0 : .65;
+      var x2 = closing ? .5 : .2, y2 = 1;
+      function sample(t, a, b) { return 3 * (1 - t) * (1 - t) * t * a + 3 * (1 - t) * t * t * b + t * t * t; }
+      var low = 0, high = 1, t = time;
+      for (var i = 0; i < 14; i++) {
+        t = (low + high) / 2;
+        if (sample(t, x1, x2) < time) low = t; else high = t;
+      }
+      return time === 0 || time === 1 ? time : sample(t, y1, y2);
+    }
+
+    function paintDialogMotion(closing) {
+      // 正文与卷曲外壳交叉交接，消除先撤掉外壳、再淡入正文造成的空白闪动。
+      var blend = Math.max(0, Math.min(1, 1 - dialogProgress / .12));
+      blend = blend * blend * (3 - 2 * blend);
+      dialogPanel.style.visibility = blend > 0 ? 'visible' : 'hidden';
+      dialogPanel.style.opacity = blend;
+      dialogLayer.apply(dialogProgress, closing, 1 - blend);
+      dialogOverlay.style.backgroundColor = 'rgba(28,31,38,' + (.24 * (1 - dialogProgress)) + ')';
+      // 接近按钮时提前恢复入口，与卷回的尾段重叠，避免最后一帧突然出现。
+      var reveal = Math.max(0, Math.min(1, (dialogProgress - .86) / .14));
+      floatContainer.style.opacity = reveal;
+      floatContainer.style.transform = 'scale(' + (.84 + .16 * reveal) + ')';
+    }
+
+
+    function finishDialogMotion() {
+      cancelAnimationFrame(dialogFrame);
+      if (dialogLayer) { dialogLayer.destroy(); dialogLayer = null; }
+      dialogPanel.style.visibility = '';
+      dialogPanel.style.opacity = '';
+      dialogOverlay.style.backgroundColor = '';
+      floatContainer.style.opacity = '';
+      floatContainer.style.transform = '';
+      floatContainer.style.transition = '';
+      dialogProgress = dialogOpen ? 0 : 1;
+      if (dialogOpen) {
+        dialogPanel.inert = false;
+        dialogCloseBtn.focus({ preventScroll: true });
+      } else {
+        dialogOverlay.classList.remove('aura-dialog--visible');
+        dialogOverlay.setAttribute('aria-hidden', 'true');
+        dialogOverlay.inert = true;
+        demoContent.inert = false;
+        floatContainer.inert = false;
+        floatContainer.classList.remove('aura-float--concealed');
+        document.body.style.overflow = previousOverflow;
+        if (dialogTrigger && dialogTrigger.isConnected) {
+          dialogTrigger.setAttribute('aria-expanded', 'false');
+          dialogTrigger.focus({ preventScroll: true });
+        }
+        document.removeEventListener('keydown', onDialogKeyDown);
+      }
+    }
+
+    function animateDialog(target) {
+      cancelAnimationFrame(dialogFrame);
+      if (prefersReducedMotion()) { finishDialogMotion(); return; }
+      // 中途关闭沿用当前卷曲进度，避免快速点击导致闪回或留下动画层。
+      if (!dialogLayer) dialogLayer = createDemoGenie(dialogPanel, dialogAnchor);
+      floatContainer.style.transition = 'none';
+      paintDialogMotion(target === 1);
+      dialogPanel.inert = true;
+      dialogOverlay.focus({ preventScroll: true });
+      var from = dialogProgress, start = null;
+      var duration = Math.max(80, (target === 1 ? 520 : 640) * Math.abs(target - from));
+      function frame(now) {
+        if (start === null) start = now;
+        var t = Math.min(1, (now - start) / duration);
+        var eased = dialogEase(t, target === 1);
+        dialogProgress = from + (target - from) * eased;
+        paintDialogMotion(target === 1);
+        if (t < 1) dialogFrame = requestAnimationFrame(frame);
+        else finishDialogMotion();
+      }
+      dialogFrame = requestAnimationFrame(frame);
+    }
+
+    function openOptimizedEmbedDialog(scene, title, trigger) {
+      if (dialogOpen || dialogLayer) return;
+      document.getElementById('auraDialogTitleText').textContent = title || 'AI 流程审核';
       renderDialogInsights(scene || activeDialogScene);
+      hideTooltip();
+      dialogTrigger = trigger || floatGroup.querySelector('button');
+      dialogAnchor = dialogTrigger.getBoundingClientRect();
+      dialogTrigger.setAttribute('aria-expanded', 'true');
+      previousOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      dialogOpen = true;
+      dialogOverlay.inert = false;
+      dialogOverlay.setAttribute('aria-hidden', 'false');
       dialogOverlay.classList.add('aura-dialog--visible');
+      document.getElementById('auraDialogBody').scrollTop = 0;
+      dialogOverlay.focus({ preventScroll: true });
+      demoContent.inert = true;
+      floatContainer.inert = true;
+      floatContainer.classList.add('aura-float--concealed');
       document.addEventListener('keydown', onDialogKeyDown);
+      animateDialog(0);
     }
 
     function closeOptimizedEmbedDialog() {
-      dialogOverlay.classList.remove('aura-dialog--visible');
-      document.removeEventListener('keydown', onDialogKeyDown);
+      if (!dialogOpen) return;
+      dialogOpen = false;
+      // 完全展开后重新测量，适配窗口变化和运行中按钮宽度变化。
+      if (!dialogLayer && dialogTrigger && dialogTrigger.isConnected) {
+        // 测量原位置，排除隐藏时缩小容器的视觉变换。
+        floatContainer.style.transition = 'none';
+        floatContainer.style.transform = 'none';
+        dialogAnchor = dialogTrigger.getBoundingClientRect();
+        floatContainer.style.transform = '';
+        floatContainer.style.transition = '';
+      }
+      animateDialog(1);
     }
 
     function onDialogKeyDown(e) {
-      if (e.key === 'Escape') closeOptimizedEmbedDialog();
+      if (e.key === 'Escape') { e.preventDefault(); closeOptimizedEmbedDialog(); }
+      if (e.key !== 'Tab') return;
+      var focusable = Array.from(dialogPanel.querySelectorAll('button, [href], input, [tabindex="0"]')).filter(function (node) { return !node.disabled && node.getClientRects().length; });
+      if (dialogLayer || !focusable.length) { e.preventDefault(); return; }
+      var first = focusable[0], last = focusable[focusable.length - 1];
+      if (e.shiftKey && (document.activeElement === first || document.activeElement === dialogOverlay)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (document.activeElement === last || document.activeElement === dialogOverlay)) { e.preventDefault(); first.focus(); }
     }
+
+    // 旋转屏幕或调整窗口时结束当前过渡，使用新的响应式布局。
+    window.addEventListener('resize', function () { if (dialogLayer) finishDialogMotion(); });
 
     dialogCloseBtn.addEventListener('click', closeOptimizedEmbedDialog);
     dialogOverlay.addEventListener('click', function (e) {
@@ -1886,7 +2143,7 @@
       var btn = e.target.closest('button');
       if (!btn) return;
       var scene = btn.getAttribute('data-dialog-scene');
-      openOptimizedEmbedDialog(scene);
+      openOptimizedEmbedDialog(scene, 'AI 流程审核', btn);
     });
 
     // 胶囊按钮点击处理：直接调起精致弹窗
@@ -1897,9 +2154,9 @@
         return;
       }
       var btn = e.target.closest('.aura-status-button');
-      if (!btn) return;
+      if (!btn || btn.getAttribute('aria-disabled') === 'true') return;
       var isSummary = btn.id.indexOf('Summary') !== -1;
-      openOptimizedEmbedDialog(activeDialogScene, isSummary ? 'AI 流程总结' : 'AI 流程审核');
+      openOptimizedEmbedDialog(activeDialogScene, isSummary ? 'AI 流程总结' : 'AI 流程审核', btn);
     }
 
     stageGroup.addEventListener('click', handleButtonClick);
