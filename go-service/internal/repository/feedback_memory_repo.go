@@ -3,6 +3,7 @@ package repository
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -116,7 +117,10 @@ func (r *FeedbackMemoryRepo) Workspace(c *gin.Context, scope dto.FeedbackMemoryS
 	return out, err
 }
 
-// Mutate 锁定记忆头后修改素材，并递增修订号以使旧生成草稿失效。
+// errFeedbackMemoryUnchanged 标记事务未修改任何素材，不递增输入修订号。
+var errFeedbackMemoryUnchanged = errors.New("反馈素材内容未修改")
+
+// Mutate 锁定记忆头后修改素材，仅实际变更递增修订号使旧生成草稿失效。
 func (r *FeedbackMemoryRepo) Mutate(c *gin.Context, scope dto.FeedbackMemoryScope, fn func(*FeedbackMemoryRepo, *model.FeedbackMemory) error) error {
 	m, err := r.ensure(c, scope)
 	if err != nil {
@@ -128,6 +132,9 @@ func (r *FeedbackMemoryRepo) Mutate(c *gin.Context, scope dto.FeedbackMemoryScop
 			return err
 		}
 		if err := fn(repo, m); err != nil {
+			if errors.Is(err, errFeedbackMemoryUnchanged) {
+				return nil
+			}
 			return err
 		}
 		return repo.WithTenant(c).Model(m).Updates(map[string]interface{}{"revision": m.Revision + 1, "updated_at": apptime.Now()}).Error
@@ -154,6 +161,9 @@ func (r *FeedbackMemoryRepo) SaveEntry(c *gin.Context, id uuid.UUID, req dto.Fee
 		}
 		if row.SourceType == "comment" {
 			req.Content = row.Content
+		}
+		if strings.TrimSpace(row.Content) == strings.TrimSpace(req.Content) && strings.TrimSpace(row.Condition) == strings.TrimSpace(req.Condition) && row.Enabled == req.Enabled {
+			return errFeedbackMemoryUnchanged
 		}
 		// 已植入素材由版本条目维护，禁止通过旧接口修改或重新参与生成。
 		if row.ImplantedVersionID != nil {
@@ -239,14 +249,20 @@ func (r *FeedbackMemoryRepo) ImportComments(c *gin.Context, req dto.FeedbackMemo
 		if count+int64(len(rows))-imported > 200 {
 			return ErrFeedbackMemoryLimit
 		}
+		var added int64
 		for _, row := range rows {
 			raw, _ := json.Marshal(row)
 			now := apptime.Now()
 			id := row.ID
 			entry := model.FeedbackMemoryEntry{ID: uuid.New(), TenantID: m.TenantID, MemoryID: m.ID, SourceType: "comment", SourceID: &id, Content: row.Content, Enabled: true, SourceSnapshot: raw, CreatedBy: c.GetString("username"), CreatedAt: now, UpdatedAt: now}
-			if err := repo.WithTenant(c).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "memory_id"}, {Name: "source_id"}}, TargetWhere: clause.Where{Exprs: []clause.Expression{clause.Expr{SQL: "deleted_at IS NULL"}}}, DoNothing: true}).Create(&entry).Error; err != nil {
-				return err
+			result := repo.WithTenant(c).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "memory_id"}, {Name: "source_id"}}, TargetWhere: clause.Where{Exprs: []clause.Expression{clause.Expr{SQL: "deleted_at IS NULL"}}}, DoNothing: true}).Create(&entry)
+			if result.Error != nil {
+				return result.Error
 			}
+			added += result.RowsAffected
+		}
+		if added == 0 {
+			return errFeedbackMemoryUnchanged
 		}
 		return nil
 	})
@@ -431,6 +447,10 @@ func (r *FeedbackMemoryRepo) SaveDraft(c *gin.Context, scope dto.FeedbackMemoryS
 		}
 		if v.VersionNo != m.LastVersion || v.EditRevision != editRevision || inputRevision != m.Revision || (v.Status == "draft" && v.InputRevision != m.Revision) {
 			return ErrFeedbackMemoryStale
+		}
+		if model.EqualFeedbackMemoryItems(v.Items, items) {
+			out = v
+			return nil
 		}
 		now := apptime.Now()
 		if v.Status == "published" {

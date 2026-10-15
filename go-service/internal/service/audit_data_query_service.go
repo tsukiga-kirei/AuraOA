@@ -354,31 +354,61 @@ func canonicalQueryJSON(value interface{}) ([]byte, error) {
 		return nil, err
 	}
 	var normalized interface{}
-	if err = json.Unmarshal(raw, &normalized); err != nil {
+	if err = decodeContentJSON(raw, &normalized); err != nil {
 		return nil, err
 	}
 	return json.Marshal(normalized)
 }
 
 func (s *AuditDataQueryService) fingerprint(c *gin.Context, def model.AuditDataQueryDefinition) (string, error) {
+	hash, _, err := s.queryFingerprints(c, def)
+	return hash, err
+}
+
+// queryFingerprints 同时兼容升级前的成功预览，不因新增默认字段要求无意义的重新验证。
+func (s *AuditDataQueryService) queryFingerprints(c *gin.Context, def model.AuditDataQueryDefinition) (string, string, error) {
 	t, err := s.tenant(c)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if t.OADBConnectionID == nil {
-		return "", newServiceError(errcode.ErrOAConnectionFailed, "租户未配置 OA 连接")
+		return "", "", newServiceError(errcode.ErrOAConnectionFailed, "租户未配置 OA 连接")
 	}
 	conn, err := s.external.oaConnRepo.FindByID(*t.OADBConnectionID)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	// JSONB 会重排列顺序，配置元数据的原始 JSON 也须规范化，避免预览后无法发布。
-	raw, err := canonicalQueryJSON([]interface{}{def, conn.ID, conn.UpdatedAt})
+	return queryContentFingerprints(def, conn.ID, conn.UpdatedAt)
+}
+
+func queryContentFingerprints(def model.AuditDataQueryDefinition, connectionID uuid.UUID, updatedAt time.Time) (string, string, error) {
+	raw, err := json.Marshal(def)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	h := sha256.Sum256(raw)
-	return hex.EncodeToString(h[:]), nil
+	content, err := model.CanonicalQueryDefinition(raw)
+	if err != nil {
+		return "", "", err
+	}
+	normalized, err := canonicalQueryJSON([]interface{}{json.RawMessage(content), connectionID, updatedAt})
+	if err != nil {
+		return "", "", err
+	}
+	// 原指纹使用普通 JSON 反序列化，保留同一配置和同一数据源的升级兼容入口。
+	legacyRaw, err := json.Marshal([]interface{}{def, connectionID, updatedAt})
+	if err != nil {
+		return "", "", err
+	}
+	var legacyValue interface{}
+	if err = json.Unmarshal(legacyRaw, &legacyValue); err != nil {
+		return "", "", err
+	}
+	legacyRaw, err = json.Marshal(legacyValue)
+	if err != nil {
+		return "", "", err
+	}
+	currentSum, legacySum := sha256.Sum256(normalized), sha256.Sum256(legacyRaw)
+	return hex.EncodeToString(currentSum[:]), hex.EncodeToString(legacySum[:]), nil
 }
 
 // Publish 核对当前草稿及连接的预览指纹后发布不可变版本。
@@ -395,11 +425,11 @@ func (s *AuditDataQueryService) Publish(c *gin.Context, id uuid.UUID) (*model.Au
 	if !check.Valid {
 		return nil, newServiceError(errcode.ErrParamValidation, check.Issues[0].Message)
 	}
-	hash, err := s.fingerprint(c, def)
+	hash, legacyHash, err := s.queryFingerprints(c, def)
 	if err != nil {
 		return nil, err
 	}
-	v, err := s.repo.Publish(c, id, hash)
+	v, err := s.repo.Publish(c, id, hash, item.Draft, legacyHash)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrResourceConflict, "请先保存草稿并对当前版本成功运行预览")
 	}
@@ -702,6 +732,31 @@ func (s *AuditDataQueryService) Preview(c *gin.Context, req QueryPreviewRequest)
 	if !check.Valid {
 		return nil, newServiceError(errcode.ErrParamValidation, check.Issues[0].Message)
 	}
+	// 先绑定本次实际验证的草稿与数据源，预览期间发生变化时不签发验证标记。
+	var savedID uuid.UUID
+	var previewHash string
+	if req.QueryID != "" && req.VersionNo == 0 {
+		var err error
+		savedID, err = uuid.Parse(req.QueryID)
+		if err != nil {
+			return nil, newServiceError(errcode.ErrParamValidation, "查询ID无效")
+		}
+		item, err := s.Get(c, savedID)
+		if err != nil {
+			return nil, err
+		}
+		raw, err := json.Marshal(def)
+		if err != nil {
+			return nil, err
+		}
+		if !model.EqualQueryDefinitions(item.Draft, raw) {
+			return nil, newServiceError(errcode.ErrResourceConflict, "查询草稿已变化，请保存后重新预览")
+		}
+		previewHash, err = s.fingerprint(c, def)
+		if err != nil {
+			return nil, err
+		}
+	}
 	e, t, err := s.executor(c)
 	if err != nil {
 		return nil, err
@@ -747,15 +802,20 @@ func (s *AuditDataQueryService) Preview(c *gin.Context, req QueryPreviewRequest)
 		Parameters: values, QueriedAt: apptime.FormatRFC3339(apptime.Now()), Status: "success", Result: result,
 	}
 	evidence.ModelText = formatQueryEvidence(*evidence)
-	if req.QueryID != "" && req.VersionNo == 0 {
-		if id, er := uuid.Parse(req.QueryID); er == nil {
-			hash, er := s.fingerprint(c, def)
-			if er == nil {
-				raw, _ := json.Marshal(def)
-				if er = s.repo.MarkTested(c, id, raw, hash); er != nil {
-					return nil, newServiceError(errcode.ErrDatabase, "预览成功，但记录验证状态失败")
-				}
+	if savedID != uuid.Nil {
+		hash, err := s.fingerprint(c, def)
+		if err != nil {
+			return nil, err
+		}
+		if hash != previewHash {
+			return nil, newServiceError(errcode.ErrResourceConflict, "预览期间数据源配置已变化，请重新预览")
+		}
+		raw, _ := json.Marshal(def)
+		if err := s.repo.MarkTested(c, savedID, raw, previewHash); err != nil {
+			if errors.Is(err, repository.ErrDataQueryDraftChanged) {
+				return nil, newServiceError(errcode.ErrResourceConflict, err.Error())
 			}
+			return nil, newServiceError(errcode.ErrDatabase, "预览成功，但记录验证状态失败")
 		}
 	}
 	return evidence, nil

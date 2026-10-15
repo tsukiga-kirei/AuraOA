@@ -48,22 +48,47 @@ func (r *AuditDataQueryRepo) Get(c *gin.Context, id uuid.UUID) (*model.AuditData
 	return &item, err
 }
 
+// Save 在行锁内比较实际内容；原样保存保留成功预览，分类单独更新。
 func (r *AuditDataQueryRepo) Save(c *gin.Context, item *model.AuditDataQuery, create bool) error {
 	if create {
 		return r.WithTenant(c).WithContext(c.Request.Context()).Create(item).Error
 	}
-	return r.WithTenant(c).WithContext(c.Request.Context()).
-		Model(&model.AuditDataQuery{}).Where("id = ?", item.ID).
-		Updates(map[string]interface{}{
-			"name": item.Name, "category": item.Category, "draft": item.Draft,
-			"updated_at": apptime.Now(), "tested_hash": "", "tested_at": nil,
-		}).Error
+	return r.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
+		scoped := NewAuditDataQueryRepo(tx)
+		var current model.AuditDataQuery
+		if err := scoped.WithTenant(c).Clauses(clause.Locking{Strength: "UPDATE"}).First(&current, "id = ? AND archived = false", item.ID).Error; err != nil {
+			return err
+		}
+		changed := !model.EqualQueryDefinitions(current.Draft, item.Draft)
+		if !changed && current.Name == item.Name && current.Category == item.Category {
+			return nil
+		}
+		fields := map[string]interface{}{"name": item.Name, "category": item.Category, "updated_at": apptime.Now()}
+		if changed {
+			fields["draft"] = item.Draft
+			fields["tested_hash"] = ""
+			fields["tested_at"] = nil
+		}
+		return scoped.WithTenant(c).Model(&current).Updates(fields).Error
+	})
 }
 
+// ErrDataQueryDraftChanged 表示预览期间草稿已被另一个编辑替换。
+var ErrDataQueryDraftChanged = errors.New("查询草稿已变化，请保存后重新预览")
+
+// MarkTested 仅验证当前草稿的相同内容，默认值补齐与 JSONB 键重排不使预览失效。
 func (r *AuditDataQueryRepo) MarkTested(c *gin.Context, id uuid.UUID, draft datatypes.JSON, hash string) error {
-	return r.WithTenant(c).WithContext(c.Request.Context()).
-		Model(&model.AuditDataQuery{}).Where("id = ? AND draft = ?::jsonb", id, string(draft)).
-		Updates(map[string]interface{}{"tested_hash": hash, "tested_at": apptime.Now()}).Error
+	return r.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
+		scoped := NewAuditDataQueryRepo(tx)
+		var item model.AuditDataQuery
+		if err := scoped.WithTenant(c).Clauses(clause.Locking{Strength: "UPDATE"}).First(&item, "id = ? AND archived = false", id).Error; err != nil {
+			return err
+		}
+		if !model.EqualQueryDefinitions(item.Draft, draft) {
+			return ErrDataQueryDraftChanged
+		}
+		return scoped.WithTenant(c).Model(&item).Updates(map[string]interface{}{"tested_hash": hash, "tested_at": apptime.Now()}).Error
+	})
 }
 
 // ErrDataQueryReferenced 表示仍有当前流程配置引用该条目，不能删除。
@@ -129,7 +154,7 @@ func (r *AuditDataQueryRepo) Version(c *gin.Context, id uuid.UUID, no int) (*mod
 }
 
 // Publish 通过行锁串行分配版本号，并验证预览的是当前草稿及当前数据源。
-func (r *AuditDataQueryRepo) Publish(c *gin.Context, id uuid.UUID, hash string) (*model.AuditDataQueryVersion, error) {
+func (r *AuditDataQueryRepo) Publish(c *gin.Context, id uuid.UUID, hash string, expected datatypes.JSON, legacyHash string) (*model.AuditDataQueryVersion, error) {
 	var version model.AuditDataQueryVersion
 	err := r.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
 		scoped := NewAuditDataQueryRepo(tx)
@@ -137,8 +162,22 @@ func (r *AuditDataQueryRepo) Publish(c *gin.Context, id uuid.UUID, hash string) 
 		if err := scoped.WithTenant(c).Clauses(clause.Locking{Strength: "UPDATE"}).First(&item, "id = ? AND archived = false", id).Error; err != nil {
 			return err
 		}
-		if item.TestedHash == "" || item.TestedHash != hash {
+		if !model.EqualQueryDefinitions(item.Draft, expected) {
+			return ErrDataQueryDraftChanged
+		}
+		if item.TestedHash == "" || (item.TestedHash != hash && item.TestedHash != legacyHash) {
 			return fmt.Errorf("请先对当前已保存草稿运行成功的预览")
+		}
+		// 先验证当前数据源与预览，再去重发布；连接变化仍需重新预览。
+		if item.LatestVersion > 0 {
+			latest, err := scoped.Version(c, id, item.LatestVersion)
+			if err != nil {
+				return err
+			}
+			if model.EqualQueryDefinitions(latest.Definition, item.Draft) {
+				version = *latest
+				return nil
+			}
 		}
 		version = model.AuditDataQueryVersion{
 			ID: uuid.New(), TenantID: item.TenantID, QueryID: id,

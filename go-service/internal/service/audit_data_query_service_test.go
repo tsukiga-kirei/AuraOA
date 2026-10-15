@@ -1,9 +1,12 @@
 package service
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/oa"
@@ -159,5 +162,37 @@ func TestQueryBuilderFingerprintCanonicalJSON(t *testing.T) {
 	}
 	if string(a) != string(b) {
 		t.Fatalf("JSONB 重排改变了查询指纹: %s != %s", a, b)
+	}
+}
+
+// TestQueryPreviewFingerprintKeepsContentAndConnectionBound 验证兼容默认值不会解绑数据源校验。
+func TestQueryPreviewFingerprintKeepsContentAndConnectionBound(t *testing.T) {
+	legacy := model.AuditDataQueryDefinition{SQL: "SELECT 1 AS 数量", Dialect: "mysql"}
+	current := legacy
+	current.Mode = "sql"
+	current.Tables = []string{}
+	current.Parameters = []model.AuditDataQueryParameter{}
+	current.AIContext = &model.AuditDataQueryAIContext{OAModule: "general", FieldNotes: map[string]string{}}
+	connectionID := uuid.New()
+	now := time.Date(2026, 10, 15, 1, 0, 0, 0, time.UTC)
+	first, oldHash, err := queryContentFingerprints(legacy, connectionID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := queryContentFingerprints(current, connectionID, now)
+	if err != nil || first != second {
+		t.Fatal("补默认字段不能改变内容预览指纹")
+	}
+	raw, _ := json.Marshal([]interface{}{legacy, connectionID, now})
+	var old interface{}
+	_ = json.Unmarshal(raw, &old)
+	raw, _ = json.Marshal(old)
+	sum := sha256.Sum256(raw)
+	if oldHash != hex.EncodeToString(sum[:]) {
+		t.Fatal("升级前验证指纹兼容失败")
+	}
+	changed, changedOld, err := queryContentFingerprints(current, connectionID, now.Add(time.Second))
+	if err != nil || changed == first || changedOld == oldHash {
+		t.Fatal("数据源修改后必须使旧预览失效")
 	}
 }
