@@ -32,6 +32,7 @@ import {
 import dayjs, { type Dayjs } from 'dayjs'
 import 'dayjs/locale/zh-cn'
 import { renderSafeMarkdown } from '~/utils/markdown'
+import { writeClipboardText } from '~/utils/clipboard'
 import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from '~/composables/useI18n'
 import { message } from 'ant-design-vue'
@@ -59,6 +60,7 @@ import type {
   TenantAgentSessionFilter,
 } from '~/types/admin-data'
 import type { ChatMessageItem } from '~/types/chat'
+import type { SummaryBlockResult } from '~/types/process-summary'
 
 definePageMeta({ middleware: 'auth', layout: 'default' })
 
@@ -863,6 +865,12 @@ async function loadProcessCascaderOptions() {
 
 const renderMarkdown = (text: string) => text ? renderSafeMarkdown(text) : ''
 
+const formatSummaryCopy = (block: SummaryBlockResult) => [
+  block.title,
+  block.content,
+  (block.points || []).map(point => `- ${point}`).join('\n'),
+].filter(Boolean).join('\n\n')
+
 const expandedChatTools = ref<Set<string>>(new Set())
 const toggleChatToolExpanded = (key: string) => {
   const next = new Set(expandedChatTools.value)
@@ -879,23 +887,14 @@ const copiedKey = ref('')
 const copyText = async (key: string, text: string) => {
   if (!text) return
   try {
-    if (navigator.clipboard) {
-      await navigator.clipboard.writeText(text)
-    } else {
-      const ta = document.createElement('textarea')
-      ta.value = text
-      document.body.appendChild(ta)
-      ta.select()
-      document.execCommand('copy')
-      document.body.removeChild(ta)
-    }
+    await writeClipboardText(text)
     copiedKey.value = key
-    message.success(t('common.copied', '已复制到剪贴板'))
+    message.success(t('common.copySuccess'))
     setTimeout(() => {
       if (copiedKey.value === key) copiedKey.value = ''
     }, 2000)
   } catch {
-    message.error(t('common.copyFailed', '复制失败'))
+    message.error(t('common.copyFailed'))
   }
 }
 const formatToolArguments = (args: any): string => {
@@ -2722,7 +2721,9 @@ onMounted(async () => {
                                   :class="{ 'chain-rule--fail': rule.passed === false }"
                               >
                                 <div class="chain-rule-name">{{ rule.rule_name || rule.rule_content || '-' }}</div>
-                                <div class="chain-rule-reasoning">{{ rule.reasoning || rule.reason || '-' }}</div>
+                                <CopyableContent :text="rule.reasoning || rule.reason || ''">
+                                  <div class="chain-rule-reasoning">{{ rule.reasoning || rule.reason || '-' }}</div>
+                                </CopyableContent>
                               </div>
                               <div v-if="!logItem.audit_result.rule_results?.length" class="chain-no-detail">
                                 {{ t('admin.data.noData') }}
@@ -2736,15 +2737,19 @@ onMounted(async () => {
                             <div v-if="logItem.audit_result?.risk_points?.length || logItem.audit_result?.suggestions?.length" class="risk-suggest-row" style="margin-bottom: 12px;">
                               <div v-if="logItem.audit_result?.risk_points?.length" class="insight-card insight-card--risk" style="padding: 10px;">
                                 <div class="insight-card-header" style="margin-bottom: 4px;"><CloseCircleOutlined /> 风险点</div>
-                                <ul class="insight-card-list" style="gap: 2px;">
-                                  <li v-for="(p, i) in logItem.audit_result.risk_points" :key="i" style="font-size: 12px;">{{ p }}</li>
-                                </ul>
+                                <CopyableContent :text="logItem.audit_result.risk_points.join('\n')">
+                                  <ul class="insight-card-list" style="gap: 2px;">
+                                    <li v-for="(p, i) in logItem.audit_result.risk_points" :key="i" style="font-size: 12px;">{{ p }}</li>
+                                  </ul>
+                                </CopyableContent>
                               </div>
                               <div v-if="logItem.audit_result?.suggestions?.length" class="insight-card insight-card--suggest" style="padding: 10px;">
                                 <div class="insight-card-header" style="margin-bottom: 4px;"><InfoCircleOutlined /> 优化建议</div>
-                                <ul class="insight-card-list" style="gap: 2px;">
-                                  <li v-for="(s, i) in logItem.audit_result.suggestions" :key="i" style="font-size: 12px;">{{ s }}</li>
-                                </ul>
+                                <CopyableContent :text="logItem.audit_result.suggestions.join('\n')">
+                                  <ul class="insight-card-list" style="gap: 2px;">
+                                    <li v-for="(s, i) in logItem.audit_result.suggestions" :key="i" style="font-size: 12px;">{{ s }}</li>
+                                  </ul>
+                                </CopyableContent>
                               </div>
                             </div>
 
@@ -2753,12 +2758,16 @@ onMounted(async () => {
                               {{ t('admin.data.deepThinking', '深度思考过程') }}
                             </div>
                             <div v-if="logItem.deep_thinking" class="chain-reasoning" style="border-left: 3px solid var(--color-primary);">
-                              <div class="markdown-body" v-html="renderMarkdown(logItem.deep_thinking)"></div>
+                              <CopyableContent :text="logItem.deep_thinking">
+                                <div class="markdown-body" v-html="renderMarkdown(logItem.deep_thinking)"></div>
+                              </CopyableContent>
                             </div>
 
                             <div v-if="logItem.ai_reasoning" class="chain-section-title">{{ t('admin.data.aiReasoning', 'AI推理过程') }}</div>
                             <div v-if="logItem.ai_reasoning" class="chain-reasoning">
-                              <div class="markdown-body" v-html="renderMarkdown(logItem.ai_reasoning)"></div>
+                              <CopyableContent :text="logItem.ai_reasoning">
+                                <div class="markdown-body" v-html="renderMarkdown(logItem.ai_reasoning)"></div>
+                              </CopyableContent>
                             </div>
                           </div>
                         </template>
@@ -2844,7 +2853,9 @@ onMounted(async () => {
                                   :class="{ 'chain-rule--fail': rule.passed === false }"
                               >
                                 <div class="chain-rule-name">{{ rule.rule_name || '-' }}</div>
-                                <div class="chain-rule-reasoning">{{ rule.reasoning || '-' }}</div>
+                                <CopyableContent :text="rule.reasoning || ''">
+                                  <div class="chain-rule-reasoning">{{ rule.reasoning || '-' }}</div>
+                                </CopyableContent>
                               </div>
                               <div v-if="!logItem.archive_result.rule_audit?.length" class="chain-no-detail">
                                 {{ t('admin.data.noData') }}
@@ -2861,7 +2872,9 @@ onMounted(async () => {
                                  <CloseCircleOutlined v-else style="color: var(--color-danger); margin-right: 4px;" />
                                  {{ node.node_name }}
                                </div>
-                               <div class="chain-rule-reasoning">{{ node.reasoning }}</div>
+                               <CopyableContent :text="node.reasoning">
+                                 <div class="chain-rule-reasoning">{{ node.reasoning }}</div>
+                               </CopyableContent>
                              </div>
                           </div>
 
@@ -2869,15 +2882,19 @@ onMounted(async () => {
                           <div v-if="logItem.archive_result?.risk_points?.length || logItem.archive_result?.suggestions?.length" class="risk-suggest-row" style="margin-bottom: 12px;">
                             <div v-if="logItem.archive_result?.risk_points?.length" class="insight-card insight-card--risk" style="padding: 10px;">
                               <div class="insight-card-header" style="margin-bottom: 4px;"><CloseCircleOutlined /> 风险点</div>
-                              <ul class="insight-card-list" style="gap: 2px;">
-                                <li v-for="(p, i) in logItem.archive_result.risk_points" :key="i" style="font-size: 12px;">{{ p }}</li>
-                              </ul>
+                              <CopyableContent :text="logItem.archive_result.risk_points.join('\n')">
+                                <ul class="insight-card-list" style="gap: 2px;">
+                                  <li v-for="(p, i) in logItem.archive_result.risk_points" :key="i" style="font-size: 12px;">{{ p }}</li>
+                                </ul>
+                              </CopyableContent>
                             </div>
                             <div v-if="logItem.archive_result?.suggestions?.length" class="insight-card insight-card--suggest" style="padding: 10px;">
                               <div class="insight-card-header" style="margin-bottom: 4px;"><InfoCircleOutlined /> 改进建议</div>
-                              <ul class="insight-card-list" style="gap: 2px;">
-                                <li v-for="(s, i) in logItem.archive_result.suggestions" :key="i" style="font-size: 12px;">{{ s }}</li>
-                              </ul>
+                              <CopyableContent :text="logItem.archive_result.suggestions.join('\n')">
+                                <ul class="insight-card-list" style="gap: 2px;">
+                                  <li v-for="(s, i) in logItem.archive_result.suggestions" :key="i" style="font-size: 12px;">{{ s }}</li>
+                                </ul>
+                              </CopyableContent>
                             </div>
                           </div>
 
@@ -2888,7 +2905,9 @@ onMounted(async () => {
                               {{ t('admin.data.deepThinking', '深度思考过程') }}
                             </h4>
                             <div class="chain-reasoning" style="border-left: 3px solid var(--color-primary);">
-                              <div class="markdown-body" v-html="renderMarkdown(logItem.deep_thinking)"></div>
+                              <CopyableContent :text="logItem.deep_thinking">
+                                <div class="markdown-body" v-html="renderMarkdown(logItem.deep_thinking)"></div>
+                              </CopyableContent>
                             </div>
                           </div>
 
@@ -2896,7 +2915,9 @@ onMounted(async () => {
                           <div class="detail-section" v-if="logItem.ai_reasoning">
                             <h4 class="chain-section-title">{{ t('admin.data.aiSummary') }}</h4>
                             <div class="chain-reasoning">
-                              <div class="markdown-body" v-html="renderMarkdown(logItem.ai_reasoning)"></div>
+                              <CopyableContent :text="logItem.ai_reasoning">
+                                <div class="markdown-body" v-html="renderMarkdown(logItem.ai_reasoning)"></div>
+                              </CopyableContent>
                             </div>
                           </div>
                         </template>
@@ -2982,11 +3003,13 @@ onMounted(async () => {
                               :key="block.block_id || block.title"
                               class="summary-detail-block"
                           >
-                            <div class="summary-detail-block__title">{{ block.title || '总结块' }}</div>
-                            <div class="markdown-body" v-html="renderMarkdown(block.content || '')"></div>
-                            <ul v-if="block.points?.length" class="summary-detail-points">
-                              <li v-for="(point, pointIndex) in block.points" :key="pointIndex">{{ point }}</li>
-                            </ul>
+                            <CopyableContent :text="formatSummaryCopy(block)">
+                              <div class="summary-detail-block__title">{{ block.title || '总结块' }}</div>
+                              <div class="markdown-body" v-html="renderMarkdown(block.content || '')"></div>
+                              <ul v-if="block.points?.length" class="summary-detail-points">
+                                <li v-for="(point, pointIndex) in block.points" :key="pointIndex">{{ point }}</li>
+                              </ul>
+                            </CopyableContent>
                           </div>
 
                           <div v-if="logItem.parse_error" class="chain-parse-error">
@@ -2996,7 +3019,9 @@ onMounted(async () => {
 
                           <details v-if="logItem.raw_content" class="summary-raw-details">
                             <summary>{{ t('admin.data.viewRawOutput', '查看模型原始输出') }}</summary>
-                            <pre>{{ logItem.raw_content }}</pre>
+                            <CopyableContent :text="logItem.raw_content">
+                              <pre>{{ logItem.raw_content }}</pre>
+                            </CopyableContent>
                           </details>
                         </template>
                         <div v-else class="chain-parse-error">
@@ -3109,7 +3134,9 @@ onMounted(async () => {
               <div class="detail-section" v-if="selectedCronLog.message">
                 <h4 class="detail-section-title">{{ t('admin.data.cronMessage') }}</h4>
                 <div class="ai-reasoning">
-                  <div class="markdown-body" v-html="renderMarkdown(selectedCronLog.message || '')"></div>
+                  <CopyableContent :text="selectedCronLog.message">
+                    <div class="markdown-body" v-html="renderMarkdown(selectedCronLog.message || '')"></div>
+                  </CopyableContent>
                 </div>
               </div>
             </div>
@@ -3196,7 +3223,9 @@ onMounted(async () => {
                                   <span class="chat-section-desc">{{ t('admin.data.chatSystemPromptDesc', '设定智能体的角色定位与能力规范') }}</span>
                                   <DownOutlined class="chat-section-chevron" />
                                 </summary>
-                                <pre class="llm-prompt-pre chat-pre">{{ parseChatPrompt(logItem.user_prompt, logItem.system_prompt).systemPrompt }}</pre>
+                                <CopyableContent :text="parseChatPrompt(logItem.user_prompt, logItem.system_prompt).systemPrompt">
+                                  <pre class="llm-prompt-pre chat-pre">{{ parseChatPrompt(logItem.user_prompt, logItem.system_prompt).systemPrompt }}</pre>
+                                </CopyableContent>
                               </details>
                             </div>
 
@@ -3208,12 +3237,14 @@ onMounted(async () => {
                                   <span class="chat-section-desc">{{ t('admin.data.chatToolsDesc', '本轮挂载的系统工具与扩展能力') }}</span>
                                   <DownOutlined class="chat-section-chevron" />
                                 </summary>
-                                <div class="chat-tool-badges">
-                                  <div v-for="tool in parseChatPrompt(logItem.user_prompt, logItem.system_prompt).tools" :key="tool.function?.name || tool.name" class="chat-tool-badge">
-                                    <strong>{{ tool.function?.name || tool.name }}</strong>
-                                    <p>{{ tool.function?.description || tool.description }}</p>
+                                <CopyableContent :text="formatToolPayload(parseChatPrompt(logItem.user_prompt, logItem.system_prompt).tools)">
+                                  <div class="chat-tool-badges">
+                                    <div v-for="tool in parseChatPrompt(logItem.user_prompt, logItem.system_prompt).tools" :key="tool.function?.name || tool.name" class="chat-tool-badge">
+                                      <strong>{{ tool.function?.name || tool.name }}</strong>
+                                      <p>{{ tool.function?.description || tool.description }}</p>
+                                    </div>
                                   </div>
-                                </div>
+                                </CopyableContent>
                               </details>
                             </div>
 
@@ -3307,7 +3338,7 @@ onMounted(async () => {
                                           </a-tag>
                                         </div>
                                         <div v-if="tc.thought" class="toolcall-thought" style="font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px;">
-                                          💡 {{ tc.thought }}
+                                          <CopyableContent :text="tc.thought">💡 {{ tc.thought }}</CopyableContent>
                                         </div>
                                         <div v-if="tc.function?.arguments || tc.arguments" class="toolcall-block">
                                           <div class="toolcall-block-title-row">
@@ -3388,11 +3419,15 @@ onMounted(async () => {
                         <!-- 其他常规审核/归档/总结场景 -->
                         <template v-else>
                           <div class="chain-section-title">{{ t('admin.data.llmSystemPrompt') }}</div>
-                          <pre v-if="logItem.system_prompt" class="llm-prompt-pre">{{ logItem.system_prompt }}</pre>
+                          <CopyableContent v-if="logItem.system_prompt" :text="logItem.system_prompt">
+                            <pre class="llm-prompt-pre">{{ logItem.system_prompt }}</pre>
+                          </CopyableContent>
                           <div v-else class="chain-no-detail">{{ t('admin.data.llmNoPrompt') }}</div>
 
                           <div class="chain-section-title" style="margin-top: 12px;">{{ t('admin.data.llmUserPrompt') }}</div>
-                          <pre v-if="logItem.user_prompt" class="llm-prompt-pre">{{ logItem.user_prompt }}</pre>
+                          <CopyableContent v-if="logItem.user_prompt" :text="logItem.user_prompt">
+                            <pre class="llm-prompt-pre">{{ logItem.user_prompt }}</pre>
+                          </CopyableContent>
                           <div v-else class="chain-no-detail">{{ t('admin.data.llmNoPrompt') }}</div>
 
                           <template v-if="logItem.reasoning_content">
@@ -3400,11 +3435,15 @@ onMounted(async () => {
                               <ThunderboltOutlined style="color: var(--color-primary);" />
                               {{ t('admin.data.llmReasoningContent', '深度思考过程') }}
                             </div>
-                            <pre class="llm-prompt-pre" style="border-left: 3px solid var(--color-primary);">{{ logItem.reasoning_content }}</pre>
+                            <CopyableContent :text="logItem.reasoning_content">
+                              <pre class="llm-prompt-pre" style="border-left: 3px solid var(--color-primary);">{{ logItem.reasoning_content }}</pre>
+                            </CopyableContent>
                           </template>
 
                           <div class="chain-section-title" style="margin-top: 12px;">{{ t('admin.data.llmResponse') }}</div>
-                          <pre v-if="logItem.response_content" class="llm-prompt-pre">{{ logItem.response_content }}</pre>
+                          <CopyableContent v-if="logItem.response_content" :text="logItem.response_content">
+                            <pre class="llm-prompt-pre">{{ logItem.response_content }}</pre>
+                          </CopyableContent>
                           <div v-else class="chain-no-detail">{{ t('admin.data.llmNoPrompt') }}</div>
                         </template>
                       </div>
@@ -3465,7 +3504,9 @@ onMounted(async () => {
                           <span>{{ t('admin.data.reasoningProcess', '深度思考过程') }}</span>
                           <DownOutlined class="chevron-icon" />
                         </summary>
-                        <pre class="session-reasoning-text">{{ msg.reasoning_content }}</pre>
+                        <CopyableContent :text="msg.reasoning_content">
+                          <pre class="session-reasoning-text">{{ msg.reasoning_content }}</pre>
+                        </CopyableContent>
                       </details>
 
                       <!-- 工具调用折叠 -->
@@ -3484,7 +3525,7 @@ onMounted(async () => {
                               </a-tag>
                             </div>
                             <div v-if="tc.thought" class="toolcall-thought" style="font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px;">
-                              💡 {{ tc.thought }}
+                              <CopyableContent :text="tc.thought">💡 {{ tc.thought }}</CopyableContent>
                             </div>
                             <!-- 参数 -->
                             <div v-if="tc.arguments || tc.function?.arguments" class="toolcall-block">
@@ -3525,7 +3566,9 @@ onMounted(async () => {
                       </details>
 
                       <!-- 回复内容（Markdown） -->
-                      <div class="session-msg-content markdown-body" v-html="renderMarkdown(msg.content)" />
+                      <CopyableContent :text="msg.content">
+                        <div class="session-msg-content markdown-body" v-html="renderMarkdown(msg.content)" />
+                      </CopyableContent>
 
                       <!-- 底部信息：时间、Token、点赞反馈 -->
                       <div class="session-msg-footer">

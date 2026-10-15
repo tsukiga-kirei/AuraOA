@@ -51,6 +51,8 @@ function captureButtonText(state, html) {
 function createButtonStub(state, id = '') {
   const btn = {
     id,
+    isConnected: true,
+    focus() {},
     style: { width: '', transition: '', setProperty() {} },
     classList: { add() {}, remove() {}, contains: name => name === 'aura-status-button' },
     attributes: {},
@@ -60,7 +62,7 @@ function createButtonStub(state, id = '') {
     setAttribute(k, v) { this.attributes[k] = v; if (k === 'id') this.id = v },
     getAttribute(k) { return this.attributes[k] },
     querySelector() { return null },
-    getBoundingClientRect() { return { width: 120 } },
+    getBoundingClientRect() { return { left: 16, top: 640, width: 80, height: 44, right: 96, bottom: 684 } },
     addEventListener() {},
     insertBefore() {},
   }
@@ -82,12 +84,14 @@ async function run(source, payload, httpOK = true, device = {}) {
   const nodesById = {}
   const groupEl = {
     firstChild: null,
+    style: { opacity: '', transform: '', pointerEvents: '' },
+    inert: false,
     attributes: {},
     getAttribute(k) { return this.attributes[k] },
     setAttribute(k, v) { this.attributes[k] = v },
     addEventListener(type, fn) {
       if (type === 'click') {
-        state.click = () => fn({ target: groupEl.firstChild || createButtonStub(state, 'auraMobileEmbedBtn') })
+        state.click = (id) => fn({ target: nodesById[id] || groupEl.firstChild || createButtonStub(state, 'auraMobileEmbedBtn') })
       }
     },
     insertBefore(node) { node.parentNode = this; this.firstChild = node },
@@ -104,16 +108,27 @@ async function run(source, payload, httpOK = true, device = {}) {
     activeElement: null,
     getElementById: id => nodesById[id] || null,
     head: { appendChild: node => state.styles.push(node) },
-    body: { appendChild: node => state.elements.push(node) },
+    documentElement: { style: { overflow: 'auto' } },
+    body: {
+      style: { overflow: 'scroll' }, children: [groupEl],
+      appendChild(node) { state.elements.push(node); this.children.push(node); node.parentNode = this },
+    },
     addEventListener: (type, fn) => addListener(state.docListeners, type, fn),
-    removeEventListener() {},
+    removeEventListener(type, fn) { state.docListeners[type] = (state.docListeners[type] || []).filter(item => item !== fn) },
     createElement: tag => {
       const node = {
-        tag, style: {}, children: [], attributes: {},
+        tag, tagName: tag.toUpperCase(), style: {}, children: [], attributes: {}, isConnected: true,
+        getBoundingClientRect() { return { left: 140, top: 50, width: 740, height: 600, right: 880, bottom: 650 } },
+        querySelectorAll() { return [] },
         setAttribute(k, v) { this.attributes[k] = v },
-        appendChild(child) { this.children.push(child) },
-        focus() {}, remove() { this.removed = true },
+        appendChild(child) { this.children.push(child); child.parentNode = this },
+        focus() { document.activeElement = this },
+        remove() { this.removed = true; this.isConnected = false; if(this.parentNode) this.parentNode.children = this.parentNode.children.filter(n => n !== this) },
       }
+      if (tag === 'iframe') Object.defineProperty(node, 'src', {
+        get() { return this._src },
+        set(value) { this._src = value; state.dialogs.push(value) },
+      })
       Object.defineProperty(node, 'firstChild', { get() { return this.children[0] || null } })
       Object.defineProperty(node, 'innerHTML', {
         get() { return this._html || '' },
@@ -132,16 +147,28 @@ async function run(source, payload, httpOK = true, device = {}) {
   const win = {
     weaJs: {
       showDialog: (url, opts) => {
+        if (device.nativeThrows) throw new Error('OA unavailable')
         state.dialogs.push(url)
         state.dialogOpts.push(opts)
       },
     },
     addEventListener: (type, fn) => addListener(state.windowListeners, type, fn),
-    removeEventListener() {},
+    removeEventListener(type, fn) { state.windowListeners[type] = (state.windowListeners[type] || []).filter(item => item !== fn) },
+    matchMedia: () => ({ matches: !!device.reducedMotion }),
   }
+  state.group = groupEl
+  state.document = document
+  state.nodes = nodesById
+  state.frames = new Map()
+  if (device.motion) {
+    win.requestAnimationFrame = fn => { const id = ++state.timerId; state.frames.set(id, fn); return id }
+    win.cancelAnimationFrame = id => state.frames.delete(id)
+  }
+  state.advanceAnimation = time => { const pending = [...state.frames.values()]; state.frames.clear(); pending.forEach(fn => fn(time)) }
   vm.runInNewContext(source, {
     navigator: { userAgent: device.ua || 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)', maxTouchPoints: device.touch || 0 },
     document,
+    getComputedStyle: () => ({ backgroundColor: '#f8fafc', borderRadius: '22px', overflowY: 'visible' }),
     jQuery: selector => {
       state.queries.push(selector);
       if (selector === '#auraMobileEmbedFloatContainer' || (selector === '#getMyBt' && device.noContainer)) return { ...element, length: 0 };
@@ -202,11 +229,13 @@ for (const origin of ['export', 'template']) {
       assert.equal(hidden.queries.length, 0)
       const shown = await run(script.replace('var SHOW_ON_DESKTOP = false', 'var SHOW_ON_DESKTOP = true'), { supported: true }, true, device)
       shown.click()
-      assert.equal(shown.dialogs.length, 0, 'desktop must not use the mobile OA dialog')
+      assert.equal(shown.dialogOpts.length, 0, 'desktop must not use the mobile OA dialog')
       const overlay = shown.elements[0], dialog = overlay.children[0], frame = dialog.children[1]
-      assert.match(dialog.style.cssText, /width:min\(740px,\s*94vw\)/)
-      assert.match(dialog.style.cssText, /height:86vh/)
-      assert.match(dialog.style.cssText, /background:#f8fafc/)
+      assert.equal(dialog.className, 'aura-embed-dialog-panel')
+      const css = shown.styles.map(node => node.textContent).join('')
+      assert.match(css, /width:min\(740px,\s*94vw\)/)
+      assert.match(css, /height:86vh/)
+      assert.match(css, /background:#f8fafc/)
       assert.equal(new URL(frame.src).pathname, '/embed/' + type)
       dialog.children[0].children[1].onclick()
       assert.equal(overlay.removed, true)
@@ -239,7 +268,9 @@ for (const origin of ['export', 'template']) {
       assert.match(styles, /auraIconEnter/)
       assert.match(styles, /auraTextEnter/)
       assert.match(styles, /auraStatusBreath/)
-      assert.match(styles, /auraBorderBreath/)
+      assert.match(styles, /auraResultHalo/)
+      assert.doesNotMatch(styles, /auraBorderBreath/)
+      assert.doesNotMatch(styles, /:hover\{[^}]*border-color:var\(--aura-status-color\)/)
       assert.match(styles, /--aura-status-surface/)
       assert.match(script, /aura-running-star/)
       assert.match(script, /auraStarSpin/)
@@ -266,7 +297,9 @@ for (const origin of ['export', 'template']) {
         assert.equal(state.text, type === 'summary' ? '查看流程总结' : '审核通过 (95分)')
         state.click()
         assert.equal(new URL(state.dialogs[0]).pathname, '/embed/' + type)
-        assert.equal(typeof state.dialogOpts[0]?.callback, 'function')
+        assert.equal(state.dialogOpts.length, 0, 'mobile uses the animated iframe surface by default')
+        assert.match(state.elements[0].className, /--mobile/)
+        assert.equal(state.group.style.opacity, '0')
       })
     }
     test(`${origin} ${type}: configuration absence preserves the business explanation`, async () => {
@@ -416,4 +449,113 @@ for (const [origin, source] of [
     assert.equal(body.get('oa_current_user_id'), '2480')
     assert.equal(body.get('action'), 'submit_requested')
   })
+}
+
+for (const origin of ['export', 'template']) {
+  for (const type of ['audit', 'summary', 'all']) {
+    const source = origin === 'export' ? factory(type, 'test-token') : staticSource.replace("var EMBED_TYPE = 'audit'", `var EMBED_TYPE = '${type}'`)
+    const payload = { supported: true, has_audit: true, audit_result: { recommendation: 'approve', overall_score: 95 }, has_summary: true, summary_result: { status: 'completed' } }
+    const trigger = type === 'all' ? 'auraMobileEmbedSummaryBtn' : 'auraMobileEmbedBtn'
+
+    test(`${origin} ${type}: animated close restores OA scrolling and buttons exactly once`, async () => {
+      const state = await run(source, payload, true, { motion: true })
+      state.click(trigger)
+      const overlay = state.elements.find(node => node.id === 'auraDesktopEmbedDialog')
+      const close = overlay.children[0].children[0].children[1]
+      assert.equal(state.document.body.style.overflow, 'hidden')
+      assert.equal(state.group.inert, true)
+      assert.equal(state.elements.filter(node => node.className === 'aura-embed-genie-layer').length, 1)
+      state.advanceAnimation(0)
+      state.advanceAnimation(300)
+      state.advanceAnimation(650)
+      assert.equal(state.group.style.opacity, '0')
+      assert.equal(state.frames.size, 0)
+      const before = state.requests.length
+      state.click(trigger)
+      assert.equal(state.dialogs.length, 1, 'repeated clicks must not load a second iframe')
+      close.onclick()
+      close.onclick()
+      state.advanceAnimation(700)
+      state.advanceAnimation(1300)
+      await flush(state)
+      assert.equal(overlay.removed, true)
+      assert.equal(state.document.body.style.overflow, 'scroll')
+      assert.equal(state.document.documentElement.style.overflow, 'auto')
+      assert.equal(state.group.style.opacity, '')
+      assert.equal(state.group.style.transform, '')
+      assert.equal(state.group.inert, false)
+      assert.equal(state.frames.size, 0)
+      assert.equal(state.requests.length, before + 1)
+      assert.ok(state.elements.filter(node => node.className === 'aura-embed-genie-layer').every(node => node.removed))
+      assert.equal(state.windowListeners.resize.length, 0)
+      assert.equal(state.docListeners.keydown.length, 0)
+    })
+
+    test(`${origin} ${type}: close during entry and page exit release animation resources`, async () => {
+      const state = await run(source, payload, true, { motion: true })
+      state.click(trigger)
+      state.advanceAnimation(0)
+      state.advanceAnimation(150)
+      const overlay = state.elements.find(node => node.id === 'auraDesktopEmbedDialog')
+      overlay.onclick({ target: overlay })
+      state.advanceAnimation(200)
+      state.advanceAnimation(800)
+      assert.equal(overlay.removed, true)
+      assert.equal(state.group.style.opacity, '')
+      state.click(trigger)
+      const before = state.requests.length
+      ;[...state.windowListeners.pagehide].forEach(fn => fn())
+      await flush(state)
+      assert.equal(state.frames.size, 0)
+      assert.equal(state.group.inert, false)
+      assert.equal(state.document.body.style.overflow, 'scroll')
+      assert.equal(state.requests.length, before, 'leaving OA must not start another refresh')
+    })
+
+    test(`${origin} ${type}: native compatibility restores on callback and falls back on failure`, async () => {
+      const nativeSource = source.replace('var USE_NATIVE_MOBILE_DIALOG = false', 'var USE_NATIVE_MOBILE_DIALOG = true')
+      const state = await run(nativeSource, payload)
+      state.click(trigger)
+      assert.equal(state.dialogOpts.length, 1)
+      assert.equal(state.group.style.opacity, '0')
+      const before = state.requests.length
+      state.dialogOpts[0].callback()
+      state.dialogOpts[0].callback()
+      await flush(state)
+      assert.equal(state.group.style.opacity, '')
+      assert.equal(state.group.inert, false)
+      assert.equal(state.requests.length, before + 1)
+      const failed = await run(nativeSource, payload, true, { nativeThrows: true })
+      failed.click(trigger)
+      assert.equal(failed.dialogOpts.length, 0)
+      const overlay = failed.elements.find(node => node.id === 'auraDesktopEmbedDialog')
+      assert.ok(overlay)
+      overlay.children[0].children[0].children[1].onclick()
+      assert.equal(failed.group.style.opacity, '')
+      assert.equal(failed.group.inert, false)
+    })
+
+    test(`${origin} ${type}: reduced motion skips layers and resize settles an in-flight surface`, async () => {
+      const state = await run(source, payload, true, { motion: true, reducedMotion: true })
+      state.click(trigger)
+      assert.equal(state.frames.size, 0)
+      assert.equal(state.elements.filter(node => node.className === 'aura-embed-genie-layer').length, 0)
+      assert.equal(state.group.style.opacity, '0')
+      const resizing = await run(source, payload, true, { motion: true })
+      resizing.click(trigger)
+      resizing.advanceAnimation(0)
+      ;[...resizing.windowListeners.resize].forEach(fn => fn())
+      assert.equal(resizing.frames.size, 0)
+      assert.equal(resizing.group.style.opacity, '0')
+      const overlay = resizing.elements.find(node => node.id === 'auraDesktopEmbedDialog')
+      overlay.children[0].children[0].children[1].onclick()
+      ;[...resizing.windowListeners.resize].forEach(fn => fn())
+      assert.equal(overlay.removed, true)
+      assert.equal(resizing.group.inert, false)
+    })
+
+    test(`${origin} ${type}: exported runtime remains identical to the standalone script`, () => {
+      assert.equal(source.slice(source.indexOf('  var MSG_STATUS =')).trim(), staticSource.slice(staticSource.indexOf('  var MSG_STATUS =')).trim())
+    })
+  }
 }
