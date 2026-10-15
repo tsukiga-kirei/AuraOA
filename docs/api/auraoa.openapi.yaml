@@ -10104,6 +10104,19 @@ components:
         ai_config:
           type: object
           description: 审核和归档配置中的 system_extraction_prompt、user_extraction_prompt 由服务端按 audit_strictness 模板锁定
+          properties:
+            skip_empty_fields:
+              type: boolean
+              default: false
+              description: 统一跳过当前传输范围内的空值字段；开启时优先于单字段设置，关闭时按 skip_empty_field_keys 执行
+            skip_empty_field_keys:
+              type: array
+              description: 单独开启“为空时不传”的字段引用，格式为 main:字段标识 或 明细表名:字段标识，大小写不敏感；缺省为空数组。空值包括 null、空字符串及纯空白，0 和 false 保留；不改变明细行数或配置版本生命周期
+              items:
+                type: string
+              example:
+              - main:remark
+              - formtable_main_151_dt1:remark
         user_permissions:
           type: object
         access_control:

@@ -32,12 +32,14 @@ func (ProcessAuditConfig) TableName() string { return "process_audit_configs" }
 
 // AIConfigData AI配置的结构化表示
 type AIConfigData struct {
-	AuditStrictness        string `json:"audit_strictness"`
-	EnableThinking         bool   `json:"enable_thinking"`
-	SystemReasoningPrompt  string `json:"system_reasoning_prompt"`
-	SystemExtractionPrompt string `json:"system_extraction_prompt"`
-	UserReasoningPrompt    string `json:"user_reasoning_prompt"`
-	UserExtractionPrompt   string `json:"user_extraction_prompt"`
+	SkipEmptyFields        bool     `json:"skip_empty_fields,omitempty"`     // 统一跳过空值字段，优先于单字段设置
+	SkipEmptyFieldKeys     []string `json:"skip_empty_field_keys,omitempty"` // 单字段设置，格式为 main:字段或明细表名:字段
+	AuditStrictness        string   `json:"audit_strictness"`
+	EnableThinking         bool     `json:"enable_thinking"`
+	SystemReasoningPrompt  string   `json:"system_reasoning_prompt"`
+	SystemExtractionPrompt string   `json:"system_extraction_prompt"`
+	UserReasoningPrompt    string   `json:"user_reasoning_prompt"`
+	UserExtractionPrompt   string   `json:"user_extraction_prompt"`
 }
 
 // EmbedConfigData OA 嵌入页行为配置。

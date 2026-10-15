@@ -129,6 +129,8 @@ function handleExport() {
       contents.ai = {
         audit_strictness: props.aiConfig.audit_strictness,
         enable_thinking: props.aiConfig.enable_thinking,
+        skip_empty_fields: props.aiConfig.skip_empty_fields,
+        skip_empty_field_keys: props.aiConfig.skip_empty_field_keys,
         system_reasoning_prompt: props.aiConfig.system_reasoning_prompt,
         system_extraction_prompt: props.aiConfig.system_extraction_prompt,
         user_reasoning_prompt: props.aiConfig.user_reasoning_prompt,

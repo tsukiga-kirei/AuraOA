@@ -100,7 +100,7 @@ func (s *ProcessAuditConfigService) Create(c *gin.Context, req *dto.CreateProces
 		if err := json.Unmarshal(aiConfig, &parsed); err == nil {
 			if parsed.SystemReasoningPrompt == "" && parsed.UserReasoningPrompt == "" {
 				strictness := defaultStr(parsed.AuditStrictness, "standard")
-				aiConfig = s.buildDefaultAIConfig(strictness)
+				aiConfig = s.buildDefaultAIConfig(strictness, parsed)
 			}
 		}
 	}
@@ -157,14 +157,19 @@ func (s *ProcessAuditConfigService) Create(c *gin.Context, req *dto.CreateProces
 }
 
 // buildDefaultAIConfig 从系统提示词模板构建默认 ai_config JSON。
-func (s *ProcessAuditConfigService) buildDefaultAIConfig(strictness string) datatypes.JSON {
+func (s *ProcessAuditConfigService) buildDefaultAIConfig(strictness string, base ...model.AIConfigData) datatypes.JSON {
+	data := model.AIConfigData{AuditStrictness: strictness}
+	// 自动补齐提示词时保留调用方提交的空值传输策略。
+	if len(base) > 0 {
+		data.SkipEmptyFields = base[0].SkipEmptyFields
+		data.SkipEmptyFieldKeys = base[0].SkipEmptyFieldKeys
+	}
 	templates, err := s.templateRepo.GetByStrictnessAuditWorkbench(strictness)
 	if err != nil || len(templates) == 0 {
-		fallback, _ := json.Marshal(model.AIConfigData{AuditStrictness: strictness})
+		fallback, _ := json.Marshal(data)
 		return datatypes.JSON(fallback)
 	}
 
-	data := model.AIConfigData{AuditStrictness: strictness}
 	for _, t := range templates {
 		switch {
 		case t.PromptType == "system" && t.Phase == "reasoning":

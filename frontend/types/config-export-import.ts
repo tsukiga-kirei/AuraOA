@@ -19,6 +19,8 @@ export interface ExportedRuleItem {
 
 /** 导出的 AI 配置项 */
 export interface ExportedAIConfig {
+  skip_empty_fields?: boolean
+  skip_empty_field_keys?: string[]
   audit_strictness?: string
   enable_thinking?: boolean
   system_reasoning_prompt?: string

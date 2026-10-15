@@ -1,6 +1,6 @@
 // types/archive-config.ts — 归档配置相关类型
 
-import type { ProcessField, DetailTableDef } from '~/types/common'
+import type { ProcessField, DetailTableDef, FieldTransmissionConfig } from '~/types/common'
 import type { ExternalContextMount } from '~/types/external-context'
 import type { QueryReference } from '~/types/audit-data-query'
 
@@ -24,7 +24,7 @@ export interface ProcessArchiveConfig {
   detail_tables: DetailTableDef[]
   field_mode?: string
   kb_mode?: string
-  ai_config: Record<string, any>
+  ai_config: Record<string, any> & FieldTransmissionConfig
   ai_strictness?: string
   ai_prompt_template?: string
   allow_user_custom_rules?: boolean
