@@ -1009,8 +1009,14 @@ const auditContextFieldOptions = computed(() => {
     .map(f => ({
       label: `${f.field_name}（${f.sourceLabel}）`,
       value: `${f.source}:${f.field_key}`,
+      field_type: f.field_type,
     }))
 })
+const auditTriggerFieldOptions = computed(() => allAvailableFields.value.map(f => ({
+  label: `${f.field_name}（${f.sourceLabel}）`,
+  value: `${f.source}:${f.field_key}`,
+  field_type: f.field_type,
+})))
 
 const selectedFieldSearchQuery = ref('')
 const leftSelectedKeys = ref<string[]>([])
@@ -2556,8 +2562,14 @@ const archiveContextFieldOptions = computed(() => {
     .map(f => ({
       label: `${f.field_name}（${f.sourceLabel}）`,
       value: `${f.source}:${f.field_key}`,
+      field_type: f.field_type,
     }))
 })
+const archiveTriggerFieldOptions = computed(() => archiveAllAvailableFields.value.map(f => ({
+  label: `${f.field_name}（${f.sourceLabel}）`,
+  value: `${f.source}:${f.field_key}`,
+  field_type: f.field_type,
+})))
 
 
 
@@ -4981,6 +4993,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
       :open="showRuleEditor"
       :rule="editingRule"
       :field-options="auditContextFieldOptions"
+      :trigger-field-options="auditTriggerFieldOptions"
       context-test-endpoint="/api/tenant/rules/context/test"
       workflow-fields-endpoint="/api/tenant/rules/context/workflow-fields"
       workflow-search-endpoint="/api/tenant/rules/context/workflow-search"
@@ -6108,6 +6121,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
       :open="showArchiveRuleEditor"
       :rule="editingArchiveRule"
       :field-options="archiveContextFieldOptions"
+      :trigger-field-options="archiveTriggerFieldOptions"
       context-test-endpoint="/api/tenant/archive/context/test"
       workflow-fields-endpoint="/api/tenant/archive/context/workflow-fields"
       workflow-search-endpoint="/api/tenant/archive/context/workflow-search"

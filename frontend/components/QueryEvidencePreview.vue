@@ -2,8 +2,18 @@
 import type { QueryEvidence } from '~/types/audit-data-query'
 import { message } from 'ant-design-vue'
 import { appDayjs } from '~/utils/appTime'
+import { queryTriggerOperatorKey, queryTriggerNeedsValue } from '~/utils/queryTrigger'
 const props = defineProps<{ evidence: QueryEvidence }>()
 const { t } = useI18n()
+const triggerSummary = computed(() => {
+  const trigger = props.evidence.trigger
+  if (!trigger) return ''
+  const value = trigger.value_type === 'boolean'
+    ? t(trigger.value === 'true' ? 'query.triggerYes' : 'query.triggerNo')
+    : trigger.value || ''
+  return [trigger.field_label || trigger.field, t(queryTriggerOperatorKey(trigger)),
+    queryTriggerNeedsValue(trigger) ? value : ''].filter(Boolean).join(' ')
+})
 function formatTime(value: string, dateOnly = false) {
   const date = appDayjs(value)
   return date.isValid()
@@ -46,6 +56,12 @@ const displayRows = computed(() =>
 <template>
   <a-tabs class="memory-surface">
     <a-tab-pane key="data" :tab="t('query.result')">
+      <a-alert v-if="evidence.status === 'skipped'" type="info" show-icon
+        :message="t('query.triggerSkipped')" :description="t('query.triggerSkippedHint')" class="trigger-result" />
+      <div v-if="evidence.trigger" class="query-metrics">
+        <a-tag v-if="evidence.trigger_matched === true" color="success">{{ t('query.triggerMatched') }}</a-tag>
+        {{ triggerSummary }}
+      </div>
       <a-tag v-if="evidence.error" color="error">{{ t('query.resultFailed') }}</a-tag>
       <template v-if="evidence.result">
         <div class="query-metrics">
@@ -75,6 +91,9 @@ const displayRows = computed(() =>
   </a-tabs>
 </template>
 <style scoped>
+.trigger-result {
+  margin-bottom: 12px;
+}
 .query-metrics {
   color: var(--color-text-secondary);
   font-size: 12px;

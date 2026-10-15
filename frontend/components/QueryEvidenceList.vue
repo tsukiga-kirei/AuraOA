@@ -10,7 +10,7 @@ const { t } = useI18n()
         <a-collapse-panel
           v-for="(item, index) in items"
           :key="index"
-          :header="item.name + ' · v' + item.version_no"
+          :header="item.name + ' · v' + item.version_no + (item.status === 'skipped' ? ' · ' + t('query.triggerSkipped') : '')"
         >
           <p class="query-evidence-rule">{{ item.rule_content }}</p>
           <QueryEvidencePreview :evidence="item" />

@@ -2,6 +2,8 @@
 import { useAuditDataQueryApi } from '~/composables/useAuditDataQueryApi'
 import { message } from 'ant-design-vue'
 import QueryValueSourceEditor from './QueryValueSourceEditor.vue'
+import QueryTriggerEditor from './QueryTriggerEditor.vue'
+import { queryTriggerError } from '~/utils/queryTrigger'
 import { appDayjs } from '~/utils/appTime'
 import { DatabaseOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import type {
@@ -11,10 +13,12 @@ import type {
   QueryVersion,
   QueryBinding,
   QueryEvidence,
+  QueryFieldOption,
 } from '~/types/audit-data-query'
 const props = defineProps<{
   modelValue: QueryReference[]
-  fieldOptions: { label: string; value: string }[]
+  fieldOptions: QueryFieldOption[]
+  triggerFieldOptions?: QueryFieldOption[]
 }>()
 const emit = defineEmits<{ 'update:modelValue': [value: QueryReference[]] }>()
 const { t } = useI18n()
@@ -209,6 +213,7 @@ async function useVersion(query: AuditDataQuery, version: QueryVersion) {
     version_no: version.version_no,
     enabled: previous?.enabled ?? true,
     bindings,
+    trigger: previous?.trigger ? clone(previous.trigger) : undefined,
   }
   definitions.value[keyOf(reference)] = clone(version.definition)
   const items = clone(props.modelValue)
@@ -218,6 +223,11 @@ async function useVersion(query: AuditDataQuery, version: QueryVersion) {
   libraryOpen.value = false
 }
 async function preview(reference: QueryReference) {
+  const triggerError = queryTriggerError(reference.trigger)
+  if (triggerError) {
+    message.warning(t(triggerError))
+    return
+  }
   if (!processId.value.trim()) {
     message.warning(t('query.processRequired'))
     return
@@ -231,6 +241,7 @@ async function preview(reference: QueryReference) {
       version_no: reference.version_no,
       process_id: process,
       bindings: clone(reference.bindings),
+      trigger: reference.trigger ? clone(reference.trigger) : undefined,
     })
     if (
       process === processId.value.trim() &&
@@ -288,6 +299,12 @@ async function preview(reference: QueryReference) {
         </a-space>
       </div>
       <p class="query-section-description">{{ definitions[keyOf(reference)]?.description }}</p>
+      <QueryTriggerEditor
+        :model-value="reference.trigger"
+        :field-options="triggerFieldOptions || fieldOptions"
+        :disabled="!canManage"
+        @update:model-value="value => changeReference(index, { trigger: value })"
+      />
       <div
         v-for="parameter in definitions[keyOf(reference)]?.parameters || []"
         :key="parameter.name"
