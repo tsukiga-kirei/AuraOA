@@ -1030,6 +1030,8 @@ onBeforeUnmount(() => {
 .risk-suggest-row { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 24px; }
 @media (min-width: 640px) {
   .risk-suggest-row { grid-template-columns: 1fr 1fr; }
+  .risk-suggest-row:has(.insight-card:only-child) { grid-template-columns: 1fr; }
+  .risk-suggest-row > .insight-card:only-child { grid-column: 1 / -1; }
 }
 .insight-card { border-radius: var(--radius-md); padding: 16px; border: 1px solid var(--color-border-light); }
 .insight-card--risk { background: linear-gradient(135deg, rgba(239, 68, 68, 0.04), rgba(239, 68, 68, 0.01)); border-color: rgba(239, 68, 68, 0.15); }

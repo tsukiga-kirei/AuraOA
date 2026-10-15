@@ -51,6 +51,8 @@ onBeforeUnmount(() => {
 
 :global(html),
 :global(body) {
+  overflow-y: overlay;
+  scrollbar-gutter: auto;
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
 }
@@ -80,5 +82,10 @@ onBeforeUnmount(() => {
 :global(html.embed-scrollbar-active::-webkit-scrollbar-thumb),
 :global(html.embed-scrollbar-active body::-webkit-scrollbar-thumb) {
   background: color-mix(in srgb, var(--color-text-tertiary) 72%, transparent);
+}
+
+:global(body::-webkit-scrollbar-thumb:hover),
+:global(html::-webkit-scrollbar-thumb:hover) {
+  background: var(--color-text-tertiary);
 }
 </style>

@@ -517,6 +517,483 @@
         box-shadow: 0 7px 22px rgba(15, 23, 42, .12);
       }
     }
+
+    /* ================= 嵌入详情弹窗优化：顶部、无留白悬浮滚动条、单双卡片自适应 ================= */
+    .aura-dialog-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 2147483646;
+      background: rgba(15, 23, 42, 0.45);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      box-sizing: border-box;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.22s ease;
+    }
+    .aura-dialog-overlay.aura-dialog--visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .aura-dialog-box {
+      width: 780px;
+      max-width: 100%;
+      height: 86vh;
+      max-height: 860px;
+      background: #ffffff;
+      border-radius: 16px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 24px 64px -12px rgba(15, 23, 42, 0.28), 0 0 0 1px rgba(15, 23, 42, 0.06);
+      transform: scale(0.96) translateY(8px);
+      opacity: 0;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .aura-dialog-overlay.aura-dialog--visible .aura-dialog-box {
+      transform: scale(1) translateY(0);
+      opacity: 1;
+    }
+
+    /* 顶部 Header 优化：纯净文字标题、极简圆圈关闭按钮、永不竖向折字 */
+    .aura-dialog-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 24px;
+      background: #ffffff;
+      border-bottom: 1px solid #f1f5f9;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.02);
+      flex-shrink: 0;
+    }
+    .aura-dialog-header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+    .aura-dialog-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #0f172a;
+      letter-spacing: -0.01em;
+      margin: 0;
+      white-space: nowrap;
+      word-break: keep-all;
+    }
+    .aura-dialog-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      background: #f1f5f9;
+      color: #475569;
+      border: 1px solid #e2e8f0;
+      white-space: nowrap;
+    }
+    .aura-dialog-header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    .aura-dialog-segmented {
+      display: inline-flex;
+      background: #f1f5f9;
+      padding: 2px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+    }
+    .aura-dialog-segmented-btn {
+      appearance: none;
+      border: none;
+      background: transparent;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #64748b;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      white-space: nowrap;
+    }
+    .aura-dialog-segmented-btn.is-active {
+      background: #ffffff;
+      color: #1d4ed8;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+    }
+    .aura-dialog-close-btn {
+      appearance: none;
+      border: none;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: transparent;
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      padding: 0;
+    }
+    .aura-dialog-close-btn:hover {
+      background: #f1f5f9;
+      color: #0f172a;
+      transform: scale(1.08);
+    }
+    .aura-dialog-close-btn:active {
+      transform: scale(0.92);
+    }
+    .aura-dialog-close-btn svg {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+    }
+
+    /* 滚动条无留白优化：悬浮半透明细胶囊轨道，内容对称排版，确保滑块清晰可见 */
+    .aura-dialog-body {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-y: overlay;
+      scrollbar-width: thin;
+      scrollbar-color: #94a3b8 transparent;
+      background: #f8fafc;
+      padding: 20px 24px 32px;
+      box-sizing: border-box;
+    }
+    .aura-dialog-body::-webkit-scrollbar {
+      width: 7px;
+    }
+    .aura-dialog-body::-webkit-scrollbar-track {
+      background: transparent; /* 轨道完全透明，右侧绝不出现留白死区！ */
+    }
+    .aura-dialog-body::-webkit-scrollbar-thumb {
+      background: #cbd5e1; /* 清晰、质感细腻的悬浮滑块 */
+      border-radius: 999px;
+      transition: background 0.2s ease;
+    }
+    .aura-dialog-body::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    /* 弹窗底部独立演示工具栏（避免污染和挤压 Header） */
+    .aura-dialog-footer-toolbar {
+      padding: 10px 20px;
+      background: #ffffff;
+      border-top: 1px solid #f1f5f9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    /* 6项真实规则明细列表样式（使内容足够高，展示完整滚动效果） */
+    .aura-demo-rule-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .aura-demo-rule-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-left: 3px solid #16a34a;
+      border-radius: 8px;
+      padding: 10px 14px;
+    }
+    .aura-demo-rule-icon {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #dcfce7;
+      color: #16a34a;
+      font-size: 12px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .aura-demo-rule-content {
+      flex: 1;
+      min-width: 0;
+    }
+    .aura-demo-rule-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #0f172a;
+      margin-bottom: 2px;
+    }
+    .aura-demo-rule-desc {
+      font-size: 12px;
+      color: #64748b;
+      line-height: 1.5;
+    }
+
+    /* 展开的 AI 推理面板 */
+    .aura-demo-reasoning-panel {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin-bottom: 14px;
+    }
+    .aura-demo-reasoning-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .aura-demo-reasoning-body p {
+      margin: 0 0 8px;
+      font-size: 12px;
+      color: #475569;
+      line-height: 1.6;
+    }
+    .aura-demo-reasoning-body p:last-child {
+      margin-bottom: 0;
+    }
+      background: rgba(100, 116, 139, 0.65);
+    }
+
+    /* 内部业务卡片 */
+    .aura-demo-substatus-bar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .aura-demo-substatus-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #16a34a;
+    }
+    .aura-demo-substatus-time {
+      font-size: 12px;
+      color: #64748b;
+    }
+    .aura-demo-substatus-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .aura-demo-substatus-pill--blue { background: #eff6ff; color: #2563eb; }
+    .aura-demo-substatus-pill--cyan { background: #ecfeff; color: #0891b2; }
+
+    .aura-demo-process-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 16px 18px;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.02);
+    }
+    .aura-demo-process-info { flex: 1; min-width: 0; }
+    .aura-demo-process-title { font-size: 15px; font-weight: 700; color: #0f172a; margin: 0 0 10px; }
+    .aura-demo-process-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .aura-demo-process-chip {
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 500;
+      background: #f1f5f9;
+      color: #334155;
+      border: 1px solid #e2e8f0;
+    }
+    .aura-demo-process-action {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: stretch;
+      padding-left: 14px;
+      border-left: 1px solid #e2e8f0;
+      flex-shrink: 0;
+    }
+    .aura-demo-duration-badge {
+      padding: 3px 10px;
+      border-radius: 6px;
+      background: #f0fdf4;
+      color: #16a34a;
+      border: 1px solid #bbf7d0;
+      font-size: 11px;
+      font-weight: 700;
+      text-align: center;
+    }
+    .aura-demo-re-audit-btn {
+      appearance: none;
+      border: 1px solid #bfdbfe;
+      background: #eff6ff;
+      color: #2563eb;
+      padding: 5px 12px;
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+
+    .aura-demo-score-card {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-left: 4px solid #22c55e;
+      border-radius: 14px;
+      padding: 16px 20px;
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+    .aura-demo-score-main { display: flex; align-items: center; gap: 12px; }
+    .aura-demo-score-icon-wrap {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: #dcfce7;
+      color: #16a34a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .aura-demo-score-icon-wrap svg {
+      width: 20px;
+      height: 20px;
+      stroke: currentColor;
+      stroke-width: 2.2;
+      fill: none;
+    }
+    .aura-demo-score-title { font-size: 15px; font-weight: 700; color: #16a34a; margin-bottom: 2px; }
+    .aura-demo-score-sub { font-size: 12px; color: #64748b; }
+    .aura-demo-score-value { font-size: 40px; font-weight: 800; color: #16a34a; line-height: 1; }
+
+    .aura-demo-check-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .aura-demo-check-title { font-size: 14px; font-weight: 700; color: #0f172a; }
+    .aura-demo-check-stats { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+    .aura-demo-stat-pill { padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+    .aura-demo-stat-pill--gray { background: #f1f5f9; color: #475569; }
+    .aura-demo-stat-pill--green { background: #dcfce7; color: #16a34a; }
+    .aura-demo-stat-pill--red { background: #fee2e2; color: #dc2626; }
+
+    /* 优化核心：单卡片与双卡片宽屏自适应 —— 仅一个卡片时宽屏自动撑满 100%！ */
+    .aura-demo-insights-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+    @media (min-width: 640px) {
+      .aura-demo-insights-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+      .aura-demo-insights-grid:has(> .aura-demo-insight-card:only-child) {
+        grid-template-columns: 1fr;
+      }
+      .aura-demo-insights-grid > .aura-demo-insight-card:only-child {
+        grid-column: 1 / -1;
+      }
+    }
+
+    .aura-demo-insight-card {
+      border-radius: 12px;
+      padding: 14px 16px;
+      border: 1px solid #e2e8f0;
+      transition: all 0.25s ease;
+    }
+    .aura-demo-insight-card--suggest {
+      background: linear-gradient(135deg, rgba(238, 242, 255, 0.6) 0%, rgba(248, 250, 252, 0.8) 100%);
+      border-color: rgba(99, 102, 241, 0.2);
+    }
+    .aura-demo-insight-card--risk {
+      background: linear-gradient(135deg, rgba(254, 242, 242, 0.6) 0%, rgba(248, 250, 252, 0.8) 100%);
+      border-color: rgba(239, 68, 68, 0.2);
+    }
+    .aura-demo-insight-card-head {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .aura-demo-insight-card--suggest .aura-demo-insight-card-head { color: #4f46e5; }
+    .aura-demo-insight-card--risk .aura-demo-insight-card-head { color: #dc2626; }
+    .aura-demo-insight-card-head svg { width: 16px; height: 16px; fill: currentColor; }
+    .aura-demo-insight-list {
+      margin: 0;
+      padding-left: 18px;
+      font-size: 13px;
+      color: #334155;
+      line-height: 1.6;
+    }
+
+    .aura-demo-foldable-bar {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 12px 16px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      font-weight: 600;
+      color: #0f172a;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.02);
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .aura-demo-foldable-bar:hover { background: #f8fafc; }
+    .aura-demo-foldable-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 500;
+    }
   </style>
 </head>
 <body>
@@ -546,6 +1023,13 @@
         <button type="button" data-scene="running-pass">分析中 → 自动通过</button>
         <button type="button" data-scene="dual">双按钮独立变形 (审核+总结)</button>
       </div>
+
+      <h2>3. 嵌入详情弹窗优化效果预览（重点：全新顶部、无留白悬浮滚动条、单双卡片自适应）</h2>
+      <div class="btn-row" id="dialogDemoRow">
+        <button type="button" class="is-active" data-dialog-scene="suggest-only" style="background: #eff6ff; border-color: #3b82f6; color: #1d4ed8; font-weight: 600;">✨ 打开弹窗：单卡片（仅改动建议，宽屏自动 100% 撑满）</button>
+        <button type="button" data-dialog-scene="both">打开弹窗：双卡片（风险项 + 改进建议，两列并排）</button>
+        <button type="button" data-dialog-scene="risk-only">打开弹窗：单卡片（仅风险项，宽屏自动 100% 撑满）</button>
+      </div>
     </div>
 
     <!-- 舞台实时变形演示 -->
@@ -573,6 +1057,158 @@
   <!-- 实际浮动在页面上的可拖动容器 -->
   <div id="auraMobileEmbedFloatContainer" class="aura-float--top-right">
     <div id="floatGroup" class="aura-status-group"></div>
+  </div>
+
+  <!-- 全新优化嵌入详情弹窗 DOM 结构 -->
+  <div id="auraOptimizedDialogOverlay" class="aura-dialog-overlay" role="dialog" aria-modal="true">
+    <div class="aura-dialog-box">
+      <!-- 优化 Header：极简纯净标题、右侧极简关闭按钮，绝不竖排折字 -->
+      <div class="aura-dialog-header">
+        <div class="aura-dialog-header-left">
+          <h3 class="aura-dialog-title" id="auraDialogTitleText">AI 流程审核</h3>
+          <span class="aura-dialog-tag">智审辅助 · 仅供参考</span>
+        </div>
+        <div class="aura-dialog-header-right">
+          <!-- 极简圆形关闭按钮 -->
+          <button type="button" class="aura-dialog-close-btn" id="auraDialogCloseBtn" title="关闭 (Esc)">
+            <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 优化 Body：透明轨道、悬浮细滑块、无留白死区、对称边距 -->
+      <div class="aura-dialog-body" id="auraDialogBody">
+        <!-- 审核状态与时间 -->
+        <div class="aura-demo-substatus-bar">
+          <span class="aura-demo-substatus-tag">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+            建议通过
+          </span>
+          <span class="aura-demo-substatus-time">最后智能审核时间: 2026/10/13 15:11</span>
+          <span class="aura-demo-substatus-pill aura-demo-substatus-pill--blue">执行配置 v2</span>
+          <span class="aura-demo-substatus-pill aura-demo-substatus-pill--cyan">⚡ 有新版规则</span>
+        </div>
+
+        <!-- 流程摘要卡片（测试模拟数据） -->
+        <div class="aura-demo-process-card">
+          <div class="aura-demo-process-info">
+            <h4 class="aura-demo-process-title">测试流程-采购审批业务单-示例经办人</h4>
+            <div class="aura-demo-process-chips">
+              <span class="aura-demo-process-chip">示例经办人 · 测试部门</span>
+              <span class="aura-demo-process-chip">项目管理 · 测试节点</span>
+            </div>
+          </div>
+          <div class="aura-demo-process-action">
+            <span class="aura-demo-duration-badge">耗时 12.3 秒</span>
+            <button type="button" class="aura-demo-re-audit-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.19"/></svg>
+              重新审核
+            </button>
+          </div>
+        </div>
+
+        <!-- 综合评分横幅 -->
+        <div class="aura-demo-score-card">
+          <div class="aura-demo-score-main">
+            <div class="aura-demo-score-icon-wrap">
+              <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+            </div>
+            <div>
+              <div class="aura-demo-score-title">建议通过</div>
+              <div class="aura-demo-score-sub">综合评分 95分 · 置信度 95%</div>
+            </div>
+          </div>
+          <div class="aura-demo-score-value">95</div>
+        </div>
+
+        <!-- 规则校验详情标题行 -->
+        <div class="aura-demo-check-header">
+          <div class="aura-demo-check-title">规则校验详情</div>
+          <div class="aura-demo-check-stats">
+            <span class="aura-demo-stat-pill aura-demo-stat-pill--gray">共 5 项</span>
+            <span class="aura-demo-stat-pill aura-demo-stat-pill--green">通过 5</span>
+            <span class="aura-demo-stat-pill aura-demo-stat-pill--red">未通过 0</span>
+            <span style="color: #2563eb; cursor: pointer; margin-left: 4px;">已全部展开 ∧</span>
+          </div>
+        </div>
+
+        <!-- 重点：单卡片与双卡片自适应容器 -->
+        <div class="aura-demo-insights-grid" id="auraDemoInsightsContainer">
+          <!-- 动态装配卡片 -->
+        </div>
+
+        <!-- 规则明细测试列表（展示足够高度以体验悬浮无留白滚动条） -->
+        <div class="aura-demo-rule-list">
+          <div class="aura-demo-rule-item">
+            <div class="aura-demo-rule-icon">✓</div>
+            <div class="aura-demo-rule-content">
+              <div class="aura-demo-rule-name">测试规则 1：流程申报附件齐备性校验</div>
+              <div class="aura-demo-rule-desc">已上传相应单据附件，文件类型与签名符合预设测试标准。</div>
+            </div>
+          </div>
+          <div class="aura-demo-rule-item">
+            <div class="aura-demo-rule-icon">✓</div>
+            <div class="aura-demo-rule-content">
+              <div class="aura-demo-rule-name">测试规则 2：业务有效周期与截止时间比对</div>
+              <div class="aura-demo-rule-desc">申报业务时间在有效周期内，格式符合测试规范。</div>
+            </div>
+          </div>
+          <div class="aura-demo-rule-item">
+            <div class="aura-demo-rule-icon">✓</div>
+            <div class="aura-demo-rule-content">
+              <div class="aura-demo-rule-name">测试规则 3：额度与预算科目占用测试比对</div>
+              <div class="aura-demo-rule-desc">申报金额在可用预算额度内，未触发超额预警。</div>
+            </div>
+          </div>
+          <div class="aura-demo-rule-item">
+            <div class="aura-demo-rule-icon">✓</div>
+            <div class="aura-demo-rule-content">
+              <div class="aura-demo-rule-name">测试规则 4：审批授权链与经办权限校验</div>
+              <div class="aura-demo-rule-desc">经办人具备申报权限，流转路径符合授权规则。</div>
+            </div>
+          </div>
+          <div class="aura-demo-rule-item">
+            <div class="aura-demo-rule-icon">✓</div>
+            <div class="aura-demo-rule-content">
+              <div class="aura-demo-rule-name">测试规则 5：历史单据履约记录综合评估</div>
+              <div class="aura-demo-rule-desc">历史记录无异常，满足审批前置条件。</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI 深度推理分析面板 -->
+        <div class="aura-demo-reasoning-panel">
+          <div class="aura-demo-reasoning-head">
+            <span>AI 深度推理分析过程（测试数据）</span>
+            <span style="font-size:11px; color:#2563eb; font-weight:600;">已完成全要素推理</span>
+          </div>
+          <div class="aura-demo-reasoning-body">
+            <p>1. <strong>流程背景解析</strong>：本单据为测试场景采购审批流程，包含设备与服务采购，申报金额已核实。</p>
+            <p>2. <strong>比对与判定</strong>：系统对多份测试附件完成了 OCR 识别与字段比对，技术指标匹配测试要求。</p>
+            <p>3. <strong>综合结论</strong>：置信度 95%，建议通过。针对微小格式问题已列入改进建议。</p>
+          </div>
+        </div>
+
+        <!-- 审核体验评论 -->
+        <div class="aura-demo-foldable-bar" style="border-left: 3px solid #6366f1;">
+          <div style="display:flex; align-items:center; gap: 8px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span>审核体验评论</span>
+          </div>
+          <span style="font-size: 12px; color: #94a3b8; font-weight: normal;">写下对这次 AI 审核的感受，也可以附上满意度评价。</span>
+        </div>
+      </div>
+
+      <!-- 弹窗底部独立切换栏（纯用于演示对比，不占用和挤压 Header） -->
+      <div class="aura-dialog-footer-toolbar">
+        <span style="font-size: 12px; font-weight: 600; color: #64748b;">卡片效果对比切换：</span>
+        <div class="aura-dialog-segmented" id="dialogInnerSegmented">
+          <button type="button" class="aura-dialog-segmented-btn is-active" data-inner-scene="suggest-only">✨ 仅改进建议 (100% 撑满)</button>
+          <button type="button" class="aura-dialog-segmented-btn" data-inner-scene="both">双卡片 (风险+建议并排)</button>
+          <button type="button" class="aura-dialog-segmented-btn" data-inner-scene="risk-only">仅风险项 (100% 撑满)</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -1168,7 +1804,92 @@
       renderGallery();
     });
 
-    // 按钮点击处理（区分拖动和点击）
+    /* ================= 嵌入详情弹窗交互与全套真实模拟数据 ================= */
+    var activeDialogScene = 'suggest-only'; // 'suggest-only' | 'both' | 'risk-only'
+    var dialogOverlay = document.getElementById('auraOptimizedDialogOverlay');
+    var dialogCloseBtn = document.getElementById('auraDialogCloseBtn');
+    var insightsContainer = document.getElementById('auraDemoInsightsContainer');
+
+    function renderDialogInsights(scene) {
+      activeDialogScene = scene;
+      var suggestHtml = '<div class="aura-demo-insight-card aura-demo-insight-card--suggest">' +
+        '<div class="aura-demo-insight-card-head">' +
+        '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>' +
+        '<span>改进建议</span>' +
+        '</div>' +
+        '<ul class="aura-demo-insight-list">' +
+        '<li>建议经办人在后续环节或归档前修正附件中报价截止日期的笔误（2025年改为2026年），但不影响当前流程。</li>' +
+        '</ul>' +
+        '</div>';
+
+      var riskHtml = '<div class="aura-demo-insight-card aura-demo-insight-card--risk">' +
+        '<div class="aura-demo-insight-card-head">' +
+        '<svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>' +
+        '<span>潜在风险项</span>' +
+        '</div>' +
+        '<ul class="aura-demo-insight-list">' +
+        '<li>发票开具抬头与合同甲方名称存在 1 处字号出入，需核对税务信息。</li>' +
+        '</ul>' +
+        '</div>';
+
+      if (scene === 'suggest-only') {
+        insightsContainer.innerHTML = suggestHtml;
+      } else if (scene === 'risk-only') {
+        insightsContainer.innerHTML = riskHtml;
+      } else {
+        insightsContainer.innerHTML = riskHtml + suggestHtml;
+      }
+
+      // 同步弹窗内切换按钮
+      document.querySelectorAll('#dialogInnerSegmented .aura-dialog-segmented-btn').forEach(function (btn) {
+        btn.classList.toggle('is-active', btn.getAttribute('data-inner-scene') === scene);
+      });
+      // 同步控制面板按钮
+      document.querySelectorAll('#dialogDemoRow button').forEach(function (btn) {
+        btn.classList.toggle('is-active', btn.getAttribute('data-dialog-scene') === scene);
+      });
+    }
+
+    function openOptimizedEmbedDialog(scene, title) {
+      if (title) {
+        document.getElementById('auraDialogTitleText').textContent = title;
+      }
+      renderDialogInsights(scene || activeDialogScene);
+      dialogOverlay.classList.add('aura-dialog--visible');
+      document.addEventListener('keydown', onDialogKeyDown);
+    }
+
+    function closeOptimizedEmbedDialog() {
+      dialogOverlay.classList.remove('aura-dialog--visible');
+      document.removeEventListener('keydown', onDialogKeyDown);
+    }
+
+    function onDialogKeyDown(e) {
+      if (e.key === 'Escape') closeOptimizedEmbedDialog();
+    }
+
+    dialogCloseBtn.addEventListener('click', closeOptimizedEmbedDialog);
+    dialogOverlay.addEventListener('click', function (e) {
+      if (e.target === dialogOverlay) closeOptimizedEmbedDialog();
+    });
+
+    // 弹窗内部快捷切换
+    document.getElementById('dialogInnerSegmented').addEventListener('click', function (e) {
+      var btn = e.target.closest('.aura-dialog-segmented-btn');
+      if (!btn) return;
+      var scene = btn.getAttribute('data-inner-scene');
+      renderDialogInsights(scene);
+    });
+
+    // 控制面板中的打开弹窗按钮
+    document.getElementById('dialogDemoRow').addEventListener('click', function (e) {
+      var btn = e.target.closest('button');
+      if (!btn) return;
+      var scene = btn.getAttribute('data-dialog-scene');
+      openOptimizedEmbedDialog(scene);
+    });
+
+    // 胶囊按钮点击处理：直接调起精致弹窗
     function handleButtonClick(e) {
       if (dragSession.ignoreNextClick || dragSession.hasMoved || dragSession.longPressTriggered) {
         e.preventDefault();
@@ -1177,17 +1898,18 @@
       }
       var btn = e.target.closest('.aura-status-button');
       if (!btn) return;
-      var text = btn.getAttribute('data-aura-copy') || 'AI 状态详情';
-      alert('【模拟点击】已触发调起详情弹窗：\n' + text);
+      var isSummary = btn.id.indexOf('Summary') !== -1;
+      openOptimizedEmbedDialog(activeDialogScene, isSummary ? 'AI 流程总结' : 'AI 流程审核');
     }
 
     stageGroup.addEventListener('click', handleButtonClick);
     floatGroup.addEventListener('click', handleButtonClick);
     document.getElementById('galleryGroup').addEventListener('click', handleButtonClick);
 
-    // 启动初始场景
+    // 启动初始场景与默认渲染弹窗数据
     playScene('fast-pass');
     renderGallery();
+    renderDialogInsights('suggest-only');
   </script>
 </body>
 </html>
