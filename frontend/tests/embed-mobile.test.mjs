@@ -155,7 +155,9 @@ async function run(source, payload, httpOK = true, device = {}) {
     addEventListener: (type, fn) => addListener(state.windowListeners, type, fn),
     removeEventListener(type, fn) { state.windowListeners[type] = (state.windowListeners[type] || []).filter(item => item !== fn) },
     matchMedia: () => ({ matches: !!device.reducedMotion }),
+    open(url, target) { state.openedWindow = { url, target }; return {} },
   }
+  if (device.noNative) delete win.weaJs
   state.group = groupEl
   state.document = document
   state.nodes = nodesById
@@ -297,8 +299,11 @@ for (const origin of ['export', 'template']) {
         assert.equal(state.text, type === 'summary' ? '查看流程总结' : '审核通过 (95分)')
         state.click()
         assert.equal(new URL(state.dialogs[0]).pathname, '/embed/' + type)
-        assert.equal(state.dialogOpts.length, 0, 'mobile uses the animated iframe surface by default')
-        assert.match(state.elements[0].className, /--mobile/)
+        assert.equal(state.dialogOpts.length, 1, 'mobile must use the Fanwei native dialog')
+        assert.equal(state.dialogOpts[0].moduleName, 'workflow')
+        assert.equal(state.dialogOpts[0].style.width, '100%')
+        assert.equal(state.dialogOpts[0].style.height, '100%')
+        assert.equal(state.elements.length, 0, 'mobile must not create an iframe overlay')
         assert.equal(state.group.style.opacity, '0')
       })
     }
@@ -456,9 +461,11 @@ for (const origin of ['export', 'template']) {
     const source = origin === 'export' ? factory(type, 'test-token') : staticSource.replace("var EMBED_TYPE = 'audit'", `var EMBED_TYPE = '${type}'`)
     const payload = { supported: true, has_audit: true, audit_result: { recommendation: 'approve', overall_score: 95 }, has_summary: true, summary_result: { status: 'completed' } }
     const trigger = type === 'all' ? 'auraMobileEmbedSummaryBtn' : 'auraMobileEmbedBtn'
+    const desktopSource = source.replace('var SHOW_ON_DESKTOP = false', 'var SHOW_ON_DESKTOP = true')
+    const desktop = { ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', motion: true }
 
     test(`${origin} ${type}: animated close restores OA scrolling and buttons exactly once`, async () => {
-      const state = await run(source, payload, true, { motion: true })
+      const state = await run(desktopSource, payload, true, desktop)
       state.click(trigger)
       const overlay = state.elements.find(node => node.id === 'auraDesktopEmbedDialog')
       const close = overlay.children[0].children[0].children[1]
@@ -492,7 +499,7 @@ for (const origin of ['export', 'template']) {
     })
 
     test(`${origin} ${type}: close during entry and page exit release animation resources`, async () => {
-      const state = await run(source, payload, true, { motion: true })
+      const state = await run(desktopSource, payload, true, desktop)
       state.click(trigger)
       state.advanceAnimation(0)
       state.advanceAnimation(150)
@@ -512,9 +519,8 @@ for (const origin of ['export', 'template']) {
       assert.equal(state.requests.length, before, 'leaving OA must not start another refresh')
     })
 
-    test(`${origin} ${type}: native compatibility restores on callback and falls back on failure`, async () => {
-      const nativeSource = source.replace('var USE_NATIVE_MOBILE_DIALOG = false', 'var USE_NATIVE_MOBILE_DIALOG = true')
-      const state = await run(nativeSource, payload)
+    test(`${origin} ${type}: mobile native dialog restores on callback and failure without creating an iframe`, async () => {
+      const state = await run(source, payload)
       state.click(trigger)
       assert.equal(state.dialogOpts.length, 1)
       assert.equal(state.group.style.opacity, '0')
@@ -525,23 +531,26 @@ for (const origin of ['export', 'template']) {
       assert.equal(state.group.style.opacity, '')
       assert.equal(state.group.inert, false)
       assert.equal(state.requests.length, before + 1)
-      const failed = await run(nativeSource, payload, true, { nativeThrows: true })
+      const failed = await run(source, payload, true, { nativeThrows: true })
       failed.click(trigger)
       assert.equal(failed.dialogOpts.length, 0)
       const overlay = failed.elements.find(node => node.id === 'auraDesktopEmbedDialog')
-      assert.ok(overlay)
-      overlay.children[0].children[0].children[1].onclick()
+      assert.equal(overlay, undefined)
+      assert.equal(failed.messages[0], '详情打开失败，请稍后重试')
+      assert.equal(failed.document.body.style.overflow, 'scroll')
       assert.equal(failed.group.style.opacity, '')
       assert.equal(failed.group.inert, false)
+      failed.click(trigger)
+      assert.equal(failed.messages.length, 2, 'failed native opening must release the click lock')
     })
 
     test(`${origin} ${type}: reduced motion skips layers and resize settles an in-flight surface`, async () => {
-      const state = await run(source, payload, true, { motion: true, reducedMotion: true })
+      const state = await run(desktopSource, payload, true, { ...desktop, reducedMotion: true })
       state.click(trigger)
       assert.equal(state.frames.size, 0)
       assert.equal(state.elements.filter(node => node.className === 'aura-embed-genie-layer').length, 0)
       assert.equal(state.group.style.opacity, '0')
-      const resizing = await run(source, payload, true, { motion: true })
+      const resizing = await run(desktopSource, payload, true, desktop)
       resizing.click(trigger)
       resizing.advanceAnimation(0)
       ;[...resizing.windowListeners.resize].forEach(fn => fn())
@@ -552,6 +561,42 @@ for (const origin of ['export', 'template']) {
       ;[...resizing.windowListeners.resize].forEach(fn => fn())
       assert.equal(overlay.removed, true)
       assert.equal(resizing.group.inert, false)
+    })
+
+    test(`${origin} ${type}: mobile without Fanwei API keeps the original new-window fallback`, async () => {
+      const state = await run(source, payload, true, { noNative: true })
+      state.click(trigger)
+      assert.equal(state.openedWindow.target, '_blank')
+      assert.equal(new URL(state.openedWindow.url).pathname, type === 'audit' ? '/embed/audit' : '/embed/summary')
+      assert.equal(state.elements.length, 0)
+      assert.equal(state.group.style.opacity, '')
+      assert.equal(state.group.inert, false)
+      assert.equal(state.document.body.style.overflow, 'scroll')
+    })
+
+    test(`${origin} ${type}: device detection keeps mobile native even when desktop buttons are enabled`, async () => {
+      for (const device of [
+        { ua: 'Mozilla/5.0 (Linux; Android 13)' },
+        { ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)' },
+        { ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)', touch: 5 },
+      ]) {
+        const state = await run(desktopSource, payload, true, device)
+        state.click(trigger)
+        assert.equal(state.dialogOpts.length, 1)
+        assert.equal(state.elements.length, 0)
+        assert.equal(state.document.documentElement.style.overflow, 'auto')
+        const before = state.requests.length
+        ;[...state.windowListeners.pagehide].forEach(fn => fn())
+        state.dialogOpts[0].callback()
+        await flush(state)
+        assert.equal(state.group.inert, false)
+        assert.equal(state.group.style.opacity, '')
+        assert.equal(state.requests.length, before)
+      }
+      const state = await run(desktopSource, payload, true, { ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', touch: 10 })
+      state.click(trigger)
+      assert.equal(state.dialogOpts.length, 0, 'Windows touch screens remain desktop')
+      assert.ok(state.elements.some(node => node.id === 'auraDesktopEmbedDialog'))
     })
 
     test(`${origin} ${type}: exported runtime remains identical to the standalone script`, () => {
