@@ -204,9 +204,9 @@ for (const origin of ['export', 'template']) {
       shown.click()
       assert.equal(shown.dialogs.length, 0, 'desktop must not use the mobile OA dialog')
       const overlay = shown.elements[0], dialog = overlay.children[0], frame = dialog.children[1]
-      assert.match(dialog.style.cssText, /width:760px/)
-      assert.match(dialog.style.cssText, /height:85vh/)
-      assert.match(dialog.style.cssText, /max-width:100%/)
+      assert.match(dialog.style.cssText, /width:min\(740px,\s*94vw\)/)
+      assert.match(dialog.style.cssText, /height:86vh/)
+      assert.match(dialog.style.cssText, /background:#f8fafc/)
       assert.equal(new URL(frame.src).pathname, '/embed/' + type)
       dialog.children[0].children[1].onclick()
       assert.equal(overlay.removed, true)
