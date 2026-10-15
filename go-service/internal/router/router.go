@@ -238,6 +238,7 @@ func SetupRouter(
 	{
 		executionConfigVersions.GET("/status", executionConfigSourceHandler.GetStatus)
 		executionConfigVersions.POST("/save-draft", executionConfigSourceHandler.SaveDraft)
+		executionConfigVersions.POST("/discard-draft", executionConfigSourceHandler.DiscardDraft)
 		executionConfigVersions.POST("/publish", executionConfigSourceHandler.Publish)
 		executionConfigVersions.GET("/history", executionConfigSourceHandler.ListHistory)
 		executionConfigVersions.POST("/activate", executionConfigSourceHandler.Activate)

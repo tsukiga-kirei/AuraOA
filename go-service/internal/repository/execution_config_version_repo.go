@@ -65,6 +65,11 @@ func (r *ExecutionConfigVersionRepo) GetVersionByID(
 	return &version, err
 }
 
+// LockBaseVersion 在事务内串行化发布、切换、保存和丢弃同一租户配置草稿。
+func (r *ExecutionConfigVersionRepo) LockBaseVersion(ctx context.Context, tenantID uuid.UUID, module string, sourceConfigID uuid.UUID) error {
+	return r.db.WithContext(ctx).Exec("SELECT pg_advisory_xact_lock(hashtext(?))", "base:"+tenantID.String()+":"+module+":"+sourceConfigID.String()).Error
+}
+
 // GetActiveBaseVersion 获取当前租户生效/启用的基础配置版本。
 func (r *ExecutionConfigVersionRepo) GetActiveBaseVersion(
 	ctx context.Context,
@@ -261,6 +266,7 @@ func (r *ExecutionConfigVersionRepo) PublishBaseVersion(
 	sourceConfigID uuid.UUID,
 	fingerprint string,
 	snapshot interface{},
+	matches ...func(datatypes.JSON) bool,
 ) (*model.TenantConfigVersion, error) {
 	raw, err := json.Marshal(snapshot)
 	if err != nil {
@@ -275,6 +281,19 @@ func (r *ExecutionConfigVersionRepo) PublishBaseVersion(
 
 		var same model.TenantConfigVersion
 		sameErr := tx.Where("tenant_id = ? AND module = ? AND source_config_id = ? AND fingerprint = ?", tenantID, module, sourceConfigID, fingerprint).First(&same).Error
+		// 旧版本保存的指纹可能早于字段扩展，按规范化后的内容寻找可复用版本。
+		if sameErr == gorm.ErrRecordNotFound && len(matches) > 0 {
+			var candidates []model.TenantConfigVersion
+			if err := tx.Where("tenant_id = ? AND module = ? AND source_config_id = ?", tenantID, module, sourceConfigID).Order("is_active DESC, version_no DESC").Find(&candidates).Error; err != nil {
+				return err
+			}
+			for _, candidate := range candidates {
+				if matches[0](candidate.ConfigSnapshot) {
+					same, sameErr = candidate, nil
+					break
+				}
+			}
+		}
 		if sameErr == nil {
 			if err := tx.Model(&model.TenantConfigVersion{}).Where("tenant_id = ? AND module = ? AND source_config_id = ?", tenantID, module, sourceConfigID).Update("is_active", false).Error; err != nil {
 				return err

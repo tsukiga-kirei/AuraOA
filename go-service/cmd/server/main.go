@@ -217,6 +217,7 @@ func main() {
 	)
 	processAuditConfigService.SetEmbedRefreshScheduleManager(embedRefreshService)
 	summaryConfigService.SetEmbedRefreshScheduleManager(embedRefreshService)
+	executionConfigSourceService.SetEmbedRefreshScheduleManager(embedRefreshService)
 	dashboardOverviewService := service.NewDashboardOverviewService(
 		auditSnapshotRepo, archiveSnapshotRepo, summaryLogRepo, auditLogRepo, archiveLogRepo, cronLogRepo, cronTaskRepo, cronPresetRepo, llmMessageLogRepo, tenantRepo, orgRepo, cacheManager, invalidationManager,
 	)

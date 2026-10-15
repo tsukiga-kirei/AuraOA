@@ -205,30 +205,84 @@ const selectedHistoryItem = ref<any | null>(null)
 const activatingVersion = ref(false)
 const savingHistoricalVersion = ref(false)
 
-async function reloadCurrentModuleData(module: ExecutionConfigModule) {
+async function reloadCurrentModuleData(module: ExecutionConfigModule, targetConfigId?: string) {
   if (module === 'audit') {
     const configs = await rulesApi.listConfigs()
-    processConfigs.value = configs.map(c => typeof normalizeAuditConfigForUI === 'function' ? normalizeAuditConfigForUI(c) : c)
-    if (selectedConfig.value) {
-      const rules = await rulesApi.listRules(selectedConfig.value.id)
-      auditRuleDraftsByConfig[selectedConfig.value.id] = cloneSerializable(rules)
-      savedAuditRulesByConfig[selectedConfig.value.id] = cloneSerializable(rules)
+    const normalized = configs.map(normalizeAuditConfigForUI)
+    processConfigs.value = targetConfigId
+      ? processConfigs.value.map(config => config.id === targetConfigId ? normalized.find(item => item.id === targetConfigId) || config : config)
+      : normalized
+    const configId = targetConfigId || selectedConfig.value?.id
+    if (configId) {
+      const rules = await rulesApi.listRules(configId)
+      auditRuleDraftsByConfig[configId] = cloneSerializable(rules)
+      savedAuditRulesByConfig[configId] = cloneSerializable(rules)
     }
   } else if (module === 'archive') {
     const archiveList = await archiveApi.listConfigs()
-    archiveConfigs.value = archiveList.map(cfg => ({
+    const normalized = archiveList.map(cfg => ({
       ...cfg,
       access_control: typeof normalizeAccessControl === 'function' ? normalizeAccessControl(cfg.access_control) : cfg.access_control,
     }))
-    if (selectedArchiveConfig.value) {
-      const rules = await archiveApi.listRules(selectedArchiveConfig.value.id)
-      archiveRuleDraftsByConfig[selectedArchiveConfig.value.id] = cloneSerializable(rules)
-      savedArchiveRulesByConfig[selectedArchiveConfig.value.id] = cloneSerializable(rules)
+    archiveConfigs.value = targetConfigId
+      ? archiveConfigs.value.map(config => config.id === targetConfigId ? normalized.find(item => item.id === targetConfigId) || config : config)
+      : normalized
+    const configId = targetConfigId || selectedArchiveConfig.value?.id
+    if (configId) {
+      const rules = await archiveApi.listRules(configId)
+      archiveRuleDraftsByConfig[configId] = cloneSerializable(rules)
+      savedArchiveRulesByConfig[configId] = cloneSerializable(rules)
     }
   } else if (module === 'summary') {
     const summaryList = await summaryApi.listConfigs()
-    summaryConfigs.value = summaryList.map(c => typeof normalizeSummaryConfigForUI === 'function' ? normalizeSummaryConfigForUI(c) : c)
+    const normalized = summaryList.map(normalizeSummaryConfigForUI)
+    summaryConfigs.value = targetConfigId
+      ? summaryConfigs.value.map(config => config.id === targetConfigId ? normalized.find(item => item.id === targetConfigId) || config : config)
+      : normalized
   }
+}
+
+// 丢弃草稿会同时清除页面尚未保存的编辑，并重新加载当前发布版本。
+const discardingDraft = reactive<Record<ExecutionConfigModule, boolean>>({ audit: false, archive: false, summary: false })
+
+function selectedModuleConfigId(module: ExecutionConfigModule): string | undefined {
+  return module === 'audit' ? selectedConfig.value?.id : module === 'archive' ? selectedArchiveConfig.value?.id : selectedSummaryConfig.value?.id
+}
+
+function handleDiscardDraft(module: ExecutionConfigModule) {
+  const configId = selectedModuleConfigId(module)
+  if (!configId) return
+  Modal.confirm({
+    title: t('executionConfig.discardDraftTitle'),
+    content: t('executionConfig.discardDraftContent'),
+    okText: t('executionConfig.discardDraft'),
+    cancelText: t('admin.ruleConfig.cancel'),
+    centered: true,
+    onOk: async () => {
+      discardingDraft[module] = true
+      try {
+        await executionConfigVersionApi.discardDraft(module, configId)
+        // 切换配置时不清除另一条配置正在编辑的历史版本。
+        if (selectedModuleConfigId(module) === configId) editingVersionNo[module] = null
+        await reloadCurrentModuleData(module, configId)
+        if (selectedModuleConfigId(module) === configId) {
+          if (module === 'audit') {
+            selectedRuleIds.value = []
+            originalAuditPerms.value = { ...selectedConfig.value?.user_permissions }
+          } else if (module === 'archive') {
+            selectedArchiveRuleIds.value = []
+            originalArchivePerms.value = { ...selectedArchiveConfig.value?.user_permissions }
+          }
+        }
+        await refreshVersionStatus(module, selectedModuleConfigId(module))
+        message.success(t('executionConfig.draftDiscarded'))
+      } catch (error: any) {
+        message.error(t('executionConfig.discardDraftFailed') + ': ' + (error.message || ''))
+      } finally {
+        discardingDraft[module] = false
+      }
+    },
+  })
 }
 
 //===== 流程配置导出与导入 (JSON) =====
@@ -3149,6 +3203,14 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
             <a-button @click="openImportModal('audit', 'all')">
               <ImportOutlined /> {{ t('admin.ruleConfig.importConfig') }}
             </a-button>
+            <a-button
+              v-if="auditVersionStatus?.active_version_no"
+              :loading="discardingDraft.audit"
+              :disabled="publishingVersion.audit || savingHistoricalVersion || saving || savingAuditRules || versionStatusLoading.audit"
+              @click="handleDiscardDraft('audit')"
+            >
+              <RollbackOutlined /> {{ t('executionConfig.discardDraft') }}
+            </a-button>
             <div
               class="config-version-status config-version-status--clickable"
               :class="versionStatusClass(auditVersionStatus, 'audit')"
@@ -3953,6 +4015,14 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
             </a-button>
             <a-button @click="openImportModal('summary', 'all')">
               <ImportOutlined /> {{ t('admin.ruleConfig.importConfig') }}
+            </a-button>
+            <a-button
+              v-if="summaryVersionStatus?.active_version_no"
+              :loading="discardingDraft.summary"
+              :disabled="publishingVersion.summary || savingHistoricalVersion || savingSummary || versionStatusLoading.summary"
+              @click="handleDiscardDraft('summary')"
+            >
+              <RollbackOutlined /> {{ t('executionConfig.discardDraft') }}
             </a-button>
             <div
               class="config-version-status config-version-status--clickable"
@@ -5322,6 +5392,14 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
             </a-button>
             <a-button @click="openImportModal('archive', 'all')">
               <ImportOutlined /> {{ t('admin.ruleConfig.importConfig') }}
+            </a-button>
+            <a-button
+              v-if="archiveVersionStatus?.active_version_no"
+              :loading="discardingDraft.archive"
+              :disabled="publishingVersion.archive || savingHistoricalVersion || savingArchive || savingArchiveRules || versionStatusLoading.archive"
+              @click="handleDiscardDraft('archive')"
+            >
+              <RollbackOutlined /> {{ t('executionConfig.discardDraft') }}
             </a-button>
             <div
               class="config-version-status config-version-status--clickable"

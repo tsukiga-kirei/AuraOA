@@ -219,10 +219,6 @@ func (s *AuditExecuteService) createPendingAuditLog(c *gin.Context, req *AuditEx
 		}
 	}
 	if configVersion == nil {
-		fieldSet, mergedRulesText, effectiveRules, effectiveAIConfig, personalVersion, resolveErr := s.resolveUserConfig(c, configUserID, config, rules, req.ProcessType)
-		if resolveErr != nil {
-			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, "合并个人审核尺度失败: "+resolveErr.Error())
-		}
 		baseVersion, baseErr := s.executionVersions.GetActiveBaseVersion(
 			c.Request.Context(), tenantID, model.ExecutionConfigModuleAudit, config.ID,
 		)
@@ -231,6 +227,10 @@ func (s *AuditExecuteService) createPendingAuditLog(c *gin.Context, req *AuditEx
 				return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, "审核配置尚处于草稿状态，请先发布首个版本")
 			}
 			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "读取审核基础配置版本失败")
+		}
+		fieldSet, mergedRulesText, effectiveRules, effectiveAIConfig, personalVersion, resolveErr := s.resolveUserConfig(c, configUserID, config, rules, req.ProcessType, baseVersion)
+		if resolveErr != nil {
+			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, "合并个人审核尺度失败: "+resolveErr.Error())
 		}
 		configSnapshot := AuditExecutionConfigSnapshot{
 			AIConfig: effectiveAIConfig, FieldSet: fieldSet, MergedRules: mergedRulesText,
@@ -2580,8 +2580,9 @@ func (s *AuditExecuteService) resolveUserConfig(
 	config *model.ProcessAuditConfig,
 	tenantRules []model.AuditRule,
 	processType string,
+	published ...*model.TenantConfigVersion,
 ) (SelectedFieldSet, string, []model.AuditRule, datatypes.JSON, int, error) {
-	if err := loadPublishedConfig(c.Request.Context(), s.executionVersions, config.TenantID, model.ExecutionConfigModuleAudit, config.ID, config, &tenantRules); err != nil {
+	if err := applyPublishedConfig(c.Request.Context(), s.executionVersions, config.TenantID, model.ExecutionConfigModuleAudit, config.ID, config, &tenantRules, published...); err != nil {
 		return nil, "", nil, nil, 0, err
 	}
 

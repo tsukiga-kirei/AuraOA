@@ -32,6 +32,7 @@ type ExecutionConfigVersionStatus struct {
 type ExecutionConfigSourceService struct {
 	dataQueries    *AuditDataQueryService
 	invalidator    *cache.InvalidationManager
+	scheduleMgr    EmbedRefreshScheduleManager
 	versions       *repository.ExecutionConfigVersionRepo
 	auditConfigs   *repository.ProcessAuditConfigRepo
 	auditRules     *repository.AuditRuleRepo
@@ -101,7 +102,7 @@ func (s *ExecutionConfigSourceService) GetStatus(
 	}
 
 	activeVersionNo := active.VersionNo
-	if active.Fingerprint == sourceFingerprint || s.matchesActiveSnapshot(module, active.ConfigSnapshot, sourceFingerprint) {
+	if s.matchesActiveSnapshot(module, active.ConfigSnapshot, sourceFingerprint) {
 		return &ExecutionConfigVersionStatus{
 			Status: "current", ActiveVersionNo: &activeVersionNo, CurrentVersionNo: &activeVersionNo, LatestVersionNo: &latestVersionNo, HasPendingChanges: false,
 		}, nil
@@ -128,31 +129,30 @@ func (s *ExecutionConfigSourceService) Publish(
 		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
 	}
 
-	snapshot, sourceFingerprint, err := s.currentSourceSnapshot(c, module, sourceConfigID)
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, newServiceError(errcode.ErrConfigNotFound, "流程配置不存在")
-		}
-		return nil, newServiceError(errcode.ErrDatabase, "读取配置版本状态失败")
-	}
-
 	userID, err := getUserUUID(c)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrParamValidation, "用户ID无效")
 	}
-
-	published, err := s.versions.PublishBaseVersion(
-		c.Request.Context(), tenantID, userID, module, sourceConfigID, sourceFingerprint, snapshot,
-	)
+	err = s.inTransaction(c, func(scoped *ExecutionConfigSourceService) error {
+		if err := scoped.versions.LockBaseVersion(c.Request.Context(), tenantID, module, sourceConfigID); err != nil {
+			return err
+		}
+		snapshot, fingerprint, err := scoped.currentSourceSnapshot(c, module, sourceConfigID)
+		if err != nil {
+			return err
+		}
+		_, err = scoped.versions.PublishBaseVersion(c.Request.Context(), tenantID, userID, module, sourceConfigID, fingerprint, snapshot,
+			func(raw datatypes.JSON) bool { return scoped.matchesActiveSnapshot(module, raw, fingerprint) })
+		return err
+	})
 	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, newServiceError(errcode.ErrConfigNotFound, "流程配置不存在")
+		}
 		return nil, newServiceError(errcode.ErrDatabase, "发布配置版本失败")
 	}
 
-	s.invalidate(c, tenantID, module)
-	versionNo := published.VersionNo
-	return &ExecutionConfigVersionStatus{
-		Status: "current", ActiveVersionNo: &versionNo, CurrentVersionNo: &versionNo, LatestVersionNo: &versionNo, HasPendingChanges: false,
-	}, nil
+	return s.sourceChangeStatus(c, tenantID, module, sourceConfigID)
 }
 
 // SaveDraft 保存管理员当前编辑内容，但不创建发布版本。
@@ -180,12 +180,14 @@ func (s *ExecutionConfigSourceService) SaveDraft(
 		return nil, newServiceError(errcode.ErrParamValidation, err.Error())
 	}
 	if err := s.inTransaction(c, func(scoped *ExecutionConfigSourceService) error {
+		if err := scoped.versions.LockBaseVersion(c.Request.Context(), tenantID, module, sourceConfigID); err != nil {
+			return err
+		}
 		return scoped.applySnapshotToSource(c, tenantID, module, sourceConfigID, datatypes.JSON(raw))
 	}); err != nil {
 		return nil, fmt.Errorf("保存配置草稿失败: %w", err)
 	}
-	s.invalidate(c, tenantID, module)
-	return s.GetStatus(c, module, sourceConfigID)
+	return s.sourceChangeStatus(c, tenantID, module, sourceConfigID)
 }
 
 // TenantConfigVersionHistoryItem 描述历史版本的一条记录。
@@ -264,53 +266,57 @@ func (s *ExecutionConfigSourceService) ActivateVersion(
 	if err != nil {
 		return nil, fmt.Errorf("激活配置版本失败: %w", err)
 	}
-	s.invalidate(c, tenantID, module)
-
-	return s.GetStatus(c, module, sourceConfigID)
+	return s.sourceChangeStatus(c, tenantID, module, sourceConfigID)
 }
 
-// SaveVersion 直接修改并保存指定历史版本的快照内容。
-func (s *ExecutionConfigSourceService) SaveVersion(
-	c *gin.Context,
-	module string,
-	sourceConfigID uuid.UUID,
-	versionNo int,
-	snapshot interface{},
-) (*ExecutionConfigVersionStatus, error) {
-	if module != model.ExecutionConfigModuleAudit &&
-		module != model.ExecutionConfigModuleArchive &&
-		module != model.ExecutionConfigModuleSummary {
+// SaveVersion 兼容旧客户端：确认历史版本存在后另存草稿，不修改已发布版本。
+func (s *ExecutionConfigSourceService) SaveVersion(c *gin.Context, module string, sourceConfigID uuid.UUID, versionNo int, snapshot interface{}) (*ExecutionConfigVersionStatus, error) {
+	tenantID, err := getTenantUUID(c)
+	if err != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
+	}
+	if _, err := s.versions.GetBaseVersionByNo(c.Request.Context(), tenantID, module, sourceConfigID, versionNo); err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, newServiceError(errcode.ErrConfigNotFound, "配置版本不存在")
+		}
+		return nil, newServiceError(errcode.ErrDatabase, "读取配置版本失败")
+	}
+	return s.SaveDraft(c, module, sourceConfigID, snapshot)
+}
+
+// DiscardDraft 丢弃未发布配置，恢复当前可用发布版本，不改变历史版本和流程绑定。
+func (s *ExecutionConfigSourceService) DiscardDraft(c *gin.Context, module string, sourceConfigID uuid.UUID) (*ExecutionConfigVersionStatus, error) {
+	if module != model.ExecutionConfigModuleAudit && module != model.ExecutionConfigModuleArchive && module != model.ExecutionConfigModuleSummary {
 		return nil, newServiceError(errcode.ErrParamValidation, "配置模块无效")
 	}
 	tenantID, err := getTenantUUID(c)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
 	}
-
-	raw, err := json.Marshal(snapshot)
-	if err != nil {
-		return nil, err
-	}
-	if err := validateSourceSnapshot(module, raw); err != nil {
-		return nil, newServiceError(errcode.ErrParamValidation, err.Error())
-	}
-	fingerprint := stableJSONFingerprint(snapshot)
 	err = s.inTransaction(c, func(scoped *ExecutionConfigSourceService) error {
-		updated, err := scoped.versions.UpdateBaseVersionSnapshot(c.Request.Context(), tenantID, module, sourceConfigID, versionNo, fingerprint, snapshot)
+		if err := scoped.versions.LockBaseVersion(c.Request.Context(), tenantID, module, sourceConfigID); err != nil {
+			return err
+		}
+		// 同时校验当前租户的源配置仍存在。
+		if _, _, err := scoped.currentSourceSnapshot(c, module, sourceConfigID); err != nil {
+			return err
+		}
+		active, err := scoped.versions.GetActiveBaseVersion(c.Request.Context(), tenantID, module, sourceConfigID)
 		if err != nil {
 			return err
 		}
-		if updated.IsActive {
-			return scoped.applySnapshotToSource(c, tenantID, module, sourceConfigID, updated.ConfigSnapshot)
+		if err := validateSourceSnapshot(module, active.ConfigSnapshot); err != nil {
+			return err
 		}
-		return nil
+		return scoped.applySnapshotToSource(c, tenantID, module, sourceConfigID, active.ConfigSnapshot)
 	})
 	if err != nil {
-		return nil, fmt.Errorf("保存版本快照失败: %w", err)
+		if err == gorm.ErrRecordNotFound {
+			return nil, newServiceError(errcode.ErrConfigNotFound, "配置不存在或尚无可恢复的发布版本")
+		}
+		return nil, fmt.Errorf("丢弃配置草稿失败: %w", err)
 	}
-	s.invalidate(c, tenantID, module)
-
-	return s.GetStatus(c, module, sourceConfigID)
+	return s.sourceChangeStatus(c, tenantID, module, sourceConfigID)
 }
 
 func (s *ExecutionConfigSourceService) applySnapshotToSource(
@@ -334,10 +340,11 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 			Status          string         `json:"status"`
 			Rules           []ruleSource   `json:"rules"`
 		}
-		if err := json.Unmarshal(rawSnapshot, &snapshot); err != nil {
+		if err := decodeContentJSON(rawSnapshot, &snapshot); err != nil {
 			return err
 		}
 		fields := map[string]interface{}{
+			"process_type":     snapshot.ProcessType,
 			"main_table_name":  snapshot.MainTableName,
 			"main_fields":      snapshot.MainFields,
 			"detail_tables":    snapshot.DetailTables,
@@ -398,6 +405,7 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 				RelatedFlow:            rs.RelatedFlow,
 				ContextEnabled:         rs.ContextEnabled,
 				DataQueries:            queryJSON,
+				ContextMounts:          datatypes.JSON(`[]`),
 			}
 			if rs.ContextMounts != nil {
 				if mountJSON, err := json.Marshal(rs.ContextMounts); err == nil {
@@ -435,10 +443,11 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 			Status          string         `json:"status"`
 			Rules           []ruleSource   `json:"rules"`
 		}
-		if err := json.Unmarshal(rawSnapshot, &snapshot); err != nil {
+		if err := decodeContentJSON(rawSnapshot, &snapshot); err != nil {
 			return err
 		}
 		fields := map[string]interface{}{
+			"process_type":     snapshot.ProcessType,
 			"main_table_name":  snapshot.MainTableName,
 			"main_fields":      snapshot.MainFields,
 			"detail_tables":    snapshot.DetailTables,
@@ -499,6 +508,7 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 				RelatedFlow:            rs.RelatedFlow,
 				ContextEnabled:         rs.ContextEnabled,
 				DataQueries:            queryJSON,
+				ContextMounts:          datatypes.JSON(`[]`),
 			}
 			if rs.ContextMounts != nil {
 				if mountJSON, err := json.Marshal(rs.ContextMounts); err == nil {
@@ -525,16 +535,18 @@ func (s *ExecutionConfigSourceService) applySnapshotToSource(
 
 	case model.ExecutionConfigModuleSummary:
 		var snapshot struct {
+			ProcessType   string         `json:"process_type"`
 			MainTableName string         `json:"main_table_name"`
 			MainFields    datatypes.JSON `json:"main_fields"`
 			DetailTables  datatypes.JSON `json:"detail_tables"`
 			SummaryBlocks datatypes.JSON `json:"summary_blocks"`
 			Status        string         `json:"status"`
 		}
-		if err := json.Unmarshal(rawSnapshot, &snapshot); err != nil {
+		if err := decodeContentJSON(rawSnapshot, &snapshot); err != nil {
 			return err
 		}
 		fields := map[string]interface{}{
+			"process_type":    snapshot.ProcessType,
 			"main_table_name": snapshot.MainTableName,
 			"main_fields":     snapshot.MainFields,
 			"detail_tables":   snapshot.DetailTables,
@@ -564,7 +576,7 @@ func (s *ExecutionConfigSourceService) currentSourceSnapshot(
 			return nil, "", err
 		}
 		snapshot := auditConfigSourceSnapshot(config, rules)
-		return snapshot, stableJSONFingerprint(snapshot), nil
+		return snapshot, sourceContentFingerprint(snapshot), nil
 	case model.ExecutionConfigModuleArchive:
 		config, err := s.archiveConfigs.GetByID(c, sourceConfigID)
 		if err != nil {
@@ -575,14 +587,14 @@ func (s *ExecutionConfigSourceService) currentSourceSnapshot(
 			return nil, "", err
 		}
 		snapshot := archiveConfigSourceSnapshot(config, rules)
-		return snapshot, stableJSONFingerprint(snapshot), nil
+		return snapshot, sourceContentFingerprint(snapshot), nil
 	case model.ExecutionConfigModuleSummary:
 		config, err := s.summaryConfigs.GetByID(c, sourceConfigID)
 		if err != nil {
 			return nil, "", err
 		}
 		snapshot := summaryConfigSourceSnapshot(config)
-		return snapshot, stableJSONFingerprint(snapshot), nil
+		return snapshot, sourceContentFingerprint(snapshot), nil
 	default:
 		return nil, "", newServiceError(errcode.ErrParamValidation, "配置模块无效")
 	}
@@ -608,7 +620,7 @@ func normalizedAuditRuleSources(rules []model.AuditRule) []ruleSource {
 			ID: rule.ID.String(), RuleContent: rule.RuleContent, RuleScope: rule.RuleScope,
 			ApplicabilityCondition: strings.TrimSpace(rule.ApplicabilityCondition),
 			Enabled:                rule.Enabled == nil || *rule.Enabled, RelatedFlow: rule.RelatedFlow,
-			ContextEnabled: rule.ContextEnabled, ContextMounts: rule.ContextMounts, DataQueries: rule.DataQueries,
+			ContextEnabled: rule.ContextEnabled, ContextMounts: normalizeFieldArrayJSON(rule.ContextMounts), DataQueries: normalizeFieldArrayJSON(rule.DataQueries),
 		})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
@@ -622,7 +634,7 @@ func normalizedArchiveRuleSources(rules []model.ArchiveRule) []ruleSource {
 			ID: rule.ID.String(), RuleContent: rule.RuleContent, RuleScope: rule.RuleScope,
 			ApplicabilityCondition: strings.TrimSpace(rule.ApplicabilityCondition),
 			Enabled:                rule.Enabled == nil || *rule.Enabled, RelatedFlow: rule.RelatedFlow,
-			ContextEnabled: rule.ContextEnabled, ContextMounts: rule.ContextMounts, DataQueries: rule.DataQueries,
+			ContextEnabled: rule.ContextEnabled, ContextMounts: normalizeFieldArrayJSON(rule.ContextMounts), DataQueries: normalizeFieldArrayJSON(rule.DataQueries),
 		})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
@@ -632,29 +644,29 @@ func normalizedArchiveRuleSources(rules []model.ArchiveRule) []ruleSource {
 func auditConfigSourceSnapshot(config *model.ProcessAuditConfig, rules []model.AuditRule) map[string]interface{} {
 	return map[string]interface{}{
 		"process_type": config.ProcessType, "main_table_name": config.MainTableName,
-		"main_fields": config.MainFields, "detail_tables": config.DetailTables,
+		"main_fields": normalizeFieldArrayJSON(config.MainFields), "detail_tables": normalizeFieldArrayJSON(config.DetailTables),
 		"field_mode": config.FieldMode, "kb_mode": config.KBMode,
-		"ai_config": config.AIConfig, "user_permissions": config.UserPermissions, "status": config.Status,
+		"ai_config": normalizedAIConfigContent(config.AIConfig), "user_permissions": normalizedPermissionContent(config.UserPermissions), "status": config.Status,
 		"rules": normalizedAuditRuleSources(rules),
 	}
 }
 
 func auditConfigSourceFingerprint(config *model.ProcessAuditConfig, rules []model.AuditRule) string {
-	return stableJSONFingerprint(auditConfigSourceSnapshot(config, rules))
+	return sourceContentFingerprint(auditConfigSourceSnapshot(config, rules))
 }
 
 func archiveConfigSourceSnapshot(config *model.ProcessArchiveConfig, rules []model.ArchiveRule) map[string]interface{} {
 	return map[string]interface{}{
 		"process_type": config.ProcessType, "main_table_name": config.MainTableName,
-		"main_fields": config.MainFields, "detail_tables": config.DetailTables,
+		"main_fields": normalizeFieldArrayJSON(config.MainFields), "detail_tables": normalizeFieldArrayJSON(config.DetailTables),
 		"field_mode": config.FieldMode, "kb_mode": config.KBMode,
-		"ai_config": config.AIConfig, "user_permissions": config.UserPermissions, "status": config.Status,
+		"ai_config": normalizedAIConfigContent(config.AIConfig), "user_permissions": normalizedPermissionContent(config.UserPermissions), "status": config.Status,
 		"rules": normalizedArchiveRuleSources(rules),
 	}
 }
 
 func archiveConfigSourceFingerprint(config *model.ProcessArchiveConfig, rules []model.ArchiveRule) string {
-	return stableJSONFingerprint(archiveConfigSourceSnapshot(config, rules))
+	return sourceContentFingerprint(archiveConfigSourceSnapshot(config, rules))
 }
 
 type summaryBlockSource struct {
@@ -745,7 +757,7 @@ func normalizeFieldArrayJSON(raw datatypes.JSON) []interface{} {
 		return []interface{}{}
 	}
 	var arr []interface{}
-	if err := json.Unmarshal(raw, &arr); err != nil || arr == nil {
+	if err := decodeContentJSON(raw, &arr); err != nil || arr == nil {
 		return []interface{}{}
 	}
 	return arr
@@ -763,7 +775,7 @@ func summaryConfigSourceSnapshot(config *model.ProcessSummaryConfig) map[string]
 }
 
 func summaryConfigSourceFingerprint(config *model.ProcessSummaryConfig) string {
-	return stableJSONFingerprint(summaryConfigSourceSnapshot(config))
+	return sourceContentFingerprint(summaryConfigSourceSnapshot(config))
 }
 
 func (s *ExecutionConfigSourceService) matchesActiveSnapshot(
@@ -775,29 +787,63 @@ func (s *ExecutionConfigSourceService) matchesActiveSnapshot(
 		return false
 	}
 	switch module {
-	case model.ExecutionConfigModuleSummary:
+	case model.ExecutionConfigModuleAudit:
+		var cfg model.ProcessAuditConfig
 		var snapshot struct {
-			ProcessType   string         `json:"process_type"`
-			MainTableName string         `json:"main_table_name"`
-			MainFields    datatypes.JSON `json:"main_fields"`
-			DetailTables  datatypes.JSON `json:"detail_tables"`
-			SummaryBlocks datatypes.JSON `json:"summary_blocks"`
-			Status        string         `json:"status"`
+			Rules []model.AuditRule `json:"rules"`
 		}
-		if err := json.Unmarshal(snapshotRaw, &snapshot); err != nil {
+		if json.Unmarshal(snapshotRaw, &cfg) != nil || json.Unmarshal(snapshotRaw, &snapshot) != nil {
 			return false
 		}
-		cfg := model.ProcessSummaryConfig{
-			ProcessType:   snapshot.ProcessType,
-			MainTableName: snapshot.MainTableName,
-			MainFields:    snapshot.MainFields,
-			DetailTables:  snapshot.DetailTables,
-			SummaryBlocks: snapshot.SummaryBlocks,
-			Status:        snapshot.Status,
+		return auditConfigSourceFingerprint(&cfg, snapshot.Rules) == sourceFingerprint
+	case model.ExecutionConfigModuleArchive:
+		var cfg model.ProcessArchiveConfig
+		var snapshot struct {
+			Rules []model.ArchiveRule `json:"rules"`
+		}
+		if json.Unmarshal(snapshotRaw, &cfg) != nil || json.Unmarshal(snapshotRaw, &snapshot) != nil {
+			return false
+		}
+		return archiveConfigSourceFingerprint(&cfg, snapshot.Rules) == sourceFingerprint
+	case model.ExecutionConfigModuleSummary:
+		var cfg model.ProcessSummaryConfig
+		if json.Unmarshal(snapshotRaw, &cfg) != nil {
+			return false
 		}
 		return summaryConfigSourceFingerprint(&cfg) == sourceFingerprint
 	}
 	return false
+}
+
+// SetEmbedRefreshScheduleManager 注入配置恢复后的定时检查同步器。
+func (s *ExecutionConfigSourceService) SetEmbedRefreshScheduleManager(manager EmbedRefreshScheduleManager) {
+	s.scheduleMgr = manager
+}
+
+// sourceChangeStatus 在配置事务提交后同步缓存与调度，避免恢复启停状态后仍沿用旧 Cron。
+func (s *ExecutionConfigSourceService) sourceChangeStatus(c *gin.Context, tenantID uuid.UUID, module string, sourceConfigID uuid.UUID) (*ExecutionConfigVersionStatus, error) {
+	s.invalidate(c, tenantID, module)
+	if s.scheduleMgr != nil {
+		var err error
+		switch module {
+		case model.ExecutionConfigModuleAudit:
+			var config *model.ProcessAuditConfig
+			config, err = s.auditConfigs.GetByID(c, sourceConfigID)
+			if err == nil {
+				err = s.scheduleMgr.SyncAuditConfig(c.Request.Context(), config)
+			}
+		case model.ExecutionConfigModuleSummary:
+			var config *model.ProcessSummaryConfig
+			config, err = s.summaryConfigs.GetByID(c, sourceConfigID)
+			if err == nil {
+				err = s.scheduleMgr.SyncSummaryConfig(c.Request.Context(), config)
+			}
+		}
+		if err != nil {
+			return nil, newServiceError(errcode.ErrDatabase, "配置已保存，但定时检查调度同步失败")
+		}
+	}
+	return s.GetStatus(c, module, sourceConfigID)
 }
 
 // SetInvalidator 接入共享配置缓存失效器。

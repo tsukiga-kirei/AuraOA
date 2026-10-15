@@ -18,7 +18,7 @@ export interface TenantConfigVersionHistoryItem {
   updated_at?: string
 }
 
-/** 查询租户当前配置与已生成执行版本之间的对应状态。 */
+/** 对接 /api/tenant/execution-config-versions，管理发布版本与工作草稿。 */
 export const useExecutionConfigVersionApi = () => {
   const { authFetch } = useAuth()
 
@@ -70,6 +70,17 @@ export const useExecutionConfigVersionApi = () => {
     )
   }
 
+  /** 丢弃未发布修改，恢复当前发布可用版本的内容。 */
+  async function discardDraft(
+    module: ExecutionConfigModule,
+    sourceConfigId: string,
+  ): Promise<ExecutionConfigVersionStatus> {
+    return await authFetch<ExecutionConfigVersionStatus>(
+      '/api/tenant/execution-config-versions/discard-draft',
+      { method: 'POST', body: { module, source_config_id: sourceConfigId } },
+    )
+  }
+
   async function activate(
     module: ExecutionConfigModule,
     sourceConfigId: string,
@@ -84,5 +95,5 @@ export const useExecutionConfigVersionApi = () => {
     )
   }
 
-  return { getStatus, saveDraft, publish, getHistory, activate }
+  return { getStatus, saveDraft, discardDraft, publish, getHistory, activate }
 }
