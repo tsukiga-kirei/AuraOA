@@ -156,7 +156,6 @@ const handleToggleSidebar = () => {
 .sidebar {
   width: var(--sidebar-width);
   background: var(--color-bg-sidebar);
-  border-right: 1px solid var(--color-sidebar-border);
   display: flex; flex-direction: column;
   position: fixed; top: 0; left: 0; bottom: 0;
   z-index: 100;
@@ -172,7 +171,6 @@ const handleToggleSidebar = () => {
   height: var(--header-height);
   width: 100%;
   flex-shrink: 0;
-  border-bottom: 1px solid var(--color-sidebar-border);
 }
 .sidebar-header--expanded {
   gap: 8px;
@@ -488,7 +486,7 @@ html[data-theme='dark'] .sidebar-hint-below::after {
   transition: transform var(--transition-fast);
 }
 
-.sidebar-footer { border-top: 1px solid var(--color-sidebar-border); padding: 8px; flex-shrink: 0; }
+.sidebar-footer { padding: 8px; flex-shrink: 0; }
 
 .fade-enter-active, .fade-leave-active { transition: opacity 0.15s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }

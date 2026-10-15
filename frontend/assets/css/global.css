@@ -1026,7 +1026,6 @@ a:focus-visible {
 
 /* ===== Sidebar User Profile Styles (Shared) ===== */
 .sidebar-footer {
-  border-top: 1px solid var(--color-border);
   padding: 4px;
   /* Minimal padding */
 }
