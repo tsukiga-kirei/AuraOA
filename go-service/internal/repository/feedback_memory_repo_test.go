@@ -90,7 +90,16 @@ func TestFeedbackMemoryIntegration(t *testing.T) {
 	}
 	commentID := comments.Items[0].ID
 	must(repo.ImportComments(c, dto.FeedbackMemoryImportRequest{FeedbackMemoryScope: scope, CommentIDs: []uuid.UUID{commentID}}))
+	firstImport, err := repo.Workspace(c, scope)
+	must(err)
+
 	must(repo.ImportComments(c, dto.FeedbackMemoryImportRequest{FeedbackMemoryScope: scope, CommentIDs: []uuid.UUID{commentID}}))
+	repeatedImport, err := repo.Workspace(c, scope)
+	must(err)
+	if repeatedImport.Memory.Revision != firstImport.Memory.Revision {
+		t.Fatal("重复导入评论不应改变素材修订号")
+	}
+
 	input := dto.FeedbackMemoryEntryRequest{FeedbackMemoryScope: scope, Content: "需要人工复核时明确说明缺少哪些材料", Condition: "材料不足", Enabled: true}
 	must(repo.SaveEntry(c, uuid.Nil, input))
 	workspace, err := repo.Workspace(c, scope)
@@ -110,6 +119,14 @@ func TestFeedbackMemoryIntegration(t *testing.T) {
 	must(err)
 	if allComments.Total != 0 {
 		t.Fatal("全部建议筛选不应重新展示已导入评论")
+	}
+	for _, entry := range workspace.Entries {
+		must(repo.SaveEntry(c, entry.ID, dto.FeedbackMemoryEntryRequest{FeedbackMemoryScope: scope, Content: entry.Content, Condition: entry.Condition, Enabled: entry.Enabled}))
+	}
+	unchangedWorkspace, err := repo.Workspace(c, scope)
+	must(err)
+	if unchangedWorkspace.Memory.Revision != workspace.Memory.Revision {
+		t.Fatal("原样保存素材不能使生成草稿失效")
 	}
 	oldRevision := workspace.Memory.Revision
 	if !errors.Is(repo.ImportComments(c, dto.FeedbackMemoryImportRequest{FeedbackMemoryScope: scope, CommentIDs: []uuid.UUID{uuid.New()}}), gorm.ErrRecordNotFound) {
@@ -184,13 +201,25 @@ func TestFeedbackMemoryIntegration(t *testing.T) {
 	if history.Total != 4 || len(history.Items) != 1 || history.Items[0].VersionNo != 4 {
 		t.Fatal("版本号或分页错误")
 	}
+	unchangedVersion, err := repo.SaveDraft(c, scope, v4, v4.Items, v4.PromptText, 0, workspace.Memory.Revision)
+	must(err)
+	if unchangedVersion.ID != v4.ID || unchangedVersion.Status != "published" {
+		t.Fatal("原样保存发布版不应创建新草稿")
+	}
 	// 人工编辑发布版另存草稿，草稿并发编辑与发布必须校验用户已审阅的修订。
-	draft, err := repo.SaveDraft(c, scope, v4, v4.Items, "人工修正", 0, workspace.Memory.Revision)
+	editedItems := []byte(`[{"content":"人工修正","condition":"","source_refs":["` + workspace.Entries[0].ID.String() + `"]}]`)
+	draft, err := repo.SaveDraft(c, scope, v4, editedItems, "人工修正", 0, workspace.Memory.Revision)
 	must(err)
 	if draft.ID == v4.ID || draft.Status != "draft" || draft.VersionNo != 5 {
 		t.Fatal("编辑发布版没有另存草稿")
 	}
-	updated, err := repo.SaveDraft(c, scope, draft, draft.Items, "二次修正", 0, workspace.Memory.Revision)
+	sameDraft, err := repo.SaveDraft(c, scope, draft, draft.Items, draft.PromptText, 0, workspace.Memory.Revision)
+	must(err)
+	if sameDraft.EditRevision != 0 {
+		t.Fatal("原样保存草稿不应增加编辑修订号")
+	}
+	updatedItems := []byte(`[{"content":"二次修正","condition":"","source_refs":["` + workspace.Entries[0].ID.String() + `"]}]`)
+	updated, err := repo.SaveDraft(c, scope, draft, updatedItems, "二次修正", 0, workspace.Memory.Revision)
 	must(err)
 	if updated.EditRevision != 1 {
 		t.Fatal("编辑修订未递增")

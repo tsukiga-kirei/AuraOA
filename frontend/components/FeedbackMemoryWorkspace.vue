@@ -20,6 +20,7 @@ import {
 } from "@ant-design/icons-vue";
 import { useFeedbackMemoryApi } from "~/composables/useFeedbackMemoryApi";
 import { appDayjs } from "~/utils/appTime";
+import { feedbackMemoryContentKey } from "~/utils/memoryContent";
 import type {
   FeedbackMemoryConfig,
   FeedbackMemoryScope,
@@ -206,6 +207,9 @@ const canEditMemory = computed(
     selected.value.id === workspace.value?.baseline?.id &&
     (selected.value.status === "published" || !stale.value),
 );
+const memoryDraftDirty = computed(() =>
+  feedbackMemoryContentKey(draftItems.value) !== feedbackMemoryContentKey(selected.value?.items),
+);
 const displayedItems = computed(() =>
   memoryEditing.value ? draftItems.value : selected.value?.items || [],
 );
@@ -230,6 +234,11 @@ function startMemoryEdit() {
 }
 async function saveMemoryDraft() {
   if (!selected.value) return;
+  if (!memoryDraftDirty.value) {
+    memoryEditing.value = false;
+    message.info(t("feedbackMemory.contentUnchanged"));
+    return;
+  }
   if (
     draftItems.value.some(
       (item) => !item.content.trim() || !item.source_refs.length,
@@ -837,6 +846,7 @@ onMounted(loadConfigs);
                       <a-button
                         type="primary"
                         :loading="busy"
+                        :disabled="!memoryDraftDirty"
                         @click="saveMemoryDraft"
                         ><template #icon><SaveOutlined v-if="!busy" /></template
                         >{{ t("feedbackMemory.saveDraft") }}</a-button

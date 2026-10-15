@@ -5,6 +5,7 @@ import QueryValueSourceEditor from './QueryValueSourceEditor.vue'
 import QuerySchemaBrowser from './QuerySchemaBrowser.vue'
 import { fillQueryFieldNotes, queryAssistFieldContext } from '~/utils/queryColumnLabels'
 import { appDayjs } from '~/utils/appTime'
+import { queryDefinitionContentKey } from '~/utils/memoryContent'
 import { previewQuerySql, querySqlParameterNames } from '~/utils/querySqlEditor'
 import {
   DatabaseOutlined,
@@ -145,7 +146,7 @@ const lastError = ref('')
 const promptsOpen = ref(false)
 const prompts = ref<QueryPrompts>({ generate: '', explain: '', repair: '' })
 const currentState = computed(() =>
-  JSON.stringify({ definition: definition.value, category: category.value }),
+  JSON.stringify({ definition: queryDefinitionContentKey(definition.value), category: category.value }),
 )
 const dirty = computed(() => currentState.value !== baseline.value)
 const resultColumns = computed(() => check.value?.columns || [])
@@ -198,6 +199,8 @@ const contextPreview = computed(() =>
   ),
 )
 function normalizeDefinition(value: QueryDefinition) {
+  value.tables ||= []
+  value.parameters ||= []
   value.mode ||= value.builder && !value.builder.sql_mode ? 'config' : 'sql'
   if (value.mode === 'sql') delete value.builder
   else if (value.builder) delete value.builder.sql_mode
@@ -432,8 +435,9 @@ async function publish() {
   }
   busy.value = 'publish'
   try {
+    const previousVersion = selected.value.latest_version
     const version = await api.publish(selected.value.id)
-    message.success(t('query.published', version.version_no))
+    message.success(t(version.version_no === previousVersion ? 'query.alreadyPublished' : 'query.published', version.version_no))
     await selectQuery(selected.value, true)
     await load()
     openResultPanel('versions')
