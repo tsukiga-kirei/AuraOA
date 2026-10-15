@@ -157,7 +157,7 @@ func TestAuditQueryOptionalRowLimit(t *testing.T) {
 				t.Fatal(err)
 			}
 			adapter := &Ecology9Adapter{db: gdb, driver: dialect}
-			result, err := adapter.QueryAuditData(context.Background(), "SELECT amount AS 金额 FROM expenses", nil, limit)
+			result, err := adapter.QueryAuditData(context.Background(), "SELECT amount AS 金额 FROM expenses", nil, limit, 0)
 			db.Close()
 			if limit < 0 {
 				if err == nil || conn.queries != 0 {
@@ -180,19 +180,56 @@ func TestAuditQueryOptionalRowLimit(t *testing.T) {
 	}
 }
 
-// 取消行数限制不能让超大明细绕过证据体积保护。
-func TestAuditQueryUnlimitedRetainsPayloadLimit(t *testing.T) {
-	conn := &auditQueryTestConn{values: []driver.Value{strings.Repeat("x", 33000), strings.Repeat("x", 33000)}}
-	db := sql.OpenDB(auditQueryTestConnector{conn})
-	defer db.Close()
-	gdb, err := gorm.Open(mysql.New(mysql.Config{Conn: db, SkipInitializeWithVersion: true}), &gorm.Config{DisableAutomaticPing: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	adapter := &Ecology9Adapter{db: gdb, driver: "mysql"}
-	result, err := adapter.QueryAuditData(context.Background(), "SELECT amount AS 金额 FROM expenses", nil, 0)
-	if err != nil || !result.Truncated || len(result.Rows) != 1 {
-		t.Fatalf("超大证据未截断：%+v %v", result, err)
+// 字符限制按 Unicode 计数，末行完整保留；关闭限制后不再暗中截断大结果。
+func TestAuditQueryCharacterLimit(t *testing.T) {
+	for _, dialect := range []string{"mysql", "oracle", "dm"} {
+		for _, tc := range []struct {
+			name                  string
+			values                []driver.Value
+			rows, chars, wantRows int
+			truncated, invalid    bool
+		}{
+			{name: "无隐藏体积上限", values: []driver.Value{strings.Repeat("中", 70000), strings.Repeat("文", 70000)}, wantRows: 2},
+			{name: "行数模式无隐藏体积上限", values: []driver.Value{strings.Repeat("中", 70000), strings.Repeat("文", 70000)}, rows: 2, wantRows: 2},
+			{name: "字符计数不按UTF8字节", values: []driver.Value{"中😀", "完整末行", "其他行"}, chars: 15, wantRows: 2, truncated: true},
+			{name: "字符上限小于首行", values: []driver.Value{"完整首行😀", "第二行"}, chars: 1, wantRows: 1, truncated: true},
+			{name: "恰好完整不标截断", values: []driver.Value{"中😀"}, chars: 13, wantRows: 1},
+			{name: "空结果", chars: 1},
+			{name: "负数字符上限", chars: -1, invalid: true},
+			{name: "两种上限互斥", rows: 1, chars: 10, invalid: true},
+		} {
+			t.Run(dialect+"/"+tc.name, func(t *testing.T) {
+				conn := &auditQueryTestConn{values: tc.values}
+				db := sql.OpenDB(auditQueryTestConnector{conn})
+				defer db.Close()
+				gdb, err := gorm.Open(mysql.New(mysql.Config{Conn: db, SkipInitializeWithVersion: true}), &gorm.Config{DisableAutomaticPing: true})
+				if err != nil {
+					t.Fatal(err)
+				}
+				adapter := &Ecology9Adapter{db: gdb, driver: dialect}
+				result, err := adapter.QueryAuditData(context.Background(), "SELECT amount AS 金额 FROM expenses", nil, tc.rows, tc.chars)
+				if tc.invalid {
+					if err == nil || conn.queries != 0 {
+						t.Fatalf("非法上限执行了查询：%v", err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(result.Rows) != tc.wantRows || result.Truncated != tc.truncated {
+					t.Fatalf("result=%+v wantRows=%d truncated=%t", result, tc.wantRows, tc.truncated)
+				}
+				for i, row := range result.Rows {
+					if row["col_1"] != tc.values[i] {
+						t.Fatal("末行数据被切断")
+					}
+				}
+				if tc.rows == 0 && strings.Contains(conn.lastQuery, "auraoa_query") {
+					t.Fatal("字符限制不应注入 SQL 行数限制")
+				}
+			})
+		}
 	}
 }
 
@@ -228,7 +265,7 @@ func TestAuditQueryReadOnlyTransaction(t *testing.T) {
 				t.Fatal(err)
 			}
 			adapter := &Ecology9Adapter{db: gdb, driver: dialect}
-			result, err := adapter.QueryAuditData(context.Background(), "SELECT amount AS 金额 FROM expenses", nil, 1)
+			result, err := adapter.QueryAuditData(context.Background(), "SELECT amount AS 金额 FROM expenses", nil, 1, 0)
 			if err != nil || !result.Truncated || len(result.Rows) != 1 || !conn.rolledBack || conn.committed {
 				t.Fatalf("result=%+v conn=%+v err=%v", result, conn, err)
 			}
@@ -250,7 +287,7 @@ func TestAuditQueryReadOnlyTransaction(t *testing.T) {
 			dialect = "oracle"
 		}
 		adapter := &Ecology9Adapter{db: gdb, driver: dialect}
-		if _, err = adapter.QueryAuditData(context.Background(), "SELECT 1 AS 金额", nil, 1); err == nil || conn.queries != 0 {
+		if _, err = adapter.QueryAuditData(context.Background(), "SELECT 1 AS 金额", nil, 1, 0); err == nil || conn.queries != 0 {
 			t.Fatalf("writable fallback: %+v %v", conn, err)
 		}
 	}

@@ -218,6 +218,12 @@ func queryCheck(def model.AuditDataQueryDefinition) oa.QuerySQLCheck {
 	if def.MaxRows < 0 {
 		issue("max_rows", "最大返回行数须为非负整数，0表示不限制行数")
 	}
+	if def.MaxChars < 0 {
+		issue("max_chars", "最大字符数须为非负整数，0表示不限制字符数")
+	}
+	if def.MaxRows > 0 && def.MaxChars > 0 {
+		issue("result_limit", "最大返回行数与最大字符数只能选择一种")
+	}
 	defined := map[string]bool{}
 	for _, p := range def.Parameters {
 		if defined[p.Name] {
@@ -276,6 +282,9 @@ func (s *AuditDataQueryService) Check(def model.AuditDataQueryDefinition) oa.Que
 
 // normalizeQueryAuthoring 保证配置和自定义 SQL 只有一种编辑来源，兼容旧版草稿。
 func normalizeQueryAuthoring(def *model.AuditDataQueryDefinition) error {
+	if def.MaxRows < 0 || def.MaxChars < 0 || def.MaxRows > 0 && def.MaxChars > 0 {
+		return fmt.Errorf("数据量上限须为非负整数，行数与字符数只能选择一种")
+	}
 	var builder struct {
 		SQLMode bool `json:"sql_mode"`
 	}
@@ -793,7 +802,7 @@ func (s *AuditDataQueryService) Preview(c *gin.Context, req QueryPreviewRequest)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrParamValidation, err.Error())
 	}
-	result, err := e.QueryAuditData(c.Request.Context(), def.SQL, values, def.MaxRows)
+	result, err := e.QueryAuditData(c.Request.Context(), def.SQL, values, def.MaxRows, def.MaxChars)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrOAQueryFailed, err.Error())
 	}
@@ -1129,7 +1138,6 @@ func (s *AuditDataQueryService) ResolveRules(c *gin.Context, processID string, p
 	evidence := []QueryEvidence{}
 	var sections []string
 	executed := 0
-	totalBytes := 0
 	// 审核展示数据可能已被浏览字段转换或脱敏，SQL 绑定必须使用原始流程值。
 	rawLoaded := false
 	rawData := pd
@@ -1159,8 +1167,9 @@ func (s *AuditDataQueryService) ResolveRules(c *gin.Context, processID string, p
 					ev.Name = def.Name
 					ev.Description = def.Description
 					needsRaw := false
-					for _, binding := range ref.Bindings {
-						if binding.Source == "field" {
+					for _, parameter := range def.Parameters {
+						binding, ok := queryParameterBinding(parameter, ref.Bindings)
+						if ok && binding.Source == "field" {
 							needsRaw = true
 							break
 						}
@@ -1189,7 +1198,7 @@ func (s *AuditDataQueryService) ResolveRules(c *gin.Context, processID string, p
 							if executor.AuditQueryDialect() != def.Dialect {
 								err = fmt.Errorf("查询方言与当前数据源不一致")
 							} else {
-								ev.Result, err = executor.QueryAuditData(ctx, def.SQL, ev.Parameters, def.MaxRows)
+								ev.Result, err = executor.QueryAuditData(ctx, def.SQL, ev.Parameters, def.MaxRows, def.MaxChars)
 							}
 						}
 					}
@@ -1201,13 +1210,6 @@ func (s *AuditDataQueryService) ResolveRules(c *gin.Context, processID string, p
 				}
 			}
 			ev.ModelText = formatQueryEvidence(ev)
-			if totalBytes+len(ev.ModelText) > 128000 {
-				ev.Result = nil
-				ev.Status = "failed"
-				ev.Error = "本次审核数据总量超过128000字节，该项未传给模型"
-				ev.ModelText = formatQueryEvidence(ev)
-			}
-			totalBytes += len(ev.ModelText)
 			evidence = append(evidence, ev)
 			sections = append(sections, "规则ID："+ev.RuleID+"\n规则内容："+rule.RuleContent+"\n适用前提："+rule.ApplicabilityCondition+"\n"+ev.ModelText)
 		}

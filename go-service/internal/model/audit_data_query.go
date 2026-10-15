@@ -43,7 +43,8 @@ type AuditDataQueryDefinition struct {
 	Dialect     string                    `json:"dialect"`
 	Tables      []string                  `json:"tables"`
 	Parameters  []AuditDataQueryParameter `json:"parameters"`
-	MaxRows     int                       `json:"max_rows"` // 0 表示不限制返回行数，仍受超时和证据体积限制。
+	MaxRows     int                       `json:"max_rows"`            // 与 MaxChars 互斥；均为 0 时不限制结果大小。
+	MaxChars    int                       `json:"max_chars,omitempty"` // 数据 JSON 的字符上限，达到上限时保留完整末行。
 	// Builder 仅在配置模式保存；自定义 SQL 模式清除配置，执行始终使用经过检查的 SQL。
 	Builder json.RawMessage `json:"builder,omitempty"`
 }

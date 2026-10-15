@@ -42,6 +42,7 @@ export interface QueryDefinition {
   tables: string[]
   parameters: QueryParameter[]
   max_rows: number
+  max_chars?: number
   builder?: QueryBuilder
 }
 export interface AuditDataQuery {

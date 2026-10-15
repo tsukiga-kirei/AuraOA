@@ -69,8 +69,10 @@ function update(patch: Partial<QueryBinding>) {
       :max="3660"
       :disabled="disabled"
       :addon-before="t('query.daysOffset')"
+      :aria-label="t('query.daysOffset')"
       @update:value="(value) => update({ days_offset: Number(value || 0) })"
     />
+    <small v-if="type === 'date'" class="offset-help">{{ t('query.daysOffsetHint') }}</small>
   </div>
 </template>
 
@@ -91,11 +93,21 @@ function update(patch: Partial<QueryBinding>) {
 .deferred-field {
   margin: 0;
 }
+.offset-help {
+  grid-column: 2;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+  line-height: 1.6;
+  margin-top: -6px;
+}
 @media (max-width: 600px) {
   .value-source-editor {
     grid-template-columns: 1fr;
   }
   .value-source-editor :deep(.ant-input-number-group-wrapper) {
+    grid-column: 1;
+  }
+  .offset-help {
     grid-column: 1;
   }
 }

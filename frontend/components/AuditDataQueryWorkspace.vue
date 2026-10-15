@@ -60,6 +60,7 @@ const makeDefinition = (): QueryDefinition => ({
   tables: [],
   parameters: [],
   max_rows: 0,
+  max_chars: 64000,
   builder: {
     source_type: 'table',
     archived_only: false,
@@ -84,6 +85,31 @@ const loading = ref(false)
 const initializing = ref(true)
 const loadError = ref('')
 const busy = ref('')
+const unlimitedConfirmed = ref(false)
+const limitMode = computed(() => definition.value.max_rows > 0 ? 'rows' : (definition.value.max_chars || 0) > 0 ? 'chars' : 'none')
+function confirmUnlimited(): Promise<boolean> {
+  return new Promise((resolve) => Modal.confirm({
+    title: t('query.unlimitedTitle'),
+    content: t('query.unlimitedConfirm'),
+    okText: t('query.useUnlimited'),
+    cancelText: t('common.cancel'),
+    onOk: () => resolve(true),
+    onCancel: () => resolve(false),
+  }))
+}
+async function changeLimitMode(mode: string) {
+  if (mode === limitMode.value) return
+  if (mode === 'none' && !(await confirmUnlimited())) return
+  unlimitedConfirmed.value = mode === 'none'
+  definition.value.max_rows = mode === 'rows' ? 100 : 0
+  definition.value.max_chars = mode === 'chars' ? 64000 : 0
+}
+function changeLimitValue(value: number | string | null) {
+  // 清空输入不隐式切换为无限制；无限制必须经用户选择并确认。
+  const limit = Math.max(1, Math.floor(Number(value) || 1))
+  if (limitMode.value === 'rows') definition.value.max_rows = limit
+  else if (limitMode.value === 'chars') definition.value.max_chars = limit
+}
 const activePanel = ref('basic')
 const panelTabs = computed(() => [
   { key: 'basic', label: t('query.tab.basic'), icon: InfoCircleOutlined },
@@ -199,6 +225,8 @@ const contextPreview = computed(() =>
   ),
 )
 function normalizeDefinition(value: QueryDefinition) {
+  value.max_rows ||= 0
+  value.max_chars ||= 0
   value.tables ||= []
   value.parameters ||= []
   value.mode ||= value.builder && !value.builder.sql_mode ? 'config' : 'sql'
@@ -278,6 +306,7 @@ async function selectQuery(item: AuditDataQuery, force = false) {
     ])
     if (sequence !== selectSequence) return
     selected.value = query
+    unlimitedConfirmed.value = false
     definition.value = normalizeDefinition(clone(query.draft))
     if (source.value) definition.value.dialect = source.value.dialect
     editorMode.value = definition.value.mode!
@@ -302,6 +331,7 @@ async function selectQuery(item: AuditDataQuery, force = false) {
   }
 }
 function setNewDraft(next: QueryDefinition, nextCategory = '', copied = false) {
+  unlimitedConfirmed.value = false
   ++selectSequence
   selected.value = undefined
   if (source.value) next.dialect = source.value.dialect
@@ -352,6 +382,10 @@ async function save() {
   if (!definition.value.name.trim()) {
     message.warning(t('query.nameRequired'))
     return false
+  }
+  if (limitMode.value === 'none' && !unlimitedConfirmed.value) {
+    if (!(await confirmUnlimited())) return false
+    unlimitedConfirmed.value = true
   }
   const payload = clone(definition.value)
   const savedCategory = category.value
@@ -725,6 +759,7 @@ async function savePrompts() {
 }
 async function restoreVersion(version: QueryVersion) {
   if (!(await canLeave())) return
+  unlimitedConfirmed.value = false
   definition.value = normalizeDefinition(clone(version.definition))
   if (source.value) definition.value.dialect = source.value.dialect
   editorMode.value = definition.value.mode!
@@ -942,7 +977,7 @@ defineExpose({ canLeave, editPrompts, busy })
                   :placeholder="t('query.descriptionHint')"
                 />
               </a-form-item>
-              <div class="basic-info-row">
+              <div>
                 <a-form-item :label="t('query.dialect')">
                   <a-input
                     :value="
@@ -955,19 +990,29 @@ defineExpose({ canLeave, editPrompts, busy })
                   <small class="muted">{{ t('query.sourceAutomatic') }}</small>
                 </a-form-item>
 
-                <a-form-item :label="t('query.maxRows')">
-                  <a-input-number
-                    :value="definition.max_rows || undefined"
-                    :min="0"
-                    :precision="0"
-                    :placeholder="t('query.unlimited')"
-                    @update:value="
-                      (value) => (definition.max_rows = value == null ? 0 : Number(value))
-                    "
-                    class="row-limit-input"
-                  />
-                </a-form-item>
               </div>
+              <a-form-item :label="t('query.resultLimit')" class="result-limit-form-item">
+                <div class="result-limit-card">
+                  <a-radio-group :value="limitMode" :disabled="!!busy" @change="changeLimitMode($event.target.value)">
+                    <a-radio-button value="rows">{{ t('query.limitRows') }}</a-radio-button>
+                    <a-radio-button value="chars">{{ t('query.limitChars') }}</a-radio-button>
+                    <a-radio-button value="none">{{ t('query.unlimited') }}</a-radio-button>
+                  </a-radio-group>
+                  <div v-if="limitMode !== 'none'" class="result-limit-value">
+                    <span>{{ t(limitMode === 'rows' ? 'query.maxRows' : 'query.maxChars') }}</span>
+                    <a-input-number
+                      :value="limitMode === 'rows' ? definition.max_rows : definition.max_chars"
+                      :min="1"
+                      :precision="0"
+                      :disabled="!!busy"
+                      :aria-label="t(limitMode === 'rows' ? 'query.maxRows' : 'query.maxChars')"
+                      @update:value="changeLimitValue"
+                    />
+                    <span class="muted">{{ t(limitMode === 'rows' ? 'query.unitRows' : 'query.unitChars') }}</span>
+                  </div>
+                  <p v-if="limitMode === 'chars'" class="memory-help">{{ t('query.charsLimitHint') }}</p>
+                </div>
+              </a-form-item>
             </a-form>
             <div class="tab-footer">
               <a-button type="primary" @click="activePanel = 'sql'">{{
@@ -1007,19 +1052,19 @@ defineExpose({ canLeave, editPrompts, busy })
                 @update:model-value="updateSQL"
                 @run="preview"
               />
+              <div v-if="editorMode === 'sql'" class="sql-variable-guide">
+                <div>
+                  <strong>{{ t('query.sqlVariables') }}</strong>
+                  <p class="memory-help">{{ t('query.sqlVariableGuide') }}</p>
+                </div>
+                <code>WHERE amount &gt;= :min_amount</code>
+              </div>
               <a-collapse
                 v-if="definition.sql"
                 :default-active-key="['execution-sql']"
                 class="builder-notice preview-disclosure"
               >
                 <a-collapse-panel key="execution-sql" :header="t('query.executionSQL')">
-                  <p class="memory-help">
-                    {{
-                      definition.max_rows > 0
-                        ? t('query.rowLimitPreview', definition.max_rows)
-                        : t('query.unlimitedPreview')
-                    }}
-                  </p>
                   <pre class="ai-sql">{{ executionSQL }}</pre>
                 </a-collapse-panel>
               </a-collapse>
@@ -1702,9 +1747,44 @@ h1 {
 .basic-info-row :deep(.ant-form-item) {
   min-width: 0;
 }
-.basic-info-row :deep(.row-limit-input) {
-  width: 180px;
-  max-width: 100%;
+.result-limit-card {
+  padding: 16px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-card);
+}
+.result-limit-value {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+.result-limit-value :deep(.ant-input-number) {
+  width: 160px;
+}
+.result-limit-card .memory-help {
+  margin: 8px 0 0;
+}
+.sql-variable-guide {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.sql-variable-guide .memory-help {
+  margin: 4px 0 0;
+}
+.sql-variable-guide code {
+  overflow-wrap: anywhere;
+  color: var(--color-primary);
 }
 .preview-disclosure {
   background: var(--color-bg-card);

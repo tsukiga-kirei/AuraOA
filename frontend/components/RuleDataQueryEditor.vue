@@ -102,6 +102,23 @@ function changeBinding(index: number, name: string, patch: Partial<QueryBinding>
   const next = patch.source ? { source: patch.source, field: '', value: '', days_offset: 0 } : old
   changeReference(index, { bindings: { ...reference.bindings, [name]: { ...next, ...patch } } })
 }
+function canInherit(reference: QueryReference, name: string) {
+  const value = definitions.value[keyOf(reference)]?.parameters.find((p) => p.name === name)?.default_binding
+  return !!value && value.source !== 'field'
+}
+function overrideBinding(index: number, name: string) {
+  changeReference(index, { bindings: { ...props.modelValue[index].bindings, [name]: clone(binding(props.modelValue[index], name)) } })
+}
+function resetBinding(index: number, name: string) {
+  const bindings = { ...props.modelValue[index].bindings }
+  delete bindings[name]
+  changeReference(index, { bindings })
+}
+function bindingSummary(value: QueryBinding) {
+  const text = value.source === 'system' ? t('query.system.' + value.value) : value.value || '—'
+  const offset = value.days_offset || 0
+  return offset ? `${text} · ${t(offset < 0 ? 'query.daysEarlier' : 'query.daysLater', Math.abs(offset))}` : text
+}
 function remove(index: number) {
   const items = clone(props.modelValue)
   items.splice(index, 1)
@@ -277,13 +294,28 @@ async function preview(reference: QueryReference) {
         class="query-binding"
       >
         <span class="binding-label">{{ parameter.label }}</span>
-        <QueryValueSourceEditor
-          :model-value="binding(reference, parameter.name)"
-          :type="parameter.type"
-          :field-options="fieldOptions"
-          :disabled="!canManage"
-          @update:model-value="(value) => changeBinding(index, parameter.name, value)"
-        />
+        <div class="binding-content">
+          <div v-if="canInherit(reference, parameter.name) && !reference.bindings[parameter.name]" class="inherited-binding">
+            <div class="inherited-value">
+              <span class="binding-origin">{{ t('query.inherited') }}</span>
+              <span>{{ bindingSummary(binding(reference, parameter.name)) }}</span>
+            </div>
+            <a-button v-if="canManage" type="link" size="small" @click="overrideBinding(index, parameter.name)">{{ t('query.overrideBinding') }}</a-button>
+          </div>
+          <template v-else>
+            <div v-if="canInherit(reference, parameter.name)" class="binding-override-heading">
+              <span class="binding-origin">{{ t('query.ruleOverride') }}</span>
+              <a-button v-if="canManage" type="link" size="small" @click="resetBinding(index, parameter.name)">{{ t('query.resetBinding') }}</a-button>
+            </div>
+            <QueryValueSourceEditor
+              :model-value="binding(reference, parameter.name)"
+              :type="parameter.type"
+              :field-options="fieldOptions"
+              :disabled="!canManage"
+              @update:model-value="(value) => changeBinding(index, parameter.name, value)"
+            />
+          </template>
+        </div>
       </div>
       <a-button
         v-if="canManage"
@@ -424,6 +456,40 @@ async function preview(reference: QueryReference) {
 .binding-label {
   font-size: 13px;
   color: var(--color-text-secondary);
+}
+.binding-content {
+  min-width: 0;
+}
+.inherited-binding,
+.binding-override-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.inherited-binding {
+  min-height: 40px;
+  padding: 4px 10px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+}
+.inherited-value {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+  color: var(--color-text-primary);
+  font-size: 13px;
+}
+.binding-origin {
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+}
+.binding-override-heading {
+  margin-bottom: 6px;
 }
 .test-process {
   margin: 8px 0;
