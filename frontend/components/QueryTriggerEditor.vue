@@ -9,7 +9,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ 'update:modelValue': [value: QueryTrigger | undefined] }>()
 const { t } = useI18n()
-const valueTypes: QueryTrigger['value_type'][] = ['text', 'number', 'date', 'boolean', 'choice', 'file']
+const valueTypes: QueryTrigger['value_type'][] = ['text', 'number', 'date', 'choice', 'file']
 const operators = computed(() => props.modelValue ? queryTriggerOperators(props.modelValue.value_type) : [])
 const detailHint = computed(() => {
   const trigger = props.modelValue
@@ -48,7 +48,8 @@ function changeOperator(operator: QueryTrigger['operator']) {
         option-filter-prop="label" allow-clear :disabled="disabled"
         :placeholder="t('query.selectField')" :aria-label="t('query.triggerField')" @change="value => changeField(value == null ? undefined : String(value))" />
       <div class="trigger-comparison">
-        <a-select :value="modelValue.value_type" :disabled="disabled"
+        <a-select :value="modelValue.value_type === 'boolean' ? undefined : modelValue.value_type" :disabled="disabled"
+          :placeholder="t('query.triggerSelectType')"
           :aria-label="t('query.triggerValueType')" @change="value => changeType(value as QueryTrigger['value_type'])">
           <a-select-option v-for="type in valueTypes" :key="type" :value="type">{{ t('query.triggerType.' + type) }}</a-select-option>
         </a-select>
@@ -63,19 +64,14 @@ function changeOperator(operator: QueryTrigger['operator']) {
           <a-date-picker v-else-if="modelValue.value_type === 'date'" :value="modelValue.value || undefined"
             value-format="YYYY-MM-DD" :disabled="disabled" :aria-label="t('query.triggerValue')"
             :placeholder="t('query.triggerDate')" @update:value="value => update({ value: value ? String(value) : '' })" />
-          <a-select v-else-if="modelValue.value_type === 'boolean'" :value="modelValue.value || undefined"
-            :disabled="disabled" :aria-label="t('query.triggerValue')" :placeholder="t('query.triggerValue')"
-            @change="value => update({ value: String(value) })">
-            <a-select-option value="true">{{ t('query.triggerYes') }}</a-select-option>
-            <a-select-option value="false">{{ t('query.triggerNo') }}</a-select-option>
-          </a-select>
-          <a-input v-else :value="modelValue.value" :disabled="disabled" :maxlength="1000"
+          <a-input v-else :value="modelValue.value" :disabled="disabled || modelValue.value_type === 'boolean'" :maxlength="1000"
             :aria-label="t('query.triggerValue')"
             :placeholder="t(modelValue.value_type === 'choice' ? 'query.triggerChoiceValue' : 'query.triggerValue')"
             @update:value="value => update({ value: String(value ?? '') })" />
         </template>
       </div>
-      <small v-if="modelValue.value_type === 'choice' && queryTriggerNeedsValue(modelValue)" class="memory-help">{{ t('query.triggerChoiceHint') }}</small>
+      <small v-if="modelValue.value_type === 'boolean'" class="memory-help">{{ t('query.triggerLegacyHint') }}</small>
+      <small v-else-if="modelValue.value_type === 'choice' && queryTriggerNeedsValue(modelValue)" class="memory-help">{{ t('query.triggerChoiceHint') }}</small>
       <small v-else class="memory-help">{{ t('query.triggerTypeHint') }}</small>
       <small v-if="detailHint" class="memory-help">{{ t(detailHint) }}</small>
     </div>

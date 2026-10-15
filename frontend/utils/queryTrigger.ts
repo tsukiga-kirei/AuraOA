@@ -5,7 +5,7 @@ export function queryTriggerType(field?: QueryFieldOption): QueryTrigger['value_
   const type = (field?.field_type || '').toLowerCase()
   if (/number|decimal|numeric|float|double|int|money/.test(type)) return 'number'
   if (/date|timestamp/.test(type)) return 'date'
-  if (/bool|checkbox/.test(type)) return 'boolean'
+  if (/bool|checkbox/.test(type)) return 'choice'
   if (/select|choice|browser|list/.test(type)) return 'choice'
   if (/file|attachment/.test(type)) return 'file'
   return 'text'
