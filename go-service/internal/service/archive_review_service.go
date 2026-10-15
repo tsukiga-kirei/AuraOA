@@ -1206,10 +1206,6 @@ func (s *ArchiveReviewService) createPendingArchiveLog(c *gin.Context, req *dto.
 		}
 	}
 	if configVersion == nil {
-		fieldSet, mergedRulesText, effectiveRules, effectiveAIConfig, personalVersion, resolveErr := s.resolveArchiveUserConfig(c, userID, cfg, rules, req.ProcessType)
-		if resolveErr != nil {
-			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, "合并个人复核尺度失败: "+resolveErr.Error())
-		}
 		baseVersion, baseErr := s.executionVersions.GetActiveBaseVersion(
 			c.Request.Context(), tenantID, model.ExecutionConfigModuleArchive, cfg.ID,
 		)
@@ -1218,6 +1214,10 @@ func (s *ArchiveReviewService) createPendingArchiveLog(c *gin.Context, req *dto.
 				return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, "归档复盘配置尚处于草稿状态，请先发布首个版本")
 			}
 			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrDatabase, "读取归档复盘基础配置版本失败")
+		}
+		fieldSet, mergedRulesText, effectiveRules, effectiveAIConfig, personalVersion, resolveErr := s.resolveArchiveUserConfig(c, userID, cfg, rules, req.ProcessType, baseVersion)
+		if resolveErr != nil {
+			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, "合并个人复核尺度失败: "+resolveErr.Error())
 		}
 		configSnapshot := ArchiveExecutionConfigSnapshot{
 			AIConfig: effectiveAIConfig, FieldSet: fieldSet, MergedRules: mergedRulesText,
@@ -1803,8 +1803,9 @@ func (s *ArchiveReviewService) resolveArchiveUserConfig(
 	config *model.ProcessArchiveConfig,
 	tenantRules []model.ArchiveRule,
 	processType string,
+	published ...*model.TenantConfigVersion,
 ) (SelectedFieldSet, string, []model.ArchiveRule, datatypes.JSON, int, error) {
-	if err := loadPublishedConfig(c.Request.Context(), s.executionVersions, config.TenantID, model.ExecutionConfigModuleArchive, config.ID, config, &tenantRules); err != nil {
+	if err := applyPublishedConfig(c.Request.Context(), s.executionVersions, config.TenantID, model.ExecutionConfigModuleArchive, config.ID, config, &tenantRules, published...); err != nil {
 		return nil, "", nil, nil, 0, err
 	}
 

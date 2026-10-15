@@ -199,7 +199,8 @@ func (s *ProcessSummaryService) GetEmbedContext(c *gin.Context, processID string
 			Process:   summary,
 		}, nil
 	}
-	if err := loadPublishedConfig(c.Request.Context(), s.executionVersions, tenantID, model.ExecutionConfigModuleSummary, config.ID, config, nil); err != nil {
+	baseVersion, publishErr := loadPublishedConfigVersion(c.Request.Context(), s.executionVersions, tenantID, model.ExecutionConfigModuleSummary, config.ID, config, nil)
+	if err := publishErr; err != nil {
 		if errors.Is(err, errConfigNotPublished) {
 			return &SummaryEmbedContextResponse{
 				Supported: false,
@@ -225,13 +226,6 @@ func (s *ProcessSummaryService) GetEmbedContext(c *gin.Context, processID string
 	if len(currentBlocks) == 0 {
 		currentBlocks = defaultSummaryBlocks()
 	}
-	baseVersion, _ := s.executionVersions.GetActiveBaseVersion(c.Request.Context(), tenantID, model.ExecutionConfigModuleSummary, config.ID)
-	baseVersionNo := 0
-	if baseVersion != nil {
-		baseVersionNo = baseVersion.VersionNo
-	}
-	currentConfigSnapshot := SummaryExecutionConfigSnapshot{Blocks: currentBlocks, BaseConfigVersionNo: baseVersionNo}
-	currentConfigFingerprint := stableJSONFingerprint(currentConfigSnapshot)
 	blocks := currentBlocks
 	bindingVersion, bindingErr := s.executionVersions.GetBindingVersion(
 		c.Request.Context(), tenantID, model.ExecutionConfigModuleSummary, processID,
@@ -250,7 +244,7 @@ func (s *ProcessSummaryService) GetEmbedContext(c *gin.Context, processID string
 		Process:                summary,
 		EmbedEnabled:           true,
 		ConfigVersionNo:        executionVersionNumber(bindingVersion),
-		ConfigUpgradeAvailable: bindingVersion != nil && bindingVersion.Fingerprint != currentConfigFingerprint,
+		ConfigUpgradeAvailable: executionConfigVersionChanged(bindingVersion, baseVersion),
 		AllowLatestConfigRerun: embedCfg.AllowLatestConfigRerun,
 	}
 	defer s.fillSummaryPersonalView(c, tenantID, adapter, processID, summary.ProcessType, resp)
@@ -583,7 +577,8 @@ func (s *ProcessSummaryService) createPendingSummaryLog(
 	if err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrNoProcessConfig, fmt.Sprintf("流程 '%s' 的总结配置不存在", processType))
 	}
-	if err := loadPublishedConfig(c.Request.Context(), s.executionVersions, tenantID, model.ExecutionConfigModuleSummary, config.ID, config, nil); err != nil {
+	baseVersion, publishErr := loadPublishedConfigVersion(c.Request.Context(), s.executionVersions, tenantID, model.ExecutionConfigModuleSummary, config.ID, config, nil)
+	if err := publishErr; err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, err
 	}
 
@@ -608,15 +603,6 @@ func (s *ProcessSummaryService) createPendingSummaryLog(
 		blocks := parseSummaryBlocks(config.SummaryBlocks)
 		if len(blocks) == 0 {
 			blocks = defaultSummaryBlocks()
-		}
-		baseVersion, baseErr := s.executionVersions.GetActiveBaseVersion(
-			c.Request.Context(), tenantID, model.ExecutionConfigModuleSummary, config.ID,
-		)
-		if baseErr != nil {
-			if errors.Is(baseErr, gorm.ErrRecordNotFound) {
-				return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrNoProcessConfig, "流程总结配置尚处于草稿状态，请先发布首个版本")
-			}
-			return uuid.Nil, uuid.Nil, uuid.Nil, time.Time{}, newServiceError(errcode.ErrDatabase, "读取总结基础配置版本失败")
 		}
 		configSnapshot := SummaryExecutionConfigSnapshot{
 			Blocks:              blocks,

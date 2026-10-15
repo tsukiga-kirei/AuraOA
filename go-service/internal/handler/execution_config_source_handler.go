@@ -63,6 +63,22 @@ func (h *ExecutionConfigSourceHandler) SaveDraft(c *gin.Context) {
 	response.Success(c, status)
 }
 
+// DiscardDraft 丢弃已发布配置的未发布修改，返回恢复后的版本状态。
+// POST /api/tenant/execution-config-versions/discard-draft
+func (h *ExecutionConfigSourceHandler) DiscardDraft(c *gin.Context) {
+	var req publishConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.Module == "" || req.SourceConfigID == uuid.Nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	status, err := h.service.DiscardDraft(c, req.Module, req.SourceConfigID)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, status)
+}
+
 // Publish 固化当前配置并发布为新版本。
 // POST /api/tenant/execution-config-versions/publish
 func (h *ExecutionConfigSourceHandler) Publish(c *gin.Context) {
@@ -138,7 +154,7 @@ type saveVersionRequest struct {
 	Snapshot       interface{} `json:"snapshot" binding:"required"`
 }
 
-// SaveVersion 直接修改并保存指定版本的快照内容。
+// SaveVersion 兼容旧客户端，将指定历史版本的编辑另存为草稿。
 // POST /api/tenant/execution-config-versions/save-version
 func (h *ExecutionConfigSourceHandler) SaveVersion(c *gin.Context) {
 	var req saveVersionRequest

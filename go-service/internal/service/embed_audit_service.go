@@ -137,7 +137,7 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "查询审核规则失败")
 	}
-	fieldSet, mergedRulesText, effectiveRules, effectiveAIConfig, personalVersion, err := s.resolveUserConfig(c, uuid.Nil, config, rules, summary.ProcessType)
+	fieldSet, mergedRulesText, effectiveRules, effectiveAIConfig, personalVersion, err := s.resolveUserConfig(c, uuid.Nil, config, rules, summary.ProcessType, baseVersion)
 	if err != nil {
 		return nil, newServiceError(errcode.ErrNoProcessConfig, "合并个人审核尺度失败: "+err.Error())
 	}
@@ -173,7 +173,7 @@ func (s *AuditExecuteService) GetEmbedContext(c *gin.Context, processID string) 
 		Process:                summary,
 		EmbedEnabled:           true,
 		ConfigVersionNo:        executionVersionNumber(bindingVersion),
-		ConfigUpgradeAvailable: bindingVersion != nil && bindingVersion.Fingerprint != currentConfigFingerprint,
+		ConfigUpgradeAvailable: executionConfigVersionChanged(bindingVersion, baseVersion),
 		AllowLatestConfigRerun: embedCfg.AllowLatestConfigRerun,
 	}
 
