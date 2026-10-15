@@ -145,6 +145,7 @@ async function run(source, payload, httpOK = true, device = {}) {
     },
   }
   const win = {
+    location: { href: 'https://oa.example.com/workflow#/form/614309' },
     weaJs: {
       showDialog: (url, opts) => {
         if (device.nativeThrows) throw new Error('OA unavailable')
@@ -159,6 +160,7 @@ async function run(source, payload, httpOK = true, device = {}) {
   }
   if (device.noNative) delete win.weaJs
   state.group = groupEl
+  state.location = win.location
   state.document = document
   state.nodes = nodesById
   state.frames = new Map()
@@ -542,6 +544,57 @@ for (const origin of ['export', 'template']) {
       assert.equal(failed.group.inert, false)
       failed.click(trigger)
       assert.equal(failed.messages.length, 2, 'failed native opening must release the click lock')
+    })
+
+    test(`${origin} ${type}: native cancel restores buttons and stale callbacks cannot close a reopened dialog`, async () => {
+      const state = await run(source, payload)
+      state.click(trigger)
+      const first = state.dialogOpts[0]
+      const before = state.requests.length
+      first.onCancel()
+      first.callback()
+      await flush(state)
+      assert.equal(state.group.style.opacity, '')
+      assert.equal(state.group.style.transform, '')
+      assert.equal(state.group.style.pointerEvents, '')
+      assert.equal(state.group.inert, false)
+      assert.equal(state.requests.length, before + 1)
+      assert.equal(state.windowListeners.hashchange.length, 0)
+      assert.equal(state.windowListeners.popstate.length, 0)
+      state.click(trigger)
+      assert.equal(state.dialogOpts.length, 2)
+      first.onCancel()
+      assert.equal(state.group.style.opacity, '0')
+      state.dialogOpts[1].onCancel()
+      assert.equal(state.group.inert, false)
+    })
+
+    test(`${origin} ${type}: native route return restores buttons without a dialog callback`, async () => {
+      for (const event of ['hashchange', 'popstate']) {
+        const state = await run(source, payload)
+        const formUrl = state.location.href
+        const dispatch = () => [...state.windowListeners[event]].forEach(fn => fn())
+        state.click(trigger)
+        dispatch()
+        assert.equal(state.group.style.opacity, '0', 'unchanged route must not restore an open dialog')
+        state.location.href = formUrl + '/dialog'
+        dispatch()
+        assert.equal(state.group.inert, true)
+        state.location.href += '/details'
+        dispatch()
+        assert.equal(state.group.style.opacity, '0', 'other routes must not restore the buttons')
+        const before = state.requests.length
+        state.location.href = formUrl
+        dispatch()
+        state.dialogOpts[0].onCancel()
+        await flush(state)
+        assert.equal(state.group.style.opacity, '')
+        assert.equal(state.group.inert, false)
+        assert.equal(state.requests.length, before + 1)
+        assert.equal(state.windowListeners[event].length, 0)
+        state.click(trigger)
+        assert.equal(state.dialogOpts.length, 2)
+      }
     })
 
     test(`${origin} ${type}: reduced motion skips layers and resize settles an in-flight surface`, async () => {
