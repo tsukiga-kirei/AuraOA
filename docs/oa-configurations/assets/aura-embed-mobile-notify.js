@@ -805,13 +805,20 @@
       dialog.setAttribute('role', 'dialog');
       dialog.setAttribute('aria-modal', 'true');
       dialog.setAttribute('aria-labelledby', 'auraDesktopEmbedTitle');
-      dialog.style.cssText = 'width:760px;max-width:100%;height:85vh;max-height:100%;background:#fff;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(15,23,42,.22);';
+      dialog.style.cssText = 'width:min(740px,94vw);height:86vh;max-height:880px;background:#f8fafc;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 64px -12px rgba(15,23,42,.28),0 0 0 1px rgba(15,23,42,.06);';
       var header = document.createElement('div');
       header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 20px;background:#fff;border-bottom:1px solid #f1f5f9;box-shadow:0 1px 3px rgba(15,23,42,.02);flex-shrink:0;box-sizing:border-box;';
+      var headerLeft = document.createElement('div');
+      headerLeft.style.cssText = 'display:flex;align-items:center;gap:10px;min-width:0;';
       var title = document.createElement('span');
       title.id = 'auraDesktopEmbedTitle';
       title.textContent = EMBED_TYPE === 'summary' ? 'AI 流程总结' : 'AI 流程审核';
       title.style.cssText = 'font-size:16px;font-weight:700;color:#0f172a;letter-spacing:-0.01em;white-space:nowrap;word-break:keep-all;line-height:1.4;';
+      var tag = document.createElement('span');
+      tag.textContent = EMBED_TYPE === 'summary' ? '智能总结 · 仅供参考' : '智审辅助 · 仅供参考';
+      tag.style.cssText = 'display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;white-space:nowrap;flex-shrink:0;';
+      headerLeft.appendChild(title);
+      headerLeft.appendChild(tag);
       var close = document.createElement('button');
       close.type = 'button';
       close.title = '关闭 (Esc)';
@@ -823,7 +830,7 @@
       var frame = document.createElement('iframe');
       frame.title = title.textContent;
       frame.src = targetUrl;
-      frame.style.cssText = 'width:100%;flex:1;min-height:0;border:0;display:block;';
+      frame.style.cssText = 'width:100%;flex:1;min-height:0;border:0;display:block;background:#f8fafc;';
       function dismiss() {
         document.removeEventListener('keydown', onKeyDown);
         overlay.remove();
@@ -835,7 +842,7 @@
       }
       close.onclick = dismiss;
       overlay.onclick = function (event) { if (event.target === overlay) dismiss(); };
-      header.appendChild(title);
+      header.appendChild(headerLeft);
       header.appendChild(close);
       dialog.appendChild(header);
       dialog.appendChild(frame);
@@ -1185,13 +1192,20 @@
     dialog.setAttribute('role', 'dialog');
     dialog.setAttribute('aria-modal', 'true');
     dialog.setAttribute('aria-labelledby', 'auraDesktopEmbedTitle');
-    dialog.style.cssText = 'width:760px;max-width:100%;height:85vh;max-height:100%;background:#fff;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(15,23,42,.22);';
+    dialog.style.cssText = 'width:min(740px,94vw);height:86vh;max-height:880px;background:#f8fafc;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 64px -12px rgba(15,23,42,.28),0 0 0 1px rgba(15,23,42,.06);';
     var header = document.createElement('div');
     header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 20px;background:#fff;border-bottom:1px solid #f1f5f9;box-shadow:0 1px 3px rgba(15,23,42,.02);flex-shrink:0;box-sizing:border-box;';
+    var headerLeft = document.createElement('div');
+    headerLeft.style.cssText = 'display:flex;align-items:center;gap:10px;min-width:0;';
     var title = document.createElement('span');
     title.id = 'auraDesktopEmbedTitle';
     title.textContent = type === 'summary' ? 'AI 流程总结' : 'AI 流程审核';
     title.style.cssText = 'font-size:16px;font-weight:700;color:#0f172a;letter-spacing:-0.01em;white-space:nowrap;word-break:keep-all;line-height:1.4;';
+    var tag = document.createElement('span');
+    tag.textContent = type === 'summary' ? '智能总结 · 仅供参考' : '智审辅助 · 仅供参考';
+    tag.style.cssText = 'display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;white-space:nowrap;flex-shrink:0;';
+    headerLeft.appendChild(title);
+    headerLeft.appendChild(tag);
     var close = document.createElement('button');
     close.type = 'button';
     close.title = '关闭 (Esc)';
@@ -1203,7 +1217,7 @@
     var frame = document.createElement('iframe');
     frame.title = title.textContent;
     frame.src = targetUrl;
-    frame.style.cssText = 'width:100%;flex:1;min-height:0;border:0;display:block;';
+    frame.style.cssText = 'width:100%;flex:1;min-height:0;border:0;display:block;background:#f8fafc;';
     function dismiss() {
       document.removeEventListener('keydown', onKeyDown);
       overlay.remove();
@@ -1215,7 +1229,7 @@
     }
     close.onclick = dismiss;
     overlay.onclick = function (event) { if (event.target === overlay) dismiss(); };
-    header.appendChild(title);
+    header.appendChild(headerLeft);
     header.appendChild(close);
     dialog.appendChild(header);
     dialog.appendChild(frame);

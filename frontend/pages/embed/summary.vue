@@ -593,7 +593,7 @@ onBeforeUnmount(() => disconnectStream())
 </template>
 
 <style scoped>
-.embed-summary { width: 100%; max-width: 760px; margin: 0 auto; box-sizing: border-box; min-height: 100vh; padding: 10px 12px 16px; }
+.embed-summary { width: 100%; max-width: 100%; margin: 0; box-sizing: border-box; min-height: 100vh; padding: 14px 18px 24px; }
 .embed-header {
   margin-bottom: 14px;
   padding-bottom: 12px;

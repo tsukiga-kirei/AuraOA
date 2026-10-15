@@ -32,34 +32,22 @@ onBeforeUnmount(() => {
 <style scoped>
 .embed-layout {
   min-height: 100vh;
-  background: var(--color-bg-page);
+  background: var(--color-bg-page, #f8fafc);
   padding: 0;
   box-sizing: border-box;
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-}
-
-.embed-layout--scrolling {
-  scrollbar-color: color-mix(in srgb, var(--color-text-tertiary) 72%, transparent) transparent;
 }
 
 :global(html),
 :global(body),
 :global(#__nuxt) {
-  background: var(--color-bg-page);
+  background: var(--color-bg-page, #f8fafc);
 }
 
 :global(html),
 :global(body) {
-  overflow-y: overlay;
-  scrollbar-gutter: auto;
+  overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-}
-
-:global(html.embed-scrollbar-active),
-:global(html.embed-scrollbar-active body) {
-  scrollbar-color: color-mix(in srgb, var(--color-text-tertiary) 72%, transparent) transparent;
+  scrollbar-color: #cbd5e1 transparent;
 }
 
 :global(body::-webkit-scrollbar),
@@ -75,17 +63,13 @@ onBeforeUnmount(() => {
 
 :global(body::-webkit-scrollbar-thumb),
 :global(html::-webkit-scrollbar-thumb) {
-  background: transparent;
-  border-radius: var(--radius-full);
-}
-
-:global(html.embed-scrollbar-active::-webkit-scrollbar-thumb),
-:global(html.embed-scrollbar-active body::-webkit-scrollbar-thumb) {
-  background: color-mix(in srgb, var(--color-text-tertiary) 72%, transparent);
+  background: #cbd5e1;
+  border-radius: 999px;
+  transition: background 0.2s ease;
 }
 
 :global(body::-webkit-scrollbar-thumb:hover),
 :global(html::-webkit-scrollbar-thumb:hover) {
-  background: var(--color-text-tertiary);
+  background: #94a3b8;
 }
 </style>
