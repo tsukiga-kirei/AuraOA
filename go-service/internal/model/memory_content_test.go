@@ -17,6 +17,7 @@ func TestQueryContentDefaultsAndJSONOrder(t *testing.T) {
 		{"输出列", "\"alias\":\"\"", "\"alias\":\"金额\""},
 		{"SQL原文", "SELECT 1 AS 数量", "SELECT 2 AS 数量"},
 		{"行数上限", "\"max_rows\":0", "\"max_rows\":100"},
+		{"字符上限", "\"max_rows\":0", "\"max_rows\":0,\"max_chars\":64000"},
 		{"用途说明", "\"notes\":\"\"", "\"notes\":\"金额按元统计\""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

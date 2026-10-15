@@ -30,6 +30,18 @@ func TestQueryDefinitionScope(t *testing.T) {
 		}
 	}
 	def.MaxRows = 20
+	for _, limits := range [][2]int{{0, 0}, {0, 64000}, {10, 0}, {10, 64000}, {0, -1}, {-1, 0}} {
+		def.MaxRows, def.MaxChars = limits[0], limits[1]
+		valid := limits[0] >= 0 && limits[1] >= 0 && !(limits[0] > 0 && limits[1] > 0)
+		if result := queryCheck(def); result.Valid != valid {
+			t.Fatalf("数据量限制%v检查不正确：%+v", limits, result.Issues)
+		}
+		copy := def
+		if err := normalizeQueryAuthoring(&copy); (err == nil) != valid {
+			t.Fatalf("草稿接受非法数据量限制%v：%v", limits, err)
+		}
+	}
+	def.MaxRows, def.MaxChars = 20, 0
 	def.Tables = []string{"budgets"}
 	if queryCheck(def).Valid {
 		t.Fatal("undeclared table accepted")

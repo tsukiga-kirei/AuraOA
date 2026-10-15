@@ -13,6 +13,8 @@ test('query content ignores key order, legacy defaults and null collections', ()
     ai_context: { oa_module: 'workflow', notes: '', field_notes: {} },
     builder: { columns: [{ aggregate: '', alias: '', field: 'amount' }], filters: [], table: 'form1', source_type: 'workflow', archived_only: true, order_alias: '', order_dir: 'DESC' } }
   assert.equal(queryDefinitionContentKey(old), queryDefinitionContentKey(current))
+  assert.equal(queryDefinitionContentKey(old), queryDefinitionContentKey({ ...current, max_chars: 0 }))
+  assert.notEqual(queryDefinitionContentKey(old), queryDefinitionContentKey({ ...current, max_chars: 64000 }))
   assert.notEqual(queryDefinitionContentKey(old), queryDefinitionContentKey({ ...current, builder: { ...current.builder, archived_only: false } }))
   assert.notEqual(queryDefinitionContentKey(old), queryDefinitionContentKey({ ...current, sql: 'SELECT 2 AS 数量' }))
 })

@@ -308,7 +308,7 @@ type AuditQueryResult struct {
 
 // AuditQueryExecutor 是独立于关联流程及建模挂载的 OA 只读查询能力。
 type AuditQueryExecutor interface {
-	QueryAuditData(context.Context, string, map[string]interface{}, int) (*AuditQueryResult, error)
+	QueryAuditData(context.Context, string, map[string]interface{}, int, int) (*AuditQueryResult, error)
 	AuditQuerySchema(context.Context, string) ([]QueryColumn, error)
 	AuditQueryDialect() string
 }
@@ -364,7 +364,7 @@ func bindAuditQuery(input, driver string, values map[string]interface{}) (string
 }
 
 // QueryAuditData 在数据库只读事务中执行，失败关闭，不降级为可写事务。
-func (a *Ecology9Adapter) QueryAuditData(ctx context.Context, input string, values map[string]interface{}, maxRows int) (*AuditQueryResult, error) {
+func (a *Ecology9Adapter) QueryAuditData(ctx context.Context, input string, values map[string]interface{}, maxRows, maxChars int) (*AuditQueryResult, error) {
 	check := CheckQuerySQL(input)
 	if !check.Valid {
 		return nil, fmt.Errorf("%s", check.Issues[0].Message)
@@ -376,6 +376,9 @@ func (a *Ecology9Adapter) QueryAuditData(ctx context.Context, input string, valu
 	if maxRows < 0 {
 		return nil, fmt.Errorf("最大返回行数不能为负数")
 	}
+	if maxChars < 0 || maxRows > 0 && maxChars > 0 {
+		return nil, fmt.Errorf("最大字符数不能为负数，且不能与行数上限同时设置")
+	}
 	// 0 表示不限制行数；指定上限时在外层多读取一行判定截断，不改变内部聚合或排序。
 	if maxRows > 0 {
 		limit := fmt.Sprint(uint64(maxRows) + 1)
@@ -385,9 +388,9 @@ func (a *Ecology9Adapter) QueryAuditData(ctx context.Context, input string, valu
 			query = "SELECT * FROM (" + query + ") auraoa_query WHERE ROWNUM <= " + limit
 		}
 	}
-	return a.runAuditReadOnly(ctx, query, args, maxRows)
+	return a.runAuditReadOnly(ctx, query, args, maxRows, maxChars)
 }
-func (a *Ecology9Adapter) runAuditReadOnly(ctx context.Context, query string, args []interface{}, maxRows int) (*AuditQueryResult, error) {
+func (a *Ecology9Adapter) runAuditReadOnly(ctx context.Context, query string, args []interface{}, maxRows, maxChars int) (*AuditQueryResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	started := time.Now()
@@ -426,9 +429,10 @@ func (a *Ecology9Adapter) runAuditReadOnly(ctx context.Context, query string, ar
 		seen[label] = true
 		out.Columns = append(out.Columns, QueryColumn{fmt.Sprintf("col_%d", i+1), label, t.DatabaseTypeName()})
 	}
-	size := 0
+	// 按传给模型的中文列名 JSON 计算 Unicode 字符，包含数组括号和行间逗号。
+	size := 2
 	for rows.Next() {
-		if maxRows > 0 && len(out.Rows) >= maxRows {
+		if maxRows > 0 && len(out.Rows) >= maxRows || maxChars > 0 && len(out.Rows) > 0 && size >= maxChars {
 			out.Truncated = true
 			break
 		}
@@ -450,14 +454,19 @@ func (a *Ecology9Adapter) runAuditReadOnly(ctx context.Context, query string, ar
 			}
 			row[out.Columns[i].Key] = v
 		}
-		raw, e := json.Marshal(row)
-		if e != nil {
-			return nil, e
-		}
-		size += len(raw)
-		if size > 64000 {
-			out.Truncated = true
-			break
+		if maxChars > 0 {
+			named := map[string]interface{}{}
+			for _, col := range out.Columns {
+				named[col.Label] = row[col.Key]
+			}
+			raw, e := json.Marshal(named)
+			if e != nil {
+				return nil, e
+			}
+			size += utf8.RuneCount(raw)
+			if len(out.Rows) > 0 {
+				size++
+			}
 		}
 		out.Rows = append(out.Rows, row)
 	}
@@ -473,7 +482,7 @@ func (a *Ecology9Adapter) AuditQuerySchema(ctx context.Context, table string) ([
 	if !queryIdentifier.MatchString(table) {
 		return nil, fmt.Errorf("表名只允许英文、数字和下划线")
 	}
-	result, err := a.runAuditReadOnly(ctx, "SELECT * FROM "+a.tableName(table)+" WHERE 1=0", nil, 1)
+	result, err := a.runAuditReadOnly(ctx, "SELECT * FROM "+a.tableName(table)+" WHERE 1=0", nil, 1, 0)
 	if err != nil {
 		return nil, err
 	}

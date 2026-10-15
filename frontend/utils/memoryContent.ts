@@ -37,6 +37,8 @@ export function queryDefinitionContentKey(value: QueryDefinition): string {
   content.tables ??= []
   content.parameters ??= []
   content.max_rows ??= 0
+  // 服务端省略为 0 的字符上限，避免旧定义与显式 0 产生虚假修改。
+  if (!content.max_chars) delete content.max_chars
   content.ai_context ??= {
     oa_module: content.builder?.source_type === 'workflow' ? 'workflow' : 'general', notes: '',
   }
