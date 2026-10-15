@@ -1,5 +1,11 @@
 // types/common.ts — 公共类型定义（原 rules.ts）
 
+/** 审核与归档共用的空值传输策略，随 ai_config 保存与发布。 */
+export interface FieldTransmissionConfig {
+  skip_empty_fields?: boolean
+  skip_empty_field_keys?: string[]
+}
+
 /** 流程字段（带选中状态，用于字段选择器） */
 export interface ProcessField {
   field_key: string

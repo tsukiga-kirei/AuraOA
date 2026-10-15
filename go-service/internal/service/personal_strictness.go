@@ -40,11 +40,16 @@ func effectiveAuditAIConfig(
 	if err != nil || len(items) == 0 {
 		return nil, fmt.Errorf("读取个人审核尺度提示词失败")
 	}
-	return auditAIConfigFromTemplates(override, items)
+	return auditAIConfigFromTemplates(override, items, current)
 }
 
-func auditAIConfigFromTemplates(strictness string, items []model.SystemPromptTemplate) (datatypes.JSON, error) {
+func auditAIConfigFromTemplates(strictness string, items []model.SystemPromptTemplate, base ...model.AIConfigData) (datatypes.JSON, error) {
 	effective := model.AIConfigData{AuditStrictness: strictness}
+	// 个人尺度只切换提示词，空值传输策略仍沿用租户配置。
+	if len(base) > 0 {
+		effective.SkipEmptyFields = base[0].SkipEmptyFields
+		effective.SkipEmptyFieldKeys = base[0].SkipEmptyFieldKeys
+	}
 	for _, item := range items {
 		switch {
 		case item.PromptType == "system" && item.Phase == "reasoning":
@@ -85,11 +90,16 @@ func effectiveArchiveAIConfig(
 	if err != nil {
 		return nil, fmt.Errorf("读取个人复核尺度提示词失败")
 	}
-	return archiveAIConfigFromTemplates(override, items)
+	return archiveAIConfigFromTemplates(override, items, current)
 }
 
-func archiveAIConfigFromTemplates(strictness string, items []model.SystemPromptTemplate) (datatypes.JSON, error) {
+func archiveAIConfigFromTemplates(strictness string, items []model.SystemPromptTemplate, base ...model.ArchiveAIConfigData) (datatypes.JSON, error) {
 	effective := model.ArchiveAIConfigData{AuditStrictness: strictness}
+	// 与审核侧对称，个人尺度不能丢失租户空值传输策略。
+	if len(base) > 0 {
+		effective.SkipEmptyFields = base[0].SkipEmptyFields
+		effective.SkipEmptyFieldKeys = base[0].SkipEmptyFieldKeys
+	}
 	matched := 0
 	for _, item := range items {
 		if item.Strictness == nil || *item.Strictness != strictness || !strings.HasPrefix(item.PromptKey, "archive_") {

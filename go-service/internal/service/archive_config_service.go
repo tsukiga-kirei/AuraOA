@@ -73,7 +73,7 @@ func (s *ProcessArchiveConfigService) Create(c *gin.Context, req *dto.CreateProc
 		if err := json.Unmarshal(aiConfig, &parsed); err == nil {
 			if parsed.SystemReasoningPrompt == "" && parsed.UserReasoningPrompt == "" {
 				strictness := defaultStr(parsed.AuditStrictness, "standard")
-				aiConfig = s.buildDefaultAIConfig(strictness)
+				aiConfig = s.buildDefaultAIConfig(strictness, parsed)
 			}
 		}
 	}
@@ -123,16 +123,21 @@ func (s *ProcessArchiveConfigService) Create(c *gin.Context, req *dto.CreateProc
 }
 
 // buildDefaultAIConfig 从数据库中查询归档专用提示词模板（prompt_key 以 archive_ 开头），
-// 按 strictness 筛选后组装成完整的 ai_config JSON。模板查询失败时返回仅含 strictness 的兜底配置。
-func (s *ProcessArchiveConfigService) buildDefaultAIConfig(strictness string) datatypes.JSON {
+// 按 strictness 筛选后组装成完整的 ai_config JSON。模板查询失败时保留尺度和空值策略作为兜底配置。
+func (s *ProcessArchiveConfigService) buildDefaultAIConfig(strictness string, base ...model.ArchiveAIConfigData) datatypes.JSON {
+	data := model.ArchiveAIConfigData{AuditStrictness: strictness}
+	// 自动补齐提示词时保留调用方提交的空值传输策略。
+	if len(base) > 0 {
+		data.SkipEmptyFields = base[0].SkipEmptyFields
+		data.SkipEmptyFieldKeys = base[0].SkipEmptyFieldKeys
+	}
 	// 查询归档专用模板（prompt_key 以 archive_ 开头，strictness 匹配）
 	allTemplates, err := s.templateRepo.ListAll()
 	if err != nil {
-		fallback, _ := json.Marshal(model.ArchiveAIConfigData{AuditStrictness: strictness})
+		fallback, _ := json.Marshal(data)
 		return datatypes.JSON(fallback)
 	}
 
-	data := model.ArchiveAIConfigData{AuditStrictness: strictness}
 	for _, t := range allTemplates {
 		// 只处理归档专用模板（archive_ 前缀）且符合目标尺度的
 		if t.Strictness == nil || *t.Strictness != strictness {

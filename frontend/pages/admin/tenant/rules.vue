@@ -40,6 +40,7 @@ import {
 import { message, Modal } from 'ant-design-vue'
 import type { ConfigExportModule, RuleConflictStrategy } from '~/types/config-export-import'
 import { applyRuleConflictStrategy } from '~/utils/configExportImportHelper'
+import { isEmptyFieldSkipped, setEmptyFieldSkipped, setSkipEmptyFields } from '~/utils/fieldTransmission'
 import ConfigExportModal from '~/components/ConfigExportModal.vue'
 import ConfigImportModal from '~/components/ConfigImportModal.vue'
 import type {
@@ -3325,6 +3326,19 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
             </div>
           </div>
 
+          <div class="empty-field-policy">
+            <div>
+              <label class="empty-field-policy__label" for="selectedConfig-skip-empty">{{ t('admin.ruleConfig.skipAllEmptyFields') }}</label>
+              <p class="section-desc">{{ t('admin.ruleConfig.skipAllEmptyFieldsDesc') }}</p>
+            </div>
+            <a-switch
+              id="selectedConfig-skip-empty"
+              :checked="selectedConfig.ai_config.skip_empty_fields === true"
+              :aria-label="t('admin.ruleConfig.skipAllEmptyFields')"
+              @change="checked => { if (selectedConfig) setSkipEmptyFields(selectedConfig.ai_config, checked === true) }"
+            />
+          </div>
+
           <!--选定字段显示+选择器触发器-->
           <template v-if="selectedConfig.field_mode === 'selected'">
             <div class="field-picker-toolbar">
@@ -3348,10 +3362,11 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                 <table class="data-table">
                   <thead>
                     <tr>
-                      <th style="padding-left: 24px;">字段名称</th>
-                      <th>字段标识</th>
-                      <th>字段类型</th>
-                      <th>归属表</th>
+                      <th style="padding-left: 24px;">{{ t('admin.ruleConfig.fieldNameColumn') }}</th>
+                      <th>{{ t('admin.ruleConfig.fieldKeyColumn') }}</th>
+                      <th>{{ t('admin.ruleConfig.fieldTypeColumn') }}</th>
+                      <th>{{ t('admin.ruleConfig.fieldSourceColumn') }}</th>
+                      <th class="empty-field-column">{{ t('admin.ruleConfig.skipEmptyField') }}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3360,9 +3375,20 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                       <td class="text-mono" style="font-size: 13px;">{{ field.field_key }}</td>
                       <td><span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span></td>
                       <td class="text-secondary" style="font-size: 13px;">{{ field.sourceLabel }}</td>
+                      <td class="empty-field-column">
+                        <a-tooltip :title="t(selectedConfig.ai_config.skip_empty_fields ? 'admin.ruleConfig.skipEmptyFieldInherited' : 'admin.ruleConfig.skipEmptyFieldDesc')">
+                          <a-switch
+                            size="small"
+                            :checked="selectedConfig.ai_config.skip_empty_fields === true || isEmptyFieldSkipped(selectedConfig.ai_config, field)"
+                            :disabled="selectedConfig.ai_config.skip_empty_fields === true"
+                            :aria-label="field.field_name + '：' + t('admin.ruleConfig.skipEmptyField')"
+                            @change="checked => { if (selectedConfig) setEmptyFieldSkipped(selectedConfig.ai_config, field, checked === true) }"
+                          />
+                        </a-tooltip>
+                      </td>
                     </tr>
                     <tr v-if="pageSelectedPagination.paged.value.length === 0">
-                      <td colspan="4" class="empty-cell">{{ t('admin.ruleConfig.noSearchResult') || '未找到匹配字段' }}</td>
+                      <td colspan="5" class="empty-cell">{{ t('admin.ruleConfig.noSearchResult') }}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -5515,6 +5541,19 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
             </div>
           </div>
 
+          <div class="empty-field-policy">
+            <div>
+              <label class="empty-field-policy__label" for="selectedArchiveConfig-skip-empty">{{ t('admin.ruleConfig.skipAllEmptyFields') }}</label>
+              <p class="section-desc">{{ t('admin.ruleConfig.skipAllEmptyFieldsDesc') }}</p>
+            </div>
+            <a-switch
+              id="selectedArchiveConfig-skip-empty"
+              :checked="selectedArchiveConfig.ai_config.skip_empty_fields === true"
+              :aria-label="t('admin.ruleConfig.skipAllEmptyFields')"
+              @change="checked => { if (selectedArchiveConfig) setSkipEmptyFields(selectedArchiveConfig.ai_config, checked === true) }"
+            />
+          </div>
+
           <!--选定字段显示+选择器触发器-->
           <template v-if="selectedArchiveConfig.field_mode === 'selected'">
             <div class="field-picker-toolbar">
@@ -5538,10 +5577,11 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                 <table class="data-table">
                   <thead>
                     <tr>
-                      <th style="padding-left: 24px;">字段名称</th>
-                      <th>字段标识</th>
-                      <th>字段类型</th>
-                      <th>归属表</th>
+                      <th style="padding-left: 24px;">{{ t('admin.ruleConfig.fieldNameColumn') }}</th>
+                      <th>{{ t('admin.ruleConfig.fieldKeyColumn') }}</th>
+                      <th>{{ t('admin.ruleConfig.fieldTypeColumn') }}</th>
+                      <th>{{ t('admin.ruleConfig.fieldSourceColumn') }}</th>
+                      <th class="empty-field-column">{{ t('admin.ruleConfig.skipEmptyField') }}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -5550,9 +5590,20 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                       <td class="text-mono" style="font-size: 13px;">{{ field.field_key }}</td>
                       <td><span class="field-type-tag">{{ fieldTypeLabels[field.field_type] || field.field_type }}</span></td>
                       <td class="text-secondary" style="font-size: 13px;">{{ field.sourceLabel }}</td>
+                      <td class="empty-field-column">
+                        <a-tooltip :title="t(selectedArchiveConfig.ai_config.skip_empty_fields ? 'admin.ruleConfig.skipEmptyFieldInherited' : 'admin.ruleConfig.skipEmptyFieldDesc')">
+                          <a-switch
+                            size="small"
+                            :checked="selectedArchiveConfig.ai_config.skip_empty_fields === true || isEmptyFieldSkipped(selectedArchiveConfig.ai_config, field)"
+                            :disabled="selectedArchiveConfig.ai_config.skip_empty_fields === true"
+                            :aria-label="field.field_name + '：' + t('admin.ruleConfig.skipEmptyField')"
+                            @change="checked => { if (selectedArchiveConfig) setEmptyFieldSkipped(selectedArchiveConfig.ai_config, field, checked === true) }"
+                          />
+                        </a-tooltip>
+                      </td>
                     </tr>
                     <tr v-if="archivePageSelectedPagination.paged.value.length === 0">
-                      <td colspan="4" class="empty-cell">{{ t('admin.ruleConfig.noSearchResult') || '未找到匹配字段' }}</td>
+                      <td colspan="5" class="empty-cell">{{ t('admin.ruleConfig.noSearchResult') }}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -7152,6 +7203,21 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
 }
 
 /*字段选择器工具栏*/
+.empty-field-policy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+}
+.empty-field-policy__label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+.empty-field-policy .section-desc { margin: 0; }
+.data-table .empty-field-column { width: 140px; text-align: center; white-space: nowrap; }
+
 .field-picker-toolbar {
   display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
 }

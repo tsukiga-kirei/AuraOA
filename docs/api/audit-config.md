@@ -45,6 +45,21 @@ PUT /api/tenant/rules/configs/:id
 ```
 
 `ai_config.enable_thinking` 控制是否开启深度思考模式（需模型本身支持思考）。
+
+`ai_config` 同时保存字段空值传输策略（创建、更新、读取、配置导入导出和版本快照均保留）：
+
+| 字段 | 默认值 | 说明 |
+|------|--------|------|
+| `skip_empty_fields` | `false` | 统一开关。开启后，当前传输范围内所有空值字段均不传给 AI |
+| `skip_empty_field_keys` | `[]` | 单独开启“为空时不传”的字段引用，如 `main:remark`、`formtable_main_151_dt1:remark` |
+
+统一开关关闭后按各字段设置执行，不清除单字段配置；单字段未开启时空值也传输。
+字段仍须先满足原有字段选择范围；统一开关在全部字段模式下也生效。
+空值包括 `null`、空字符串、纯空白字符串；`0`、`false` 和字面字符串 `"null"` 正常传输。
+OA 浏览/选择字段按 `value` 原始值判断，表名和字段标识匹配不区分大小写，明细逐行过滤而不删除整行。
+仅过滤模型提示词中的字段副本，不修改 OA 原始数据、业务快照或外部关联查询内容。
+策略沿用现有保存草稿、发布、激活和执行快照机制；旧流程继续使用锁定配置，旧配置缺省仍传空值，个人尺度调整保留该策略。
+
 `ai_config.system_extraction_prompt` 与 `ai_config.user_extraction_prompt` 均为后端锁定字段。
 保存时服务端会根据 `ai_config.audit_strictness` 使用对应系统模板覆盖客户端传值，
 避免固定 JSON Schema、输出指令和变量结构被误改；

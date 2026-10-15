@@ -21,6 +21,7 @@ func BuildArchiveReasoningPrompt(
 	flowSnapshot *oa.ProcessFlowSnapshot,
 	externalContext string,
 ) *ai.ChatRequest {
+	processData = filterEmptyProcessDataForPrompt(processData, aiConfig.SkipEmptyFields, aiConfig.SkipEmptyFieldKeys)
 	mainDataStr := formatMainData(filterFields(processData.MainData, fieldSet["main"]), processData.FieldLabels["main"])
 	detailDataStr := formatGroupedDetailData(processData.DetailTables, fieldSet, processData.FieldLabels)
 	attachmentsStr := formatAttachments(processData.Attachments, 8000)
