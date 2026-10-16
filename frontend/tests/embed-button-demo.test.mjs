@@ -92,7 +92,7 @@ function runtime({ style = 'modern', reduced = false, systemReduced = false, hov
         return copy
       },
       closest(selector) { return selector === '#galleryGroup' ? (gallery ? {} : null) : btn },
-      getBoundingClientRect() { return { width: btn.visualWidth ?? (classes.has('aura-status-button--icon-only') ? 52 : 126) } },
+      getBoundingClientRect() { return { width: btn.visualWidth ?? (classes.has('aura-status-button--icon-only') ? 64 : 156) } },
       animate: (frames, options) => animate('button', frames, options),
     }
     state.buttons.push(btn)
@@ -136,8 +136,8 @@ test('demo: initial result expands within 550ms and exposes accessible status', 
   const btn = button('gray', '加载中...', true)
   context.morphModernStatusButton(btn, 'audit', 'green', '审核通过 (95分)', false)
   const width = state.animations.find(motion => motion.target === 'button')
-  assert.equal(width.frames[0].width, '52px')
-  assert.equal(width.frames.at(-1).width, '126px')
+  assert.equal(width.frames[0].width, '64px')
+  assert.equal(width.frames.at(-1).width, '156px')
   assert.ok(width.options.delay + width.options.duration <= 550)
   assert.equal(btn.getAttribute('aria-busy'), 'false')
   assert.equal(announcements.textContent, '审核通过 (95分)')
@@ -149,8 +149,8 @@ test('demo: result refresh does not collapse and identical refresh does not anim
   const btn = button('green', '审核通过 (95分)')
   context.morphModernStatusButton(btn, 'audit', 'yellow', '建议关注 (78分)', false)
   const width = state.animations.find(motion => motion.target === 'button')
-  assert.equal(width.frames[0].width, '126px')
-  assert.equal(width.frames.at(-1).width, '126px')
+  assert.equal(width.frames[0].width, '156px')
+  assert.equal(width.frames.at(-1).width, '156px')
   assert.ok(btn.classList.contains('aura-status-button--update'))
   assert.ok(!btn.classList.contains('aura-status-button--reveal'))
   const count = state.animations.length
@@ -437,8 +437,8 @@ test('demo: secondary states begin as icons and hover reveals one concise line',
     assert.doesNotMatch(btn.copy.innerHTML, /aura-status-description/)
     assert.equal(btn.getAttribute('aria-expanded'), 'true')
     const width = btn._auraModernAnimations[0]
-    assert.equal(width.frames[0].width, '52px')
-    assert.equal(width.frames[1].width, '126px')
+    assert.equal(width.frames[0].width, '64px')
+    assert.equal(width.frames[1].width, '156px')
     width.finish()
     await Promise.resolve()
     context.queueSecondaryButtonHover(btn, false, 'mouse')
