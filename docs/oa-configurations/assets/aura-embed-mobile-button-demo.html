@@ -443,27 +443,27 @@
     .aura-status-button--enter.aura-status-button--loading .aura-status-text,
     .aura-status-button--enter.aura-status-button--running .aura-status-text { opacity: 1; transform: none; animation: none; }
 
-    .aura-status-button--enter.aura-status-button--enter-shake .aura-status-icon svg>*,
-    .aura-status-button--enter.aura-status-button--enter-pop .aura-status-icon svg>*,
-    .aura-status-button--enter.aura-status-button--enter-bounce .aura-status-icon svg>*,
-    .aura-status-button--enter.aura-status-button--enter-rise .aura-status-icon svg>*,
-    .aura-status-button--enter.aura-status-button--enter-fade .aura-status-icon svg>*,
-    .aura-status-button--morph.aura-status-button--enter-shake .aura-status-icon-layer--in svg>*,
-    .aura-status-button--morph.aura-status-button--enter-pop .aura-status-icon-layer--in svg>*,
-    .aura-status-button--morph.aura-status-button--enter-bounce .aura-status-icon-layer--in svg>*,
-    .aura-status-button--morph.aura-status-button--enter-rise .aura-status-icon-layer--in svg>*,
-    .aura-status-button--morph.aura-status-button--enter-fade .aura-status-icon-layer--in svg>* { stroke-dasharray: 1; stroke-dashoffset: 1; }
+    .aura-status-button--enter.aura-status-button--enter-shake .aura-status-icon svg:not(.aura-modern-glyph)>*,
+    .aura-status-button--enter.aura-status-button--enter-pop .aura-status-icon svg:not(.aura-modern-glyph)>*,
+    .aura-status-button--enter.aura-status-button--enter-bounce .aura-status-icon svg:not(.aura-modern-glyph)>*,
+    .aura-status-button--enter.aura-status-button--enter-rise .aura-status-icon svg:not(.aura-modern-glyph)>*,
+    .aura-status-button--enter.aura-status-button--enter-fade .aura-status-icon svg:not(.aura-modern-glyph)>*,
+    .aura-status-button--morph.aura-status-button--enter-shake .aura-status-icon-layer--in svg:not(.aura-modern-glyph)>*,
+    .aura-status-button--morph.aura-status-button--enter-pop .aura-status-icon-layer--in svg:not(.aura-modern-glyph)>*,
+    .aura-status-button--morph.aura-status-button--enter-bounce .aura-status-icon-layer--in svg:not(.aura-modern-glyph)>*,
+    .aura-status-button--morph.aura-status-button--enter-rise .aura-status-icon-layer--in svg:not(.aura-modern-glyph)>*,
+    .aura-status-button--morph.aura-status-button--enter-fade .aura-status-icon-layer--in svg:not(.aura-modern-glyph)>* { stroke-dasharray: 1; stroke-dashoffset: 1; }
 
     .aura-status-button--loading .aura-status-icon>svg, .aura-status-button--loading .aura-status-icon-layer--in svg { animation: auraBtnSpin .9s linear infinite; }
     .aura-status-button--running .aura-status-icon>svg .aura-running-star, .aura-status-button--running .aura-status-icon-layer--in .aura-running-star { transform-box: fill-box; transform-origin: center; animation: auraStarSpin 3.6s cubic-bezier(.45, 0, .55, 1) infinite; }
 
-    .aura-status-button--enter.aura-status-button--enter-shake .aura-status-icon svg>*, .aura-status-button--morph.aura-status-button--enter-shake .aura-status-icon-layer--in svg>* { animation: auraDraw .34s cubic-bezier(.22, .7, .2, 1) .08s forwards; }
-    .aura-status-button--enter.aura-status-button--enter-shake .aura-status-icon svg>:nth-child(2), .aura-status-button--morph.aura-status-button--enter-shake .aura-status-icon-layer--in svg>:nth-child(2) { animation-delay: .22s; }
-    .aura-status-button--enter.aura-status-button--enter-pop .aura-status-icon svg>*, .aura-status-button--morph.aura-status-button--enter-pop .aura-status-icon-layer--in svg>* { animation: auraDraw .48s cubic-bezier(.22, .72, .2, 1) .08s forwards; }
-    .aura-status-button--enter.aura-status-button--enter-bounce .aura-status-icon svg>*, .aura-status-button--morph.aura-status-button--enter-bounce .aura-status-icon-layer--in svg>* { animation: auraDraw .36s cubic-bezier(.22, .7, .2, 1) .08s forwards; }
-    .aura-status-button--enter.aura-status-button--enter-bounce .aura-status-icon svg>:nth-child(2), .aura-status-button--morph.aura-status-button--enter-bounce .aura-status-icon-layer--in svg>:nth-child(2) { animation-delay: .22s; }
-    .aura-status-button--enter.aura-status-button--enter-rise .aura-status-icon svg>*, .aura-status-button--morph.aura-status-button--enter-rise .aura-status-icon-layer--in svg>* { animation: auraDraw .32s cubic-bezier(.22, .7, .2, 1) .08s forwards; }
-    .aura-status-button--enter.aura-status-button--enter-fade .aura-status-icon svg>*, .aura-status-button--morph.aura-status-button--enter-fade .aura-status-icon-layer--in svg>* { animation: auraDraw .4s cubic-bezier(.22, .7, .2, 1) .08s forwards; }
+    .aura-status-button--enter.aura-status-button--enter-shake .aura-status-icon svg:not(.aura-modern-glyph)>*, .aura-status-button--morph.aura-status-button--enter-shake .aura-status-icon-layer--in svg:not(.aura-modern-glyph)>* { animation: auraDraw .34s cubic-bezier(.22, .7, .2, 1) .08s forwards; }
+    .aura-status-button--enter.aura-status-button--enter-shake .aura-status-icon svg:not(.aura-modern-glyph)>:nth-child(2), .aura-status-button--morph.aura-status-button--enter-shake .aura-status-icon-layer--in svg:not(.aura-modern-glyph)>:nth-child(2) { animation-delay: .22s; }
+    .aura-status-button--enter.aura-status-button--enter-pop .aura-status-icon svg:not(.aura-modern-glyph)>*, .aura-status-button--morph.aura-status-button--enter-pop .aura-status-icon-layer--in svg:not(.aura-modern-glyph)>* { animation: auraDraw .48s cubic-bezier(.22, .72, .2, 1) .08s forwards; }
+    .aura-status-button--enter.aura-status-button--enter-bounce .aura-status-icon svg:not(.aura-modern-glyph)>*, .aura-status-button--morph.aura-status-button--enter-bounce .aura-status-icon-layer--in svg:not(.aura-modern-glyph)>* { animation: auraDraw .36s cubic-bezier(.22, .7, .2, 1) .08s forwards; }
+    .aura-status-button--enter.aura-status-button--enter-bounce .aura-status-icon svg:not(.aura-modern-glyph)>:nth-child(2), .aura-status-button--morph.aura-status-button--enter-bounce .aura-status-icon-layer--in svg:not(.aura-modern-glyph)>:nth-child(2) { animation-delay: .22s; }
+    .aura-status-button--enter.aura-status-button--enter-rise .aura-status-icon svg:not(.aura-modern-glyph)>*, .aura-status-button--morph.aura-status-button--enter-rise .aura-status-icon-layer--in svg:not(.aura-modern-glyph)>* { animation: auraDraw .32s cubic-bezier(.22, .7, .2, 1) .08s forwards; }
+    .aura-status-button--enter.aura-status-button--enter-fade .aura-status-icon svg:not(.aura-modern-glyph)>*, .aura-status-button--morph.aura-status-button--enter-fade .aura-status-icon-layer--in svg:not(.aura-modern-glyph)>* { animation: auraDraw .4s cubic-bezier(.22, .7, .2, 1) .08s forwards; }
 
     @keyframes auraBtnSpin { to { transform: rotate(360deg); } }
     @keyframes auraDraw { to { stroke-dashoffset: 0; } }
@@ -1115,8 +1115,16 @@
       overflow: visible; opacity: 1; transform: none; animation: none;
       transition: box-shadow .3s ease, color .4s ease;
     }
-    body[data-button-style="modern"] .aura-status-icon > svg { width: 30px; height: 30px; animation: none; opacity: 1; filter: drop-shadow(0 1px 0 rgba(255,255,255,.8)); }
-    body[data-button-style="modern"] .aura-status-icon svg > * { stroke-dashoffset: 0; animation: none; }
+    body[data-button-style="modern"] .aura-status-icon > svg { width: 36px; height: 36px; animation: none; opacity: 1; filter: drop-shadow(0 1px 0 rgba(255,255,255,.8)); }
+    /* 勾、叉与感叹号的路径留白较多，单独补偿尺寸，使各符号的视觉分量一致。 */
+    body[data-button-style="modern"] .aura-status-icon > svg[data-icon-kind="pass"] { width: 40px; height: 40px; }
+    body[data-button-style="modern"] .aura-status-icon > svg[data-icon-kind="reject"] { width: 44px; height: 44px; }
+    body[data-button-style="modern"] .aura-status-icon > svg[data-icon-kind="attention"] { width: 42px; height: 42px; }
+    /* 普通符号使用连续描边；逐笔绘制只由 aura-modern-draw 的独立动画控制。 */
+    body[data-button-style="modern"] .aura-status-icon svg > * { stroke-dasharray: none; stroke-dashoffset: 0; animation: none; }
+    body[data-button-style="modern"] .aura-status-icon > svg[data-icon-kind="lock"],
+    body[data-button-style="modern"] .aura-status-icon > svg[data-icon-kind="unavailable"],
+    body[data-button-style="modern"] .aura-status-icon > svg[data-icon-kind="analysis"] { filter: none; shape-rendering: geometricPrecision; }
     body[data-button-style="modern"] .aura-status-button--loading .aura-status-icon > svg { animation: none; }
     body[data-button-style="modern"] .aura-status-button--running .aura-modern-glyph[data-icon-kind="analysis"] .aura-modern-star { transform-origin: 12px 12px; animation: auraModernAnalysis 4s cubic-bezier(.45,0,.55,1) infinite; }
     body[data-button-style="modern"] .aura-status-copy { flex: 0 1 auto; max-width: calc(100% - 62px); padding: 6px 24px 6px 8px; box-sizing: border-box; overflow: visible; background: transparent; opacity: 1; transform: none; animation: none; }
@@ -1223,6 +1231,30 @@
     @keyframes auraModernCleanGlow { 0%,100% { transform: translateY(0) scale(.98); opacity: .55; } 50% { transform: translateY(-2px) scale(1.04); opacity: .8; } }
     body[data-button-style="modern"] .aura-status-button--ready:not([data-aura-disclosure="true"]) { min-width: 156px; }
     body[data-button-style="modern"] .aura-status-caption--stamp { margin-top: 2px; margin-bottom: 1px; }
+    /* 小屏略缩小按钮与字形，保留完整文案和足够的触碰区域。 */
+    @media (max-width: 768px) {
+      body[data-button-style="modern"] .aura-status-button {
+        min-height: 56px !important; height: 56px; min-width: 56px; transform-origin: 28px center;
+      }
+      body[data-button-style="modern"] .aura-status-button--icon-only { width: 56px; }
+      body[data-button-style="modern"] .aura-status-icon { flex-basis: 46px; width: 46px; height: 46px; margin: 4px; }
+      body[data-button-style="modern"] .aura-status-button--icon-only .aura-status-icon { flex-basis: 54px; width: 54px; height: 54px; margin: 0; }
+      body[data-button-style="modern"] .aura-status-icon > svg { width: 32px; height: 32px; }
+      body[data-button-style="modern"] .aura-status-icon > svg[data-icon-kind="pass"] { width: 36px; height: 36px; }
+      body[data-button-style="modern"] .aura-status-icon > svg[data-icon-kind="reject"] { width: 40px; height: 40px; }
+      body[data-button-style="modern"] .aura-status-icon > svg[data-icon-kind="attention"] { width: 38px; height: 38px; }
+      body[data-button-style="modern"] .aura-status-copy { max-width: calc(100% - 54px); padding: 4px 18px 4px 6px; }
+      body[data-button-style="modern"] .aura-status-caption { font-size: 11px; }
+      body[data-button-style="modern"] .aura-status-score b { font-size: 26px !important; }
+      body[data-button-style="modern"] .aura-status-inline-label,
+      body[data-button-style="modern"] .aura-status-button--running .aura-status-inline-label { font-size: 14px; }
+      body[data-button-style="modern"] .aura-status-button--running { min-width: 120px; }
+      body[data-button-style="modern"] .aura-status-button--ready:not([data-aura-disclosure="true"]) { min-width: 140px; }
+      body[data-button-style="modern"] .aura-status-button[data-aura-disclosure="true"][data-aura-expanded="true"],
+      body[data-button-style="modern"] .aura-status-button--disclosing { height: 56px; min-height: 56px; }
+      body[data-button-style="modern"] .aura-status-button[data-aura-disclosure="true"] .aura-status-copy { padding: 6px 18px 6px 6px; }
+      body[data-button-style="modern"] .gallery-grid { gap: 22px 18px; }
+    }
     .demo-motion-toggle { display: inline-flex; align-items: center; gap: 7px; margin: 0 0 18px; color: #64748b; font-size: 13px; cursor: pointer; }
     .demo-motion-toggle input { accent-color: #2563eb; width: 16px; height: 16px; margin: 0; }
     .demo-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -1858,7 +1890,8 @@
     }
     // 移植参考页的纸屑物理：通过向外抛洒并下落，退回则短促扩散后消散。
     function burstModernParticles(btn, run, kind) {
-      var scale = MODERN_BUTTON_SIZE / 68, dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var size = btn.getBoundingClientRect().height || MODERN_BUTTON_SIZE;
+      var scale = size / 68, dpr = Math.min(window.devicePixelRatio || 1, 2);
       var canvas = document.createElement('canvas');
       canvas.className = 'aura-modern-fx';
       canvas.setAttribute('aria-hidden', 'true');
@@ -1866,8 +1899,8 @@
       canvas.height = Math.round(300 * scale * dpr);
       canvas.style.width = (520 * scale) + 'px';
       canvas.style.height = (300 * scale) + 'px';
-      canvas.style.left = (MODERN_BUTTON_SIZE / 2 - 260 * scale) + 'px';
-      canvas.style.top = (MODERN_BUTTON_SIZE / 2 - 150 * scale) + 'px';
+      canvas.style.left = (size / 2 - 260 * scale) + 'px';
+      canvas.style.top = (size / 2 - 150 * scale) + 'px';
       var ctx = canvas.getContext('2d');
       if (!ctx) return;
       ctx.scale(dpr * scale, dpr * scale);
@@ -1949,7 +1982,7 @@
           var scan = document.createElement('span'); scan.className = 'aura-modern-scan'; scan.setAttribute('aria-hidden', 'true');
           btn.querySelector('.aura-modern-sheen').appendChild(scan); run.nodes.push(scan);
           modernEffectAnimate(btn, run, scan, [
-            { transform: 'translateX(-' + MODERN_BUTTON_SIZE + 'px)', opacity: 0 }, { opacity: 1, offset: .15 }, { opacity: 1, offset: .8 },
+            { transform: 'translateX(-' + (btn.getBoundingClientRect().height || MODERN_BUTTON_SIZE) + 'px)', opacity: 0 }, { opacity: 1, offset: .15 }, { opacity: 1, offset: .8 },
             { transform: 'translateX(' + btn.getBoundingClientRect().width + 'px)', opacity: 0 }
           ], { duration: kind === 'warning' ? 1000 : 800, easing: 'ease-in-out' });
           if (kind === 'warning') {
