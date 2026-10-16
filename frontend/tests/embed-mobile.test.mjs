@@ -179,9 +179,10 @@ async function run(source, payload, httpOK = true, device = {}) {
   if (device.exposeButtons) source = source.replace('  var dragSession =', `  window.__buttons = {
     buildStatusButton: buildStatusButton, iconSvgMarkup: iconSvgMarkup, parseButtonLabel: parseButtonLabel,
     modernButtonCopyMarkup: modernButtonCopyMarkup, modernSecondaryLabel: modernSecondaryLabel,
-    morphModernStatusButton: morphModernStatusButton, setSecondaryButtonExpanded: setSecondaryButtonExpanded,
+    morphModernStatusButton: morphModernStatusButton, setModernButtonExpanded: setModernButtonExpanded,
     handleModernButtonClick: handleModernButtonClick, cancelModernButtonMotion: cancelModernButtonMotion,
-    queueSecondaryButtonHover: queueSecondaryButtonHover, bindModernButtonFeedback: bindModernButtonFeedback
+    queueSecondaryButtonHover: queueSecondaryButtonHover, bindModernButtonFeedback: bindModernButtonFeedback,
+    setupDraggableFloatContainer: setupDraggableFloatContainer
   };\n  var dragSession =`)
   vm.runInNewContext(source, {
     navigator: { userAgent: device.ua || 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)', maxTouchPoints: device.touch || 0 },
@@ -201,7 +202,8 @@ async function run(source, payload, httpOK = true, device = {}) {
     fetch: async (url, init) => {
       state.requests.push(url)
       state.requestInits.push(init || {})
-      return { ok: httpOK, status: httpOK ? 200 : 500, json: async () => payload }
+      const response = device.payloadByPath?.[new URL(url).pathname] ?? payload
+      return { ok: httpOK, status: httpOK ? 200 : 500, json: async () => response }
     },
     console: { log() {}, warn() {} },
     setTimeout: (fn, ms) => {
@@ -709,16 +711,14 @@ for (const origin of ['export', 'template']) {
       assert.equal(state.elements.length, 0)
     })
 
-    test(`${origin} modern ${type}: first tap reveals pending state without executing or opening`, async () => {
+    test(`${origin} modern ${type}: mobile pending entry opens on the first tap without executing a task`, async () => {
       const state = await run(source, { supported: true, should_auto_audit: true, should_auto_summary: true })
       const before = state.requests.length
       for (const id of ids) {
         assert.equal(state.nodes[id].getAttribute('data-aura-expanded'), 'false')
         state.click(id)
-        assert.equal(state.nodes[id].getAttribute('data-aura-expanded'), 'true')
+        assert.equal(state.nodes[id].getAttribute('data-aura-expanded'), 'false')
         assert.equal(state.requests.length, before)
-        assert.equal(state.dialogs.length, ids.indexOf(id))
-        state.click(id)
         assert.equal(state.dialogs.length, ids.indexOf(id) + 1)
       }
       assert.ok(state.requestInits.every(init => init.method !== 'POST'))
@@ -751,8 +751,7 @@ for (const origin of ['export', 'template']) {
       for (const id of ids) {
         assert.equal(failed.nodes[id].getAttribute('data-aura-state'), 'gray')
         failed.click(id)
-        assert.equal(failed.dialogs.length, ids.indexOf(id))
-        failed.click(id)
+        assert.equal(failed.dialogs.length, ids.indexOf(id) + 1)
       }
       assert.equal(failed.dialogs.length, ids.length)
       assert.ok(failed.requestInits.every(init => init.method !== 'POST'))
@@ -789,7 +788,7 @@ function animatedButton(state, status, text, loading = false, feature = 'audit')
   const copy = { innerHTML: api.modernButtonCopyMarkup(feature, status, text, loading), style: { removeProperty() {} }, animate: (f, o) => animate('copy', f, o) }
   const paths = Array.from({ length: 2 }, () => ({ animate: (f, o) => animate('path', f, o) }))
   const glyph = { animate: (f, o) => animate('glyph', f, o), querySelectorAll: () => paths }
-  const icon = { innerHTML: api.iconSvgMarkup(feature, status, loading), animate: (f, o) => animate('icon', f, o), querySelector: () => glyph }
+  const icon = { innerHTML: api.iconSvgMarkup(feature, status, loading, text), animate: (f, o) => animate('icon', f, o), querySelector: () => glyph }
   const caption = { classList: { add() {} }, animate: (f, o) => animate('caption', f, o) }
   const number = { textContent: api.parseButtonLabel(text).scoreMatch?.[1] || '' }
   const holder = { appendChild(node) { children.push(node) } }
@@ -885,7 +884,7 @@ for (const origin of ['export', 'template']) {
     assert.equal(api.handleModernButtonClick(btn), true, 'unavailable state must not open a dialog')
     const old = btn._auraModernAnimations[0]
     btn.visibleWidth = 102
-    api.setSecondaryButtonExpanded(btn, false)
+    api.setModernButtonExpanded(btn, false)
     assert.equal(old.cancelled, true)
     const current = btn._auraModernAnimations[0]
     assert.equal(current.frames[0].width, '102px')
@@ -904,5 +903,181 @@ for (const origin of ['export', 'template']) {
     assert.match(btn.copy.innerHTML, /aura-status-caption--stamp/)
     assert.match(btn.copy.innerHTML, />45</)
     assert.equal(btn.getAttribute('aria-busy'), 'false')
+  })
+}
+
+for (const origin of ['export', 'template']) {
+  const source = origin === 'export' ? modernFactory('all', 'test-token') : modernStaticSource.replace("var EMBED_TYPE = 'audit'", "var EMBED_TYPE = 'all'")
+  test(`${origin}: four float corners work independently on both devices and button styles`, async () => {
+    for (const style of ['modern', 'classic']) {
+      for (const desktop of [false, true]) {
+        for (const position of ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'invalid']) {
+          const config = (style === 'classic' ? classicStyle(source) : source)
+            .replace('SHOW_ON_DESKTOP = false', 'SHOW_ON_DESKTOP = true')
+            .replace(`FLOAT_POSITION_${desktop ? 'DESKTOP' : 'MOBILE'} = 'bottom-left'`, `FLOAT_POSITION_${desktop ? 'DESKTOP' : 'MOBILE'} = '${position}'`)
+          const state = await run(config, { supported: true }, true, { noContainer: true, ...(desktop ? { ua: 'Windows NT 10.0' } : {}) })
+          const expected = position === 'invalid' ? 'bottom-left' : position
+          assert.match(state.appended[0], new RegExp(`class="aura-float--${expected}"`))
+          const css = state.styles.map(node => node.textContent).join('')
+          for (const [corner, vertical, horizontal] of [['top-left', 'top', 'left'], ['bottom-right', 'bottom', 'right']]) {
+            const rules = [...css.matchAll(new RegExp(`#auraMobileEmbedFloatContainer\\.aura-float--${corner}\\{([^}]*)\\}`, 'g'))]
+            assert.equal(rules.length, 2, 'desktop and small-screen offsets must both exist')
+            assert.ok(rules.every(rule => rule[1].includes(`safe-area-inset-${vertical}`) && rule[1].includes(`safe-area-inset-${horizontal}`)))
+          }
+          assert.match(css, /aura-float--bottom-right \.aura-status-group \{ align-items: flex-end;/)
+        }
+      }
+    }
+  })
+
+  test(`${origin}: dragging from any configured corner releases its original anchors`, async () => {
+    for (const style of ['modern', 'classic']) {
+      for (const corner of ['top-left', 'top-right', 'bottom-left', 'bottom-right']) {
+        const state = await run(style === 'classic' ? classicStyle(source) : source, { supported: true }, true, { exposeButtons: true })
+        const classes = new Set(['aura-float--' + corner]), listeners = {}, attrs = {}
+        const container = {
+          style: {}, offsetWidth: 156, offsetHeight: 56,
+          getAttribute: key => attrs[key], setAttribute(key, value) { attrs[key] = value },
+          getBoundingClientRect: () => ({ left: 16, top: 50 }),
+          classList: { add: name => classes.add(name), remove: name => classes.delete(name) },
+          addEventListener(name, fn) { listeners[name] = fn },
+        }
+        state.buttonsApi.setupDraggableFloatContainer(container)
+        listeners.mousedown({ button: 0, clientX: 20, clientY: 50, target: state.nodes.auraMobileEmbedAuditBtn })
+        state.windowListeners.mousemove.at(-1)({ clientX: 100, clientY: 110, cancelable: true, preventDefault() {} })
+        assert.ok(![...classes].some(name => name.startsWith('aura-float--')))
+        assert.equal(container.style.bottom, 'auto')
+        assert.equal(container.style.right, 'auto')
+        assert.equal(container.style.left, '96px')
+        assert.equal(container.style.top, '110px')
+        state.windowListeners.mouseup.at(-1)()
+        assert.ok(!classes.has('aura-is-dragging'))
+      }
+    }
+  })
+}
+
+for (const origin of ['export', 'template']) {
+  const source = origin === 'export' ? modernFactory('audit', 'test-token') : modernStaticSource
+  test(`${origin}: result expansion follows each device's configuration and preserves one-click actions`, async () => {
+    for (const [mobileExpanded, desktopExpanded, desktop, expected] of [
+      [false, true, false, false], [false, true, true, true],
+      [true, false, false, true], [true, false, true, false],
+    ]) {
+      const config = source.replace('SHOW_ON_DESKTOP = false', 'SHOW_ON_DESKTOP = true')
+        .replace('BUTTON_EXPANDED_MOBILE = false', `BUTTON_EXPANDED_MOBILE = ${mobileExpanded}`)
+        .replace('BUTTON_EXPANDED_DESKTOP = true', `BUTTON_EXPANDED_DESKTOP = ${desktopExpanded}`)
+      const state = await run(config, { supported: true }, true, { exposeButtons: true, ...(desktop ? { ua: 'Windows NT 10.0' } : {}) })
+      for (const [feature, status, text] of [
+        ['audit', 'green', '审核通过 (95分)'], ['audit', 'yellow', '建议关注 (78分)'],
+        ['audit', 'red', '建议退回 (45分)'], ['summary', 'green', '查看流程总结'],
+      ]) {
+        const btn = animatedButton(state, status, text, false, feature)
+        assert.equal(btn.getAttribute('data-aura-result'), 'true')
+        assert.equal(btn.getAttribute('data-aura-expanded'), String(expected))
+        assert.equal(btn.classList.contains('aura-status-button--icon-only'), !expected)
+        assert.equal(btn.getAttribute('aria-expanded'), 'false', 'visual expansion is separate from the dialog')
+        assert.equal(state.buttonsApi.handleModernButtonClick(btn), false, 'result always routes to details on first click')
+      }
+      for (const [status, loading] of [['gray', true], ['loading', false], ['disabled', false]]) {
+        const btn = animatedButton(state, status, '实际业务状态', loading)
+        assert.equal(btn.getAttribute('data-aura-result'), 'false')
+        assert.equal(btn.classList.contains('aura-status-button--icon-only'), loading || status === 'disabled')
+      }
+    }
+  })
+
+  test(`${origin}: collapsed results show feedback once then shrink, retaining full content for desktop hover`, async () => {
+    for (const desktop of [false, true]) {
+      const config = desktop ? source.replace('SHOW_ON_DESKTOP = false', 'SHOW_ON_DESKTOP = true').replace('BUTTON_EXPANDED_DESKTOP = true', 'BUTTON_EXPANDED_DESKTOP = false') : source
+      const state = await run(config, { supported: true }, true, { exposeButtons: true, motion: true, hover: desktop, ...(desktop ? { ua: 'Windows NT 10.0' } : {}) })
+      const api = state.buttonsApi, btn = animatedButton(state, 'gray', '加载中...', true)
+      api.morphModernStatusButton(btn, 'audit', 'green', '审核通过 (95分)', false, 'aura-mobile-label')
+      assert.equal(btn.getAttribute('data-aura-expanded'), 'true')
+      const collapse = state.timeouts.find(timer => timer.ms === 2600)
+      assert.ok(collapse, 'first completion has a readable preview before collapsing')
+      const count = btn.animations.length
+      api.morphModernStatusButton(btn, 'audit', 'green', '审核通过 (95分)', false, 'aura-mobile-label')
+      assert.equal(btn.animations.length, count)
+      assert.equal(state.timeouts.filter(timer => timer.ms === 2600).length, 1)
+      collapse.fn()
+      assert.equal(btn.getAttribute('data-aura-expanded'), 'false')
+      const shrinking = btn._auraModernAnimations[0]
+      assert.equal(shrinking.frames.at(-1).width, '56px')
+      shrinking.finish(); await flush(state)
+      assert.ok(btn.classList.contains('aura-status-button--icon-only'))
+      assert.match(btn.copy.innerHTML, />95</)
+      assert.equal(api.handleModernButtonClick(btn), false)
+      api.queueSecondaryButtonHover(btn, true, desktop ? 'mouse' : 'touch')
+      const hover = state.timeouts.find(timer => timer.ms === 60)
+      if (desktop) {
+        assert.ok(hover); hover.fn()
+        assert.equal(btn.getAttribute('data-aura-expanded'), 'true')
+        assert.equal(btn.getAttribute('aria-expanded'), 'false')
+        collapse.fn()
+        assert.equal(btn.getAttribute('data-aura-expanded'), 'true', 'old timer must not override user hover')
+      } else assert.equal(hover, undefined)
+    }
+  })
+
+  test(`${origin}: new states cancel previous collapse timers and reduced motion skips the intro`, async () => {
+    const state = await run(source, { supported: true }, true, { exposeButtons: true, motion: true })
+    const api = state.buttonsApi, btn = animatedButton(state, 'loading', '分析中')
+    api.morphModernStatusButton(btn, 'audit', 'green', '审核通过 (95分)', false, 'aura-mobile-label')
+    const old = state.timeouts.find(timer => timer.ms === 2600)
+    api.morphModernStatusButton(btn, 'audit', 'loading', '分析中', false, 'aura-mobile-label')
+    assert.equal(state.timeouts.some(timer => timer.id === old.id), false)
+    old.fn()
+    assert.equal(btn.getAttribute('data-aura-expanded'), 'false')
+    assert.equal(btn.classList.contains('aura-status-button--icon-only'), false, 'analysis remains expanded independently')
+    const reduced = await run(source, { supported: true }, true, { exposeButtons: true, motion: true, reducedMotion: true })
+    const quiet = animatedButton(reduced, 'loading', '分析中')
+    reduced.buttonsApi.morphModernStatusButton(quiet, 'audit', 'green', '审核通过 (95分)', false, 'aura-mobile-label')
+    assert.equal(quiet.getAttribute('data-aura-expanded'), 'false')
+    assert.ok(quiet.classList.contains('aura-status-button--icon-only'))
+    assert.equal(quiet.animations.length, 0)
+    assert.equal(reduced.timeouts.some(timer => timer.ms === 2600), false)
+  })
+
+  test(`${origin}: auxiliary icons are distinct from result and analysis symbols, including same-state updates`, async () => {
+    const state = await run(source, { supported: true }, true, { exposeButtons: true })
+    const api = state.buttonsApi
+    const cases = [
+      ['gray', true, '加载中...', 'processing'], ['disabled', false, '保存查看AI智审', 'save'],
+      ['error', false, '加载异常', 'load-error'], ['red', false, '审核异常', 'execution-error'],
+      ['disabled', false, '未开启总结', 'feature-off'], ['gray', false, '查看并生成审核', 'generate'],
+    ]
+    for (const [status, loading, text, kind] of cases) {
+      const markup = api.iconSvgMarkup('audit', status, loading, text)
+      assert.match(markup, new RegExp(`data-icon-kind="${kind}"`))
+      assert.equal((markup.match(/<svg\b/g) || []).length, 1)
+    }
+    const btn = animatedButton(state, 'disabled', '保存查看AI智审')
+    api.morphModernStatusButton(btn, 'audit', 'disabled', '未开启审核', false, 'aura-mobile-label')
+    assert.match(btn.icon.innerHTML, /data-icon-kind="feature-off"/)
+    const failed = animatedButton(state, 'red', '建议退回 (45分)')
+    api.morphModernStatusButton(failed, 'audit', 'red', '审核异常', false, 'aura-mobile-label')
+    assert.match(failed.icon.innerHTML, /data-icon-kind="execution-error"/)
+  })
+
+  test(`${origin}: all mode still displays the unsupported feature without opening or executing it`, async () => {
+    const all = source.replace(/var EMBED_TYPE = ['"]audit['"]/, "var EMBED_TYPE = 'all'")
+    for (const unsupported of ['audit', 'summary']) {
+      const data = {
+        audit: { supported: true, has_audit: true, audit_result: { recommendation: 'approve', overall_score: 95 } },
+        summary: { supported: true, has_summary: true, summary_result: { status: 'completed' } },
+      }
+      data[unsupported] = { supported: false, message: '该功能未配置' }
+      const state = await run(all, {}, true, { payloadByPath: { '/api/embed/context': data.audit, '/api/embed/summary/context': data.summary } })
+      const disabled = unsupported === 'audit' ? 'auraMobileEmbedAuditBtn' : 'auraMobileEmbedSummaryBtn'
+      const enabled = unsupported === 'audit' ? 'auraMobileEmbedSummaryBtn' : 'auraMobileEmbedAuditBtn'
+      assert.equal(state.nodes[disabled].getAttribute('data-aura-state'), 'disabled')
+      assert.equal(state.nodes[enabled].getAttribute('data-aura-state'), 'green')
+      state.click(disabled); state.click(disabled)
+      assert.equal(state.dialogs.length, 0)
+      state.click(enabled)
+      assert.equal(state.dialogs.length, 1)
+      assert.ok(state.requestInits.every(init => init.method !== 'POST'))
+    }
   })
 }

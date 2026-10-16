@@ -183,13 +183,15 @@ var IFRAME_IDS = ['aura-embed-audit', 'aura-embed-summary'];
    - 在流程 **基础设置 → 自定义页面**（或移动端表单脚本设置）中填入地址并勾选启用
 3. **表单挂载位（可选）**：
    - 表单设计器中预留 `<div id="getMyBt"></div>`（与 `oa-front` 既有业务流程标准统一）
-   - 若表单未配置该元素，脚本会按终端分别读取 `FLOAT_POSITION_MOBILE` / `FLOAT_POSITION_DESKTOP` 创建浮动按钮。取值 `'bottom-left'`（左下角，默认）或 `'top-right'`（右上角，提交/保存按钮下方）
+   - 若表单未配置该元素，脚本会按终端分别读取 `FLOAT_POSITION_MOBILE` / `FLOAT_POSITION_DESKTOP` 创建浮动按钮。支持四个角：`'top-left'`（左上角）、`'top-right'`（右上角）、`'bottom-left'`（左下角，默认）、`'bottom-right'`（右下角）。上方位置避开工具栏，四个角均适配安全区；无效值回退左下角，手动拖动后按拖动位置显示
 
 按钮风格可以分别配置，例如移动端使用柔光、电脑端使用经典：
 
 ```javascript
 var BUTTON_STYLE_MOBILE = 'modern';
 var BUTTON_STYLE_DESKTOP = 'classic';
+var FLOAT_POSITION_MOBILE = 'bottom-right'; // 移动端右下角
+var FLOAT_POSITION_DESKTOP = 'top-left'; // 电脑端左上角
 // 仅当需要电脑端也使用本脚本时开启：
 var SHOW_ON_DESKTOP = true;
 ```
@@ -252,7 +254,7 @@ AuraOA 前端需允许 OA 域名嵌入（CSP `frame-ancestors` 等，勿全局 `
 | 现象 | 处理 |
 |------|------|
 | 一直「正在读取 OA 流程编号」 | 检查自定义页面 js 是否启用、`AURA_EMBED_ORIGIN` 是否与 iframe src 域名一致、iframe `id` 是否匹配 |
-| 移动端看不到状态按钮 | 检查移动端自定义脚本是否加载，表单是否有 `#getMyBt` 占位，或按 `FLOAT_POSITION_MOBILE` 查看左下角 / 右上角是否有悬浮按钮 |
+| 移动端看不到状态按钮 | 检查移动端自定义脚本是否加载，表单是否有 `#getMyBt` 占位，或按 `FLOAT_POSITION_MOBILE` 查看配置的角落是否有悬浮按钮 |
 | 移动端按钮点击无反应 | 检查移动端环境是否支持 `weaJs.showDialog`，或查看控制台弹窗报错 |
 | 提示缺少嵌入访问令牌 | 检查 OA 脚本是否配置 `EMBED_ACCESS_TOKEN`，以及 postMessage 或 URL 参数是否携带 `embed_token` |
 | 401 嵌入访问令牌无效 | 在租户管理中重置密钥，并同步更新 OA 脚本 |
