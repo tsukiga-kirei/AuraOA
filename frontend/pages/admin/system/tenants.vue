@@ -1424,7 +1424,7 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
       && !isResultButton(feature, status, isLoading, parseButtonLabel(displayText).scoreMatch)) return '';
     var parsed = parseButtonLabel(displayText);
     var label = escapeButtonText(modernButtonLabel(feature, status, displayText, isLoading));
-    if (feature === 'audit' && parsed.scoreMatch) return '<span class="aura-status-caption' + (status === 'red' ? ' aura-status-caption--stamp' : '') + '">' + label + '</span><span class="aura-status-score"><b>' + escapeButtonText(parsed.scoreMatch[1]) + '</b></span>';
+    if (feature === 'audit' && parsed.scoreMatch) return '<span class="aura-status-caption' + (status === 'red' ? ' aura-status-caption--stamp' : '') + '">' + label + '</span><span class="aura-status-score" style="--aura-score-width:' + Math.max(status === 'red' ? 3 : 2, parsed.scoreMatch[1].length) + 'ch"><b>' + escapeButtonText(parsed.scoreMatch[1]) + '</b></span>';
     var description = modernButtonDescription(feature, status, displayText, isLoading);
     return '<span class="aura-status-inline-label">' + label + '</span>' +
       (description ? '<span class="aura-status-description">' + escapeButtonText(description) + '</span>' : '');
@@ -1997,16 +1997,20 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
     });
   }
 
-  function animateModernScore(btn, run, from, to, delay) {
+  function animateModernScore(btn, run, from, to, delay, falling) {
     var number = btn.querySelector('.aura-status-score b');
     if (!number) return;
     number.textContent = from;
     modernEffectLater(btn, run, delay, function () {
       var start = modernNow();
+      if (falling) modernEffectAnimate(btn, run, number, [
+        { transform: 'translateY(-.3em)' }, { transform: 'translateY(0)' }
+      ], { duration: 420, easing: 'cubic-bezier(.5,0,.9,.6)' });
       function tick(now) {
         if (btn._auraEffects !== run || !btn.isConnected) return;
-        var progress = Math.min(1, (now - start) / 650);
-        number.textContent = Math.round(from + (to - from) * (1 - Math.pow(1 - progress, 3)));
+        var progress = Math.min(1, (now - start) / (falling ? 420 : 650));
+        var eased = falling ? progress * progress : 1 - Math.pow(1 - progress, 3);
+        number.textContent = Math.round(from + (to - from) * eased);
         if (progress < 1) run.scoreRaf = modernRequestFrame(tick);
       }
       run.scoreRaf = modernRequestFrame(tick);
@@ -2014,6 +2018,7 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
   }
 
   function burstModernParticles(btn, run, kind) {
+    if (kind !== 'success') return;
     var size = btn.getBoundingClientRect().height || MODERN_BUTTON_SIZE;
     var scale = size / 68, dpr = Math.min(window.devicePixelRatio || 1, 2);
     var canvas = document.createElement('canvas');
@@ -2038,19 +2043,17 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
     ctx.scale(dpr * scale, dpr * scale);
     btn.appendChild(canvas);
     run.nodes.push(canvas);
-    var colors = kind === 'success'
-      ? ['#2fc58b', '#7fe3b5', '#c8f5df', '#f2c96b', '#ffffff', '#25b8a6']
-      : ['#ef6a62', '#ff9b94', '#ffd1cd', '#f48aa3'];
+    var colors = ['#2fc58b', '#7fe3b5', '#c8f5df', '#f2c96b', '#ffffff', '#25b8a6'];
     function random(min, max) { return min + Math.random() * (max - min); }
-    var particles = Array.from({ length: kind === 'success' ? 36 : 14 }, function (_, index) {
-      var angle = random(0, Math.PI * 2), speed = kind === 'success' ? random(140, 340) : random(90, 250);
+    var particles = Array.from({ length: 36 }, function (_, index) {
+      var angle = random(0, Math.PI * 2), speed = random(140, 340);
       return {
         x: 260 + Math.cos(angle) * 26 * direction, y: 150 + Math.sin(angle) * 26,
-        vx: (Math.cos(angle) * speed + (kind === 'success' ? 45 : 25)) * direction, vy: Math.sin(angle) * speed - (kind === 'success' ? 40 : 0),
-        gravity: kind === 'success' ? 420 : 0, drag: kind === 'success' ? 2.4 : 5,
-        rotation: random(0, 6) * direction, spin: random(-9, 9) * direction, size: kind === 'success' ? random(2.6, 5) : random(1.6, 4.4),
-        color: colors[index % colors.length], age: 0, life: kind === 'success' ? random(.9, 1.4) : random(.5, .8),
-        shape: kind === 'success' ? Math.floor(random(0, 4)) : (index % 3 ? 1 : 2)
+        vx: (Math.cos(angle) * speed + 45) * direction, vy: Math.sin(angle) * speed - 40,
+        gravity: 420, drag: 2.4,
+        rotation: random(0, 6) * direction, spin: random(-9, 9) * direction, size: random(2.6, 5),
+        color: colors[index % colors.length], age: 0, life: random(.9, 1.4),
+        shape: Math.floor(random(0, 4))
       };
     });
     var last = modernNow();
@@ -2082,38 +2085,81 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
     run.raf = modernRequestFrame(tick);
   }
 
-  function playModernResultEffect(btn, run, kind, updating) {
+  // 退回使用向内收拢和落印，避免抛洒纸屑传达庆祝含义；尺寸仍由共享时间轴控制。
+  function playModernRejectEffect(btn, run, icon, glyph, caption, rightDocked, previousGlyph) {
+    var stampAngle = rightDocked ? 4 : -4;
+    // 短暂蓄力后恢复原尺寸，不超过终点，不做弹跳式回弹。
+    modernEffectAnimate(btn, run, btn, [
+      { transform: 'scale(1)' }, { transform: 'scale(.95,.97)', offset: 90 / 350 }, { transform: 'scale(1)' }
+    ], { duration: 350, easing: 'cubic-bezier(.3,.8,.3,1)' });
+    if (previousGlyph) {
+      icon.appendChild(previousGlyph);
+      run.nodes.push(previousGlyph);
+      var outgoing = modernEffectAnimate(btn, run, previousGlyph, [{ opacity: 1 }, { opacity: 0 }],
+        { duration: 120, delay: 330, fill: 'forwards', easing: 'ease-out' });
+      if (outgoing) outgoing.finished.then(function () { previousGlyph.remove(); }).catch(function () {});
+    }
+    // 叉号整体减速压入，不再逐笔绘制或左右晃动。
+    modernEffectAnimate(btn, run, glyph, [
+      { transform: 'scale(1.9)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }
+    ], { duration: 360, delay: 450, easing: 'cubic-bezier(.3,.9,.4,1)', fill: 'backwards' });
+    if (caption) modernEffectAnimate(btn, run, caption, [
+      { transform: 'rotate(' + stampAngle + 'deg) scale(1.5)', opacity: 0 },
+      { transform: 'rotate(' + stampAngle + 'deg) scale(1)', opacity: .9 }
+    ], { duration: 150, delay: 810, easing: 'cubic-bezier(.3,.9,.4,1)', fill: 'both' });
+    modernEffectLater(btn, run, 510, function () {
+      var ring = document.createElement('span');
+      ring.className = 'aura-modern-reject-ring';
+      ring.setAttribute('aria-hidden', 'true');
+      ring.style.cssText = 'position:absolute;inset:0;border-radius:50%;border:1px solid var(--aura-modern-light);box-sizing:border-box;pointer-events:none;opacity:0;';
+      icon.appendChild(ring);
+      run.nodes.push(ring);
+      var motion = modernEffectAnimate(btn, run, ring, [
+        { transform: 'scale(2.6)', opacity: 0 }, { opacity: .38, offset: .6 }, { transform: 'scale(1)', opacity: 0 }
+      ], { duration: 300, easing: 'ease-in', fill: 'forwards' });
+      if (motion) motion.finished.then(function () { ring.remove(); }).catch(function () {});
+    });
+    // 分数到位后停顿 60ms，再同步落印、轻压和光晕收缩。
+    modernEffectLater(btn, run, 810, function () {
+      modernEffectAnimate(btn, run, btn, [
+        { transform: 'scale(1)' }, { transform: 'scale(.97,.94) translateY(1px)', offset: .3 }, { transform: 'scale(1)' }
+      ], { duration: 300, easing: 'ease-out' });
+      var glow = btn.querySelector('.aura-modern-glow');
+      if (glow) {
+        var origin = (btn.offsetHeight || MODERN_BUTTON_SIZE) / 2;
+        glow.style.transformOrigin = rightDocked ? 'calc(100% - ' + origin + 'px) center' : origin + 'px center';
+        var opacity = typeof getComputedStyle === 'function' ? Number(getComputedStyle(glow).opacity) : 1;
+        modernEffectAnimate(btn, run, glow, [
+          { transform: 'scale(1)', opacity: opacity }, { transform: 'scale(.84)', opacity: opacity * .6 }
+        ], { duration: 450, easing: 'cubic-bezier(.3,.8,.3,1)', fill: 'forwards' });
+      }
+    });
+  }
+
+  function playModernResultEffect(btn, run, kind, updating, previousGlyph) {
     if (!kind) return;
     var icon = btn.querySelector('.aura-status-icon');
     var glyph = icon.querySelector('svg');
     var caption = btn.querySelector('.aura-status-caption');
     var rightDocked = modernRightDocked(btn);
-    var direction = rightDocked ? -1 : 1;
-    var stampAngle = rightDocked ? 4 : -4;
+    if (kind === 'reject') {
+      playModernRejectEffect(btn, run, icon, glyph, caption, rightDocked, previousGlyph);
+      return;
+    }
     // 已有按钮只更新局部完成反馈，胶囊伸缩由共享时间轴处理，避免重复入场。
     if (!updating) modernEffectAnimate(btn, run, btn, [
       { transform: 'scale(1)' }, { transform: 'scale(.94,.97)', offset: .22 },
       { transform: 'scale(1.025)', offset: .65 }, { transform: 'scale(1)' }
     ], { duration: 410, easing: 'cubic-bezier(.2,.9,.3,1.2)' });
-    modernEffectAnimate(btn, run, glyph, updating ? [{ opacity: .6 }, { opacity: 1 }] : kind === 'reject' ? [
-      { transform: 'scale(2)', opacity: 0 }, { transform: 'scale(1)', opacity: 1, offset: .38 },
-      { transform: 'scale(1.07)', offset: .55 }, { transform: 'scale(1)' }
-    ] : [
+    modernEffectAnimate(btn, run, glyph, updating ? [{ opacity: .6 }, { opacity: 1 }] : [
       { transform: 'scale(.55)', opacity: .3 }, { transform: 'scale(1.14)', opacity: 1, offset: .55 },
       { transform: 'scale(.97)', offset: .8 }, { transform: 'scale(1)' }
-    ], { duration: kind === 'reject' ? 480 : 440, delay: updating ? 0 : 110, easing: 'ease-out', fill: 'backwards' });
+    ], { duration: 440, delay: updating ? 0 : 110, easing: 'ease-out', fill: 'backwards' });
     glyph.querySelectorAll('.aura-modern-draw').forEach(function (path, index) {
       modernEffectAnimate(btn, run, path, [{ strokeDasharray: '1', strokeDashoffset: 1 }, { strokeDasharray: '1', strokeDashoffset: 0 }],
         { duration: kind === 'summary' ? 300 : 360, delay: (updating ? 0 : 110) + index * (kind === 'summary' ? 110 : 170), easing: 'cubic-bezier(.65,0,.35,1)', fill: 'backwards' });
     });
-    if (kind === 'reject' && caption) {
-      // 印章结构已在文案生成时确定，这里只做视觉落印，不再改变布局样式。
-      modernEffectAnimate(btn, run, caption, [
-        { transform: 'rotate(' + stampAngle + 'deg) scale(1.8)', opacity: 0 }, { transform: 'rotate(' + stampAngle + 'deg) scale(1)', opacity: .95, offset: .55 },
-        { transform: 'rotate(' + stampAngle + 'deg) scale(1.05)', offset: .75 }, { transform: 'rotate(' + stampAngle + 'deg) scale(1)', opacity: .9 }
-      ], { duration: 340, delay: updating ? 60 : 290, fill: 'both', easing: 'ease-out' });
-    }
-    modernEffectLater(btn, run, { success: 650, warning: 560, reject: 300, summary: 420 }[kind], function () {
+    modernEffectLater(btn, run, { success: 650, warning: 560, summary: 420 }[kind], function () {
       if (kind === 'warning' || kind === 'summary') {
         var scan = document.createElement('span'); scan.className = 'aura-modern-scan'; scan.setAttribute('aria-hidden', 'true');
         btn.querySelector('.aura-modern-sheen').appendChild(scan); run.nodes.push(scan);
@@ -2132,16 +2178,6 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
             { duration: 520, delay: 380, easing: 'cubic-bezier(.3,0,.2,1)', fill: 'both' });
         }
       } else {
-        if (kind === 'reject') {
-          if (!updating) modernEffectAnimate(btn, run, btn, [
-            { transform: 'scale(1)' }, { transform: 'scale(.965,.93) translateY(1px)', offset: .25 },
-            { transform: 'scale(1.012,1.02)', offset: .6 }, { transform: 'scale(1)' }
-          ], { duration: 420, easing: 'ease-out' });
-          modernEffectAnimate(btn, run, icon, [
-            { transform: 'translateX(0)' }, { transform: 'translateX(' + (-2.2 * direction) + 'px)', offset: .25 }, { transform: 'translateX(' + (1.5 * direction) + 'px)', offset: .5 },
-            { transform: 'translateX(' + (-.8 * direction) + 'px)', offset: .75 }, { transform: 'translateX(0)' }
-          ], { duration: 340 });
-        }
         burstModernParticles(btn, run, kind);
       }
     });
@@ -2416,6 +2452,21 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
   function morphModernStatusButton(btn, feature, status, displayText, isLoading, labelClass) {
     var iconKey = feature + '|' + status + '|' + (isLoading ? '1' : '0');
     var glyphKind = modernIconKind(feature, status, isLoading, displayText);
+    var effectKind = modernEffectKind(feature, status, displayText, isLoading);
+    var previousGlyph = null;
+    var oldGlyph = btn.querySelector('.aura-status-icon > svg');
+    if (effectKind === 'reject' && btn.getAttribute('aria-busy') === 'true' && oldGlyph && oldGlyph.cloneNode) {
+      previousGlyph = oldGlyph.cloneNode(true);
+      previousGlyph.setAttribute('aria-hidden', 'true');
+      previousGlyph.style.position = 'absolute';
+      previousGlyph.style.pointerEvents = 'none';
+      if (typeof getComputedStyle === 'function') {
+        var oldGlyphStyle = getComputedStyle(oldGlyph);
+        previousGlyph.style.width = oldGlyphStyle.width;
+        previousGlyph.style.height = oldGlyphStyle.height;
+        previousGlyph.style.color = oldGlyphStyle.color;
+      }
+    }
     var iconChanged = btn.getAttribute('data-aura-icon') !== iconKey || btn.getAttribute('data-aura-glyph') !== glyphKind;
     if (!iconChanged && btn.getAttribute('data-aura-copy') === displayText) return;
     var hadPreviousState = !!btn.getAttribute('data-aura-icon');
@@ -2479,7 +2530,7 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
     if (!iconOnly) btn.classList.add(hadPreviousState ? 'aura-status-button--update' : 'aura-status-button--reveal');
 
     // 宽度、徽章几何与文案裁切同步；先测量完整布局，再启动动画。
-    var timing = { duration: hadPreviousState ? 560 : 640, fill: 'both', easing: 'cubic-bezier(.32,0,.2,1)' };
+    var timing = { duration: effectKind === 'reject' ? 640 : (hadPreviousState ? 560 : 640), delay: effectKind === 'reject' ? 90 : 0, fill: 'both', easing: 'cubic-bezier(.32,0,.2,1)' };
     var icon = btn.querySelector('.aura-status-icon');
     var toIconGeometry = modernIconGeometry(icon);
     var copy = !iconOnly && btn.querySelector('.aura-status-copy');
@@ -2499,8 +2550,13 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
     if (copy) btn._auraModernAnimations.push(copy.animate(modernCopyRevealFrames(fromWidth, toWidth, copyLeft, copyRect.width, 0, true, rightDocked), timing));
     var outgoingMotion = animateModernCopyOut(btn, previousCopy, fromWidth, toWidth, timing);
     if (outgoingMotion) btn._auraModernAnimations.push(outgoingMotion);
-    if (parsed.scoreMatch) animateModernScore(btn, run, updatingResult ? fromScore : 0, Number(parsed.scoreMatch[1]), updatingResult ? 0 : 230);
-    if (iconChanged) playModernResultEffect(btn, run, modernEffectKind(feature, status, displayText, isLoading), hadPreviousState);
+    if (parsed.scoreMatch) {
+      var targetScore = Number(parsed.scoreMatch[1]);
+      var falling = effectKind === 'reject';
+      var startScore = falling ? Math.max(updatingResult ? fromScore : 100, targetScore) : (updatingResult ? fromScore : 0);
+      animateModernScore(btn, run, startScore, targetScore, falling ? 330 : (updatingResult ? 0 : 230), falling);
+    }
+    if (iconChanged) playModernResultEffect(btn, run, effectKind, hadPreviousState, previousGlyph);
     if (iconChanged && !isLoading && status === 'loading') modernEffectAnimate(btn, run, icon.querySelector('svg'), [
       { opacity: .5 }, { opacity: 1 }
     ], { duration: 280, easing: 'ease-out' });
