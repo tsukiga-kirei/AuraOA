@@ -15,9 +15,11 @@ function runtime({ style = 'modern', reduced = false, systemReduced = false, hov
   let now = 0
   function schedule(fn, ms) { const timer = { fn, at: now + ms }; timers.push(timer); return timer }
   function cancel(timer) { const index = timers.indexOf(timer); if (index >= 0) timers.splice(index, 1) }
-  const state = { style, reduced, opened: 0, hints: [], animations }
+  const state = { style, reduced, opened: 0, hints: [], animations, listeners: {}, buttons: [] }
   const context = vm.createContext({
     document: {
+      addEventListener(name, callback) { state.listeners[name] = callback },
+      querySelectorAll() { return state.buttons.filter(btn => btn.getAttribute('data-aura-expanded') === 'true') },
       body: { getAttribute: key => key === 'data-button-style' ? state.style : String(state.reduced) },
       getElementById: id => id === 'buttonStatusAnnouncement' ? announcements : null,
       createElement: tag => ({
@@ -59,7 +61,7 @@ function runtime({ style = 'modern', reduced = false, systemReduced = false, hov
     Object.assign(attrs, Object.fromEntries([...outer.matchAll(/([\w-]+)="([^"]*)"/g)].map(match => [match[1], match[2]])))
     const classes = new Set(attrs.class.split(/\s+/))
     const icon = { innerHTML: context.iconSvgMarkup(feature, status, loading) }
-    const copy = { innerHTML: context.modernButtonCopyMarkup(feature, status, text, loading), animate: (frames, options) => animate('copy', frames, options) }
+    const copy = { style: { removeProperty() {} }, innerHTML: context.modernButtonCopyMarkup(feature, status, text, loading), animate: (frames, options) => animate('copy', frames, options) }
     icon.animate = (frames, options) => animate('icon', frames, options)
     const number = { textContent: context.parseButtonLabel(text).scoreMatch?.[1] || '' }
     const caption = { classList: { add() {} }, animate: (frames, options) => animate('caption', frames, options) }
@@ -93,6 +95,7 @@ function runtime({ style = 'modern', reduced = false, systemReduced = false, hov
       getBoundingClientRect() { return { width: btn.visualWidth ?? (classes.has('aura-status-button--icon-only') ? 52 : 126) } },
       animate: (frames, options) => animate('button', frames, options),
     }
+    state.buttons.push(btn)
     return btn
   }
   function advance(ms) {
@@ -121,15 +124,16 @@ test('demo: modern states keep one icon and distinguish unavailable from audit r
   ]) {
     const markup = context.buildStatusButton('demo', feature, status, text, loading, false)
     assert.equal((markup.match(/<svg\b/g) || []).length, 1)
-    if (loading || status === 'loading') assert.match(markup, /aura-status-button--icon-only/)
-    if (status === 'error') { assert.match(markup, /data-icon-kind="unavailable"/); assert.match(markup, /aria-disabled="true"/); assert.doesNotMatch(markup, /aria-haspopup/); }
+    if (loading) assert.match(markup, /aura-status-button--icon-only/)
+    if (!loading && status === 'loading') { assert.doesNotMatch(markup, /aura-status-button--icon-only/); assert.match(markup, />分析中</); assert.doesNotMatch(markup, /aura-status-description/); }
+    if (status === 'error') { assert.match(markup, /data-icon-kind="unavailable"/); assert.match(markup, /data-aura-disclosure="true"/); assert.doesNotMatch(markup, /aria-haspopup/); }
     if (status === 'red') assert.match(markup, /data-icon-kind="reject"/)
   }
 })
 
 test('demo: initial result expands within 550ms and exposes accessible status', () => {
   const { context, button, state, announcements } = runtime()
-  const btn = button('loading', '审核分析中')
+  const btn = button('gray', '加载中...', true)
   context.morphModernStatusButton(btn, 'audit', 'green', '审核通过 (95分)', false)
   const width = state.animations.find(motion => motion.target === 'button')
   assert.equal(width.frames[0].width, '52px')
@@ -200,10 +204,11 @@ test('demo: unavailable status does not show a tooltip, retry or open details', 
   context.handleButtonClick({ target: btn })
   advance(2000)
   assert.equal(btn.getAttribute('data-aura-state'), 'error')
-  assert.equal(btn.getAttribute('aria-disabled'), 'true')
+  assert.equal(btn.getAttribute('data-aura-expanded'), 'true')
   assert.equal(state.hints.length, 0)
   assert.equal(state.opened, 0)
-  assert.equal(state.animations.length, 0)
+  context.handleButtonClick({ target: btn })
+  assert.equal(state.opened, 0)
 })
 
 test('demo: suppressed clicks and locked buttons do not open details or show tooltips', () => {
@@ -242,10 +247,13 @@ test('demo: scoreless business states preserve their actual labels', () => {
     ['summary', 'green', '查看流程总结'],
     ['audit', 'green', '审核通过'],
   ]) {
-    const markup = context.modernButtonCopyMarkup(feature, status, text, false)
-    assert.ok(markup.includes(feature === 'summary' && status === 'green' ? '>总结<' : text))
+    const markup = context.modernButtonCopyMarkup(feature, status, text, false, true)
+    if (context.isSecondaryButton(feature, status, false)) {
+      assert.ok(markup.includes(feature === 'summary' ? 'AI总结' : 'AI审核'))
+      assert.doesNotMatch(markup, /aura-status-description/)
+    } else assert.ok(markup.includes(feature === 'summary' && status === 'green' ? '>总结<' : text))
     assert.doesNotMatch(markup, /aura-status-score/)
-    assert.equal(context.isIconOnlyButton(feature, status, false), false)
+    assert.equal(context.isIconOnlyButton(feature, status, false), context.isSecondaryButton(feature, status, false))
   }
 })
 
@@ -328,4 +336,178 @@ test('demo: modern hover and touch tooltip entry returns before creating a popup
   context.document.createElement = () => { created++; throw new Error('Unexpected tooltip') }
   context.showTooltipForButton(button('red', '建议退回 (45分)'), 'AI 流程审核 · 建议退回 (45分)')
   assert.equal(created, 0)
+})
+
+test('demo: exception and analysis descriptions identify the AI feature', () => {
+  const { context } = runtime()
+  for (const [feature, status, label, description] of [
+    ['audit', 'error', '加载异常', 'AI审核状态获取失败'],
+    ['summary', 'error', '加载异常', 'AI总结状态获取失败'],
+    ['audit', 'red', '审核异常', 'AI审核任务执行异常'],
+    ['summary', 'disabled', '未开启总结', '该流程未启用AI总结'],
+  ]) {
+    const copy = context.modernButtonCopyMarkup(feature, status, label, false, true)
+    assert.ok(copy.includes(feature === 'summary' ? 'AI总结' : 'AI审核'))
+    assert.doesNotMatch(copy, /aura-status-description/)
+    const markup = context.buildStatusButton('demo', feature, status, label, false, false)
+    assert.ok(markup.includes('aria-label="' + label + '，' + description + '"'))
+  }
+})
+
+test('demo: while the dialog is open, state updates settle without new particle or score work', () => {
+  const { context, button, state, advance } = runtime()
+  const btn = button('gray', '加载中...', true)
+  context.buttonEffectsSuspended = true
+  context.morphModernStatusButton(btn, 'audit', 'green', '审核通过 (95分)', false)
+  advance(2000)
+  assert.equal(state.animations.length, 0)
+  assert.equal(btn.children.length, 0)
+  assert.match(btn.copy.innerHTML, /<b>95<\/b>/)
+  context.buttonEffectsSuspended = false
+  context.morphModernStatusButton(btn, 'audit', 'red', '建议退回 (45分)', false)
+  advance(500)
+  assert.ok(btn.children.some(node => node.tagName === 'canvas'))
+})
+
+test('demo: shared-image genie slices keep continuous edges and finite geometry', () => {
+  const hosts = []
+  const context = vm.createContext({
+    document: {
+      body: { appendChild(node) { hosts.push(node) } },
+      createElement: () => ({ style: {}, children: [], setAttribute() {}, appendChild(node) { this.children.push(node) }, remove() { this.removed = true } }),
+    },
+    getComputedStyle: () => ({ backgroundColor: 'rgb(255, 255, 255)', borderRadius: '22px' }),
+  })
+  vm.runInContext(script.slice(script.indexOf('function createDemoGenie('), script.indexOf('var dialogPanel =')), context)
+  const box = { left: 100, top: 80, width: 780, height: 860 }
+  const panel = { getBoundingClientRect: () => box, querySelectorAll: () => [] }
+  const layer = context.createDemoGenie(panel, { left: 950, top: 100, width: 52, height: 52 })
+  const slices = hosts[0].children
+  const bandHeight = box.height / slices.length
+  assert.ok(slices.length >= 24 && slices.length <= 48)
+  assert.ok(slices.every(slice => slice.children.length === 0))
+  assert.ok(slices.every(slice => slice.style.backgroundImage === slices[0].style.backgroundImage))
+  function vertex(matrix, x, y) {
+    const w = matrix[3] * x + matrix[7] * y + 1
+    return [(matrix[0] * x + matrix[4] * y + matrix[12]) / w, (matrix[1] * x + matrix[5] * y + matrix[13]) / w]
+  }
+  for (const progress of [0, .2, .65, .9, 1]) {
+    layer.apply(progress, false, 1)
+    const matrices = slices.map(slice => slice.style.transform.slice(9, -1).split(',').map(Number))
+    assert.ok(matrices.every(matrix => matrix.length === 16 && matrix.every(Number.isFinite)))
+    for (let i = 1; i < matrices.length; i++) {
+      for (const x of [0, box.width]) {
+        const bottom = vertex(matrices[i - 1], x, bandHeight)
+        const top = vertex(matrices[i], x, 0)
+        assert.ok(Math.abs(bottom[0] - top[0]) < 1e-6)
+        assert.ok(Math.abs(bottom[1] - top[1]) < 1e-6)
+      }
+    }
+  }
+  layer.destroy()
+  assert.equal(hosts[0].removed, true)
+})
+
+test('demo: analysis shows only 分析中 while fetching keeps a single icon', () => {
+  const { context } = runtime()
+  for (const feature of ['audit', 'summary']) {
+    const copy = context.modernButtonCopyMarkup(feature, 'loading', '审核分析中', false)
+    assert.match(copy, />分析中</)
+    assert.doesNotMatch(copy, /aura-status-description|审核分析中|总结分析中|点击查看进度/)
+    assert.equal(context.modernButtonCopyMarkup(feature, 'gray', '加载中...', true), '')
+    assert.equal(context.isIconOnlyButton(feature, 'gray', true), true)
+  }
+})
+
+test('demo: secondary states begin as icons and hover reveals one concise line', async () => {
+  const { context, button, advance } = runtime()
+  for (const [feature, status, label, description] of [
+    ['audit', 'disabled', '保存查看AI智审', '保存后查看AI审核'],
+    ['audit', 'error', '加载异常', 'AI审核加载异常'],
+    ['audit', 'red', '审核异常', 'AI审核执行异常'],
+    ['summary', 'disabled', '未开启总结', '未开启AI总结'],
+  ]) {
+    const btn = button(status, label, false, feature)
+    assert.ok(btn.classList.contains('aura-status-button--icon-only'))
+    assert.equal(btn.copy.innerHTML, '')
+    context.queueSecondaryButtonHover(btn, true, 'mouse')
+    advance(60)
+    assert.equal(btn.getAttribute('data-aura-expanded'), 'true')
+    assert.ok(btn.copy.innerHTML.includes(description))
+    assert.doesNotMatch(btn.copy.innerHTML, /aura-status-description/)
+    assert.equal(btn.getAttribute('aria-expanded'), 'true')
+    const width = btn._auraModernAnimations[0]
+    assert.equal(width.frames[0].width, '52px')
+    assert.equal(width.frames[1].width, '126px')
+    width.finish()
+    await Promise.resolve()
+    context.queueSecondaryButtonHover(btn, false, 'mouse')
+    advance(120)
+    assert.ok(btn.copy.innerHTML.includes(description), 'copy fades with the shell before it is removed')
+    btn._auraModernAnimations[0].finish()
+    await Promise.resolve()
+    assert.equal(btn.copy.innerHTML, '')
+    assert.ok(btn.classList.contains('aura-status-button--icon-only'))
+  }
+})
+
+test('demo: mobile first tap reveals text; only a second tap on an available state opens details', () => {
+  const { context, button, state } = runtime({ hover: false })
+  const btn = button('gray', '查看并生成审核')
+  context.queueSecondaryButtonHover(btn, true, 'touch')
+  assert.equal(btn.getAttribute('data-aura-expanded'), 'false')
+  context.handleButtonClick({ target: btn })
+  assert.equal(btn.getAttribute('data-aura-expanded'), 'true')
+  assert.equal(state.opened, 0)
+  context.handleButtonClick({ target: btn })
+  assert.equal(state.opened, 1)
+  const loading = button('gray', '加载中...', true)
+  context.handleButtonClick({ target: loading })
+  context.handleButtonClick({ target: loading })
+  assert.equal(loading.copy.innerHTML, '')
+  assert.equal(loading.getAttribute('data-aura-disclosure'), null)
+  assert.ok(loading.classList.contains('aura-status-button--icon-only'))
+  assert.equal(state.opened, 1)
+})
+
+test('demo: interrupted disclosure starts at the visible width and stale completion cannot collapse it', async () => {
+  const { context, button } = runtime()
+  const btn = button('error', '加载异常')
+  context.setSecondaryButtonExpanded(btn, true)
+  const old = btn._auraModernAnimations[0]
+  btn.visualWidth = 90
+  context.setSecondaryButtonExpanded(btn, false)
+  const current = btn._auraModernAnimations[0]
+  assert.equal(old.cancelled, true)
+  assert.equal(current.frames[0].width, '90px')
+  old.finish()
+  await Promise.resolve()
+  assert.equal(btn._auraModernAnimations[0], current)
+  current.finish()
+  await Promise.resolve()
+  assert.equal(btn.copy.innerHTML, '')
+})
+
+test('demo: state updates preserve an expanded secondary label and primary results stay visible', () => {
+  const { context, button } = runtime({ reduced: true })
+  const btn = button('disabled', '保存查看AI智审')
+  context.setSecondaryButtonExpanded(btn, true)
+  context.morphModernStatusButton(btn, 'audit', 'error', '加载异常', false)
+  assert.equal(btn.getAttribute('data-aura-expanded'), 'true')
+  assert.match(btn.copy.innerHTML, /AI审核加载异常/)
+  context.morphModernStatusButton(btn, 'audit', 'green', '审核通过 (95分)', false)
+  assert.equal(btn.getAttribute('data-aura-disclosure'), 'false')
+  assert.match(btn.copy.innerHTML, /95/)
+  assert.equal(context.setSecondaryButtonExpanded(btn, false), false)
+  assert.ok(!btn.classList.contains('aura-status-button--icon-only'))
+})
+
+test('demo: clicking outside collapses secondary content without a popup', () => {
+  const { context, button, state } = runtime({ reduced: true })
+  const btn = button('error', '加载异常')
+  context.setSecondaryButtonExpanded(btn, true)
+  state.listeners.pointerdown({ target: { closest: () => null } })
+  assert.equal(btn.getAttribute('data-aura-expanded'), 'false')
+  assert.equal(btn.copy.innerHTML, '')
+  assert.equal(state.opened, 0)
 })
