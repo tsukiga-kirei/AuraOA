@@ -92,7 +92,7 @@ function runtime({ style = 'modern', reduced = false, systemReduced = false, hov
         return copy
       },
       closest(selector) { return selector === '#galleryGroup' ? (gallery ? {} : null) : btn },
-      getBoundingClientRect() { return { width: btn.visualWidth ?? (classes.has('aura-status-button--icon-only') ? 64 : 156) } },
+      getBoundingClientRect() { return { width: btn.visualWidth ?? (classes.has('aura-status-button--icon-only') ? 64 : 156), height: btn.visualHeight ?? 64 } },
       animate: (frames, options) => animate('button', frames, options),
     }
     state.buttons.push(btn)
@@ -510,4 +510,18 @@ test('demo: clicking outside collapses secondary content without a popup', () =>
   assert.equal(btn.getAttribute('data-aura-expanded'), 'false')
   assert.equal(btn.copy.innerHTML, '')
   assert.equal(state.opened, 0)
+})
+
+test('demo: completion particles scale and center on the rendered mobile button', () => {
+  const { context, button, advance } = runtime()
+  const btn = button('loading', '分析中')
+  btn.visualHeight = 56
+  context.morphModernStatusButton(btn, 'audit', 'green', '审核通过 (95分)', false)
+  advance(700)
+  const canvas = btn.children.find(node => node.tagName === 'canvas')
+  assert.ok(canvas)
+  const scale = 56 / 68
+  assert.equal(canvas.width, Math.round(520 * scale))
+  assert.equal(canvas.style.left, (28 - 260 * scale) + 'px')
+  assert.equal(canvas.style.top, (28 - 150 * scale) + 'px')
 })
