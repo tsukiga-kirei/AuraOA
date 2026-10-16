@@ -60,7 +60,7 @@ function runtime({ style = 'modern', reduced = false, systemReduced = false, hov
     const outer = markup.slice(0, markup.indexOf('>'))
     Object.assign(attrs, Object.fromEntries([...outer.matchAll(/([\w-]+)="([^"]*)"/g)].map(match => [match[1], match[2]])))
     const classes = new Set(attrs.class.split(/\s+/))
-    const icon = { innerHTML: context.iconSvgMarkup(feature, status, loading) }
+    const icon = { innerHTML: context.iconSvgMarkup(feature, status, loading, text) }
     const copy = { style: { removeProperty() {} }, innerHTML: context.modernButtonCopyMarkup(feature, status, text, loading), animate: (frames, options) => animate('copy', frames, options) }
     icon.animate = (frames, options) => animate('icon', frames, options)
     const number = { textContent: context.parseButtonLabel(text).scoreMatch?.[1] || '' }
@@ -126,7 +126,7 @@ test('demo: modern states keep one icon and distinguish unavailable from audit r
     assert.equal((markup.match(/<svg\b/g) || []).length, 1)
     if (loading) assert.match(markup, /aura-status-button--icon-only/)
     if (!loading && status === 'loading') { assert.doesNotMatch(markup, /aura-status-button--icon-only/); assert.match(markup, />分析中</); assert.doesNotMatch(markup, /aura-status-description/); }
-    if (status === 'error') { assert.match(markup, /data-icon-kind="unavailable"/); assert.match(markup, /data-aura-disclosure="true"/); assert.doesNotMatch(markup, /aria-haspopup/); }
+    if (status === 'error') { assert.match(markup, /data-icon-kind="load-error"/); assert.match(markup, /data-aura-disclosure="true"/); assert.doesNotMatch(markup, /aria-haspopup/); }
     if (status === 'red') assert.match(markup, /data-icon-kind="reject"/)
   }
 })
