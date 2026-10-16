@@ -1047,7 +1047,7 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
       "}",
       ".aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-button:not([aria-disabled=\\"true\\"]):active,",
       ".aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-button.aura-is-pressed {",
-      "--aura-modern-halo: 1; transform: translateY(1px) scale(.965); transition-duration: .09s;",
+      "--aura-modern-halo: 1; transform: translateY(.5px) scale(.98); transition-duration: .16s;",
       "box-shadow: inset 0 1px 3px rgba(110,125,170,.12), inset 0 1px 3px color-mix(in srgb, var(--aura-modern-light) 12%, transparent), 0 2px 5px rgba(51,65,95,.08);",
       "}",
       ".aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-button.aura-is-pressed .aura-status-icon { box-shadow: 0 0 0 .76px rgba(140,155,190,.22), 0 0 0 2.7px color-mix(in srgb, var(--aura-modern-light) 14%, transparent), inset 0 2px 5px rgba(110,125,170,.15); }",
@@ -1154,6 +1154,40 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
       '.aura-status-group[data-aura-button-style="modern"] .aura-status-button[data-aura-result="true"][data-aura-expanded="false"]{min-width:64px;}',
       '@media(max-width:768px){.aura-status-group[data-aura-button-style="modern"] .aura-status-button[data-aura-result="true"][data-aura-expanded="false"]{min-width:56px;}}',
       ".aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-button--disclosing .aura-status-icon, .aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-button--disclosing .aura-status-copy, .aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-button--disclosing .aura-status-copy-inner { transition:none!important; animation:none!important; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"][data-aura-dock=\\"right\\"] { align-items:flex-end; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"][data-aura-dock=\\"right\\"] .aura-status-button { flex-direction:row-reverse; transform-origin:calc(100% - 32px) center; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"][data-aura-dock=\\"right\\"] .aura-status-copy { padding:6px 8px 6px 24px; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"][data-aura-dock=\\"right\\"] .aura-status-button[data-aura-disclosure=\\"true\\"] .aura-status-copy { padding:8px 8px 8px 22px; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"][data-aura-dock=\\"right\\"] .aura-modern-glow i:nth-child(1) { left:auto; right:-8px; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"][data-aura-dock=\\"right\\"] .aura-modern-sheen::after { transform:translateX(125%); }",
+      "@media(hover:hover) and (pointer:fine){.aura-status-group[data-aura-button-style=\\"modern\\"][data-aura-dock=\\"right\\"] .aura-status-button:not([aria-disabled=\\"true\\"]):hover .aura-modern-sheen::after { transform:translateX(-125%); } }",
+      "@media(max-width:768px){",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"][data-aura-dock=\\"right\\"] .aura-status-button { transform-origin:calc(100% - 28px) center; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"][data-aura-dock=\\"right\\"] .aura-status-copy { padding:4px 6px 4px 18px; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"][data-aura-dock=\\"right\\"] .aura-status-button[data-aura-disclosure=\\"true\\"] .aura-status-copy { padding:6px 6px 6px 18px; }",
+      "}",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-button[data-aura-feature=\\"summary\\"][data-aura-state=\\"green\\"]:not([data-aura-expanded=\\"false\\"]) { min-width:144px; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-button[data-aura-feature=\\"summary\\"][data-aura-state=\\"green\\"] .aura-status-inline-label { font-size:22px; line-height:1.2; font-weight:700; letter-spacing:.06em; text-overflow:clip; overflow:visible; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-button[data-aura-feature=\\"summary\\"][data-aura-state=\\"green\\"] .aura-status-copy { padding:6px 22px 6px 10px; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-button[data-aura-feature=\\"summary\\"][data-aura-state=\\"green\\"] .aura-status-icon > svg { width:38px; height:38px; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"][data-aura-dock=\\"right\\"] .aura-status-button[data-aura-feature=\\"summary\\"][data-aura-state=\\"green\\"] .aura-status-copy { padding:6px 10px 6px 22px; }",
+      "@media(max-width:768px){",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-button[data-aura-feature=\\"summary\\"][data-aura-state=\\"green\\"]:not([data-aura-expanded=\\"false\\"]) { min-width:128px; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-button[data-aura-feature=\\"summary\\"][data-aura-state=\\"green\\"] .aura-status-inline-label { font-size:20px; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-button[data-aura-feature=\\"summary\\"][data-aura-state=\\"green\\"] .aura-status-copy { padding:4px 18px 4px 8px; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-button[data-aura-feature=\\"summary\\"][data-aura-state=\\"green\\"] .aura-status-icon > svg { width:34px; height:34px; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"][data-aura-dock=\\"right\\"] .aura-status-button[data-aura-feature=\\"summary\\"][data-aura-state=\\"green\\"] .aura-status-copy { padding:4px 8px 4px 18px; }",
+      "}",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-button[data-aura-result=\\"true\\"] .aura-status-copy { flex:0 0 auto; max-width:none; width:max-content; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-button[data-aura-result=\\"true\\"] .aura-status-copy-inner { flex:none; width:max-content; max-width:none; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-caption--stamp { box-sizing:border-box; flex:none; white-space:nowrap; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-score b { display:inline-block; min-width:var(--aura-score-width, 2ch); }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"][data-aura-dock=\\"right\\"] .aura-status-caption--stamp { transform:rotate(4deg); }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"][data-aura-dock=\\"right\\"] .aura-modern-mark { transform-origin:right center; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-copy { flex:0 0 auto; width:max-content; max-width:none; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-copy-inner { flex:none; width:max-content; max-width:none; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-button[data-aura-disclosure=\\"true\\"] .aura-status-copy { flex:0 0 auto; max-width:none; }",
+      ".aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-button--morph, .aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-button--disclosing { min-width:0!important; }",
       "@media(prefers-reduced-motion:reduce) {",
       ".aura-status-group[data-aura-button-style=\\"modern\\"] *, .aura-status-group[data-aura-button-style=\\"modern\\"] *::before, .aura-status-group[data-aura-button-style=\\"modern\\"] *::after { animation:none!important; transition:none!important; }",
       ".aura-status-group[data-aura-button-style=\\"modern\\"] .aura-status-copy { clip-path:none; opacity:1; }",
@@ -1247,6 +1281,13 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
     group.addEventListener('pointercancel', release);
     window.addEventListener('pointerup', release);
     window.addEventListener('blur', release);
+    window.addEventListener('resize', function () {
+      modernGroupButtons(group).forEach(function (btn) {
+        cancelModernButtonMotion(btn);
+        var targetSize = modernButtonTargetSize(btn);
+        if (targetSize.width > 0) btn.style.width = targetSize.width + 'px';
+      });
+    });
     document.addEventListener('pointerdown', function (event) {
       modernGroupButtons(group).forEach(function (btn) {
         if (!(btn.contains && btn.contains(event.target))) setModernButtonExpanded(btn, false);
@@ -1696,6 +1737,12 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
       }
       if (dragSession.hasMoved) {
         if (containerEl.classList && containerEl.classList.remove) containerEl.classList.remove('aura-is-dragging');
+        if (isModernButtonStyle() && containerEl.getAttribute('data-aura-dock') === 'right') {
+          var rect = containerEl.getBoundingClientRect();
+          var viewportWidth = window.innerWidth || document.documentElement.clientWidth || 360;
+          containerEl.style.right = Math.max(8, viewportWidth - rect.right) + 'px';
+          containerEl.style.left = 'auto';
+        }
         setTimeout(function () {
           dragSession.hasMoved = false;
           dragSession.ignoreNextClick = false;
@@ -1776,10 +1823,13 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
     }
     if (group) {
       group.setAttribute('data-aura-button-style', buttonStyle);
+      var dock = isFloat ? (($container[0] && $container[0].getAttribute('data-aura-dock')) || (floatAnchorClass().indexOf('right') !== -1 ? 'right' : 'left')) : 'left';
+      group.setAttribute('data-aura-dock', dock);
       if (isModernButtonStyle()) bindModernButtonFeedback(group);
     }
     if (isFloat && $container[0]) {
       $container[0].setAttribute('data-aura-button-style', buttonStyle);
+      $container[0].setAttribute('data-aura-dock', dock);
       setupDraggableFloatContainer($container[0]);
     }
     return group;
@@ -1973,8 +2023,16 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
     canvas.height = Math.round(300 * scale * dpr);
     canvas.style.width = (520 * scale) + 'px';
     canvas.style.height = (300 * scale) + 'px';
-    canvas.style.left = (size / 2 - 260 * scale) + 'px';
-    canvas.style.top = (size / 2 - 150 * scale) + 'px';
+    var rightDocked = modernRightDocked(btn);
+    var direction = rightDocked ? -1 : 1;
+    var buttonRect = btn.getBoundingClientRect();
+    var icon = btn.querySelector('.aura-status-icon');
+    var iconRect = icon ? icon.getBoundingClientRect() : buttonRect;
+    var iconCenterX = iconRect.left + iconRect.width / 2;
+    var iconCenterY = iconRect.top + iconRect.height / 2;
+    if (rightDocked) canvas.style.right = (buttonRect.right - iconCenterX - (btn.clientLeft || 0) - 260 * scale) + 'px';
+    else canvas.style.left = (iconCenterX - buttonRect.left - (btn.clientLeft || 0) - 260 * scale) + 'px';
+    canvas.style.top = (iconCenterY - buttonRect.top - (btn.clientTop || 0) - 150 * scale) + 'px';
     var ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.scale(dpr * scale, dpr * scale);
@@ -1987,10 +2045,10 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
     var particles = Array.from({ length: kind === 'success' ? 36 : 14 }, function (_, index) {
       var angle = random(0, Math.PI * 2), speed = kind === 'success' ? random(140, 340) : random(90, 250);
       return {
-        x: 260 + Math.cos(angle) * 26, y: 150 + Math.sin(angle) * 26,
-        vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - (kind === 'success' ? 40 : 0),
+        x: 260 + Math.cos(angle) * 26 * direction, y: 150 + Math.sin(angle) * 26,
+        vx: (Math.cos(angle) * speed + (kind === 'success' ? 45 : 25)) * direction, vy: Math.sin(angle) * speed - (kind === 'success' ? 40 : 0),
         gravity: kind === 'success' ? 420 : 0, drag: kind === 'success' ? 2.4 : 5,
-        rotation: random(0, 6), spin: random(-9, 9), size: kind === 'success' ? random(2.6, 5) : random(1.6, 4.4),
+        rotation: random(0, 6) * direction, spin: random(-9, 9) * direction, size: kind === 'success' ? random(2.6, 5) : random(1.6, 4.4),
         color: colors[index % colors.length], age: 0, life: kind === 'success' ? random(.9, 1.4) : random(.5, .8),
         shape: kind === 'success' ? Math.floor(random(0, 4)) : (index % 3 ? 1 : 2)
       };
@@ -2029,12 +2087,15 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
     var icon = btn.querySelector('.aura-status-icon');
     var glyph = icon.querySelector('svg');
     var caption = btn.querySelector('.aura-status-caption');
-    // 入场先蓄力再回弹；已有结果更新保留宽度，仍播放该结果自己的完成反馈。
+    var rightDocked = modernRightDocked(btn);
+    var direction = rightDocked ? -1 : 1;
+    var stampAngle = rightDocked ? 4 : -4;
+    // 已有按钮只更新局部完成反馈，胶囊伸缩由共享时间轴处理，避免重复入场。
     if (!updating) modernEffectAnimate(btn, run, btn, [
       { transform: 'scale(1)' }, { transform: 'scale(.94,.97)', offset: .22 },
       { transform: 'scale(1.025)', offset: .65 }, { transform: 'scale(1)' }
     ], { duration: 410, easing: 'cubic-bezier(.2,.9,.3,1.2)' });
-    modernEffectAnimate(btn, run, glyph, kind === 'reject' ? [
+    modernEffectAnimate(btn, run, glyph, updating ? [{ opacity: .6 }, { opacity: 1 }] : kind === 'reject' ? [
       { transform: 'scale(2)', opacity: 0 }, { transform: 'scale(1)', opacity: 1, offset: .38 },
       { transform: 'scale(1.07)', offset: .55 }, { transform: 'scale(1)' }
     ] : [
@@ -2046,35 +2107,39 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
         { duration: kind === 'summary' ? 300 : 360, delay: (updating ? 0 : 110) + index * (kind === 'summary' ? 110 : 170), easing: 'cubic-bezier(.65,0,.35,1)', fill: 'backwards' });
     });
     if (kind === 'reject' && caption) {
-      caption.classList.add('aura-status-caption--stamp');
+      // 印章结构已在文案生成时确定，这里只做视觉落印，不再改变布局样式。
       modernEffectAnimate(btn, run, caption, [
-        { transform: 'rotate(-4deg) scale(1.8)', opacity: 0 }, { transform: 'rotate(-4deg) scale(1)', opacity: .95, offset: .55 },
-        { transform: 'rotate(-4deg) scale(1.05)', offset: .75 }, { transform: 'rotate(-4deg) scale(1)', opacity: .9 }
+        { transform: 'rotate(' + stampAngle + 'deg) scale(1.8)', opacity: 0 }, { transform: 'rotate(' + stampAngle + 'deg) scale(1)', opacity: .95, offset: .55 },
+        { transform: 'rotate(' + stampAngle + 'deg) scale(1.05)', offset: .75 }, { transform: 'rotate(' + stampAngle + 'deg) scale(1)', opacity: .9 }
       ], { duration: 340, delay: updating ? 60 : 290, fill: 'both', easing: 'ease-out' });
     }
     modernEffectLater(btn, run, { success: 650, warning: 560, reject: 300, summary: 420 }[kind], function () {
       if (kind === 'warning' || kind === 'summary') {
         var scan = document.createElement('span'); scan.className = 'aura-modern-scan'; scan.setAttribute('aria-hidden', 'true');
         btn.querySelector('.aura-modern-sheen').appendChild(scan); run.nodes.push(scan);
+        var scanSize = btn.getBoundingClientRect().height || MODERN_BUTTON_SIZE;
+        var scanWidth = btn.getBoundingClientRect().width;
+        scan.style.width = scanSize + 'px';
         modernEffectAnimate(btn, run, scan, [
-          { transform: 'translateX(-' + (btn.getBoundingClientRect().height || MODERN_BUTTON_SIZE) + 'px)', opacity: 0 }, { opacity: 1, offset: .15 }, { opacity: 1, offset: .8 },
-          { transform: 'translateX(' + btn.getBoundingClientRect().width + 'px)', opacity: 0 }
+          { transform: 'translateX(' + (rightDocked ? scanWidth : -scanSize) + 'px)', opacity: 0 }, { opacity: 1, offset: .15 }, { opacity: 1, offset: .8 },
+          { transform: 'translateX(' + (rightDocked ? -scanSize : scanWidth) + 'px)', opacity: 0 }
         ], { duration: kind === 'warning' ? 1000 : 800, easing: 'ease-in-out' });
         if (kind === 'warning') {
           var mark = document.createElement('span'); mark.className = 'aura-modern-mark'; mark.setAttribute('aria-hidden', 'true');
+          mark.style.transformOrigin = rightDocked ? 'right center' : 'left center';
           btn.querySelector('.aura-status-score').appendChild(mark); run.nodes.push(mark);
           modernEffectAnimate(btn, run, mark, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }],
             { duration: 520, delay: 380, easing: 'cubic-bezier(.3,0,.2,1)', fill: 'both' });
         }
       } else {
         if (kind === 'reject') {
-          modernEffectAnimate(btn, run, btn, [
+          if (!updating) modernEffectAnimate(btn, run, btn, [
             { transform: 'scale(1)' }, { transform: 'scale(.965,.93) translateY(1px)', offset: .25 },
             { transform: 'scale(1.012,1.02)', offset: .6 }, { transform: 'scale(1)' }
           ], { duration: 420, easing: 'ease-out' });
           modernEffectAnimate(btn, run, icon, [
-            { transform: 'translateX(0)' }, { transform: 'translateX(-2.2px)', offset: .25 }, { transform: 'translateX(1.5px)', offset: .5 },
-            { transform: 'translateX(-.8px)', offset: .75 }, { transform: 'translateX(0)' }
+            { transform: 'translateX(0)' }, { transform: 'translateX(' + (-2.2 * direction) + 'px)', offset: .25 }, { transform: 'translateX(' + (1.5 * direction) + 'px)', offset: .5 },
+            { transform: 'translateX(' + (-.8 * direction) + 'px)', offset: .75 }, { transform: 'translateX(0)' }
           ], { duration: 340 });
         }
         burstModernParticles(btn, run, kind);
@@ -2083,32 +2148,146 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
   }
 
   // 壳体、图标与文字使用同一时钟；文字位置固定，只随壳体边缘揭开/裁切。
+  // 用不可见副本测量下一状态的完整尺寸，不让当前动画或 min-width 参与终点计算。
+  function modernButtonTargetSize(btn) {
+    var probe = null;
+    try {
+      if (btn.cloneNode && btn.parentNode && btn.parentNode.appendChild) {
+        probe = btn.cloneNode(true);
+        probe.removeAttribute('id');
+        probe.setAttribute('aria-hidden', 'true');
+        probe.tabIndex = -1;
+        probe.classList.remove('aura-status-button--morph', 'aura-status-button--disclosing', 'aura-status-button--reveal', 'aura-status-button--update', 'aura-status-button--enter');
+        probe.style.width = 'max-content';
+        probe.style.removeProperty('min-width');
+        probe.style.position = 'absolute';
+        probe.style.left = '0';
+        probe.style.top = '0';
+        probe.style.visibility = 'hidden';
+        probe.style.pointerEvents = 'none';
+        probe.style.transform = 'none';
+        probe.style.animation = 'none';
+        probe.style.transition = 'none';
+        btn.parentNode.appendChild(probe);
+      }
+      var target = probe || btn;
+      var computed = typeof getComputedStyle === 'function' ? getComputedStyle(target) : null;
+      return {
+        width: (computed && parseFloat(computed.width)) || target.offsetWidth || 0,
+        height: (computed && parseFloat(computed.height)) || target.offsetHeight || MODERN_BUTTON_SIZE
+      };
+    } finally {
+      if (probe && probe.parentNode) probe.parentNode.removeChild(probe);
+    }
+  }
+
   function modernIconGeometry(icon) {
     if (!icon) return null;
     var rect = icon.getBoundingClientRect();
     var computed = typeof getComputedStyle === 'function' ? getComputedStyle(icon) : null;
+    var width = (computed && parseFloat(computed.width)) || rect.width;
+    var height = (computed && parseFloat(computed.height)) || rect.height;
     return {
-      width: rect.width + 'px', height: rect.height + 'px', flexBasis: rect.width + 'px',
+      width: width + 'px', height: height + 'px', flexBasis: width + 'px',
       marginTop: computed ? computed.marginTop : '0px', marginRight: computed ? computed.marginRight : '0px',
       marginBottom: computed ? computed.marginBottom : '0px', marginLeft: computed ? computed.marginLeft : '0px',
       boxShadow: computed ? computed.boxShadow : 'none'
     };
   }
 
+  // 保存当前可见文字用于短暂淡出，新文字先隐藏，避免直接替换后抢在壳体前出现。
+  function captureModernCopy(btn) {
+    if (buttonEffectsSuspended || prefersReducedMotion() || !btn.animate) return null;
+    var source = btn.querySelector('.aura-status-copy');
+    var computed = source && typeof getComputedStyle === 'function' ? getComputedStyle(source) : null;
+    if (btn._auraCopyOut && typeof getComputedStyle === 'function') {
+      var outgoing = getComputedStyle(btn._auraCopyOut);
+      if (!computed || computed.display === 'none' || Number(outgoing.opacity) > Number(computed.opacity)) {
+        source = btn._auraCopyOut;
+        computed = outgoing;
+      }
+    }
+    if (!source || !source.cloneNode || !computed || computed.display === 'none' || Number(computed.opacity) <= .01) return null;
+    var rect = source.getBoundingClientRect();
+    if (!rect.width) return null;
+    var buttonRect = btn.getBoundingClientRect();
+    var right = modernRightDocked(btn);
+    var node = source.cloneNode(true);
+    node.removeAttribute('id');
+    node.className = 'aura-modern-copy-out';
+    node.setAttribute('aria-hidden', 'true');
+    node.style.position = 'absolute';
+    node.style.display = 'flex';
+    node.style.alignItems = 'center';
+    node.style.boxSizing = 'border-box';
+    node.style.pointerEvents = 'none';
+    node.style.zIndex = '1';
+    node.style.width = rect.width + 'px';
+    node.style.height = rect.height + 'px';
+    node.style.maxWidth = 'none';
+    node.style.padding = computed.padding;
+    node.style.color = computed.color;
+    node.style.setProperty('--aura-status-color', computed.getPropertyValue('--aura-status-color'));
+    node.style.top = (rect.top - buttonRect.top - (btn.clientTop || 0)) + 'px';
+    var inset = right ? buttonRect.right - rect.right : rect.left - buttonRect.left;
+    node.style[right ? 'right' : 'left'] = (inset - (btn.clientLeft || 0)) + 'px';
+    node.style[right ? 'left' : 'right'] = 'auto';
+    node.style.opacity = computed.opacity;
+    node.style.transform = 'none';
+    node.style.clipPath = 'inset(0)';
+    node.style.animation = 'none';
+    node.style.transition = 'none';
+    return { node: node, width: rect.width, inset: inset, opacity: Number(computed.opacity), right: right };
+  }
+
+  function animateModernCopyOut(btn, snapshot, fromWidth, toWidth, timing) {
+    if (!snapshot) return null;
+    btn.appendChild(snapshot.node);
+    btn._auraCopyOut = snapshot.node;
+    var frames = modernCopyRevealFrames(fromWidth, toWidth, snapshot.inset, snapshot.width, snapshot.opacity, false, snapshot.right);
+    frames.forEach(function (frame) {
+      frame.opacity = snapshot.opacity * Math.max(0, 1 - frame.offset / .32);
+    });
+    return snapshot.node.animate(frames, timing);
+  }
+
+  function removeModernCopyOut(btn) {
+    if (btn._auraCopyOut && btn._auraCopyOut.parentNode) btn._auraCopyOut.parentNode.removeChild(btn._auraCopyOut);
+    btn._auraCopyOut = null;
+  }
+
   function clearModernCopyGeometry(btn) {
     var copy = btn.querySelector('.aura-status-copy');
     var inner = btn.querySelector('.aura-status-copy-inner');
-    if (copy) ['width', 'max-width', 'flex'].forEach(function (property) { copy.style.removeProperty(property); });
+    if (copy) ['width', 'max-width', 'flex', 'opacity'].forEach(function (property) { copy.style.removeProperty(property); });
     if (inner) ['width', 'max-width'].forEach(function (property) { inner.style.removeProperty(property); });
   }
 
-  function modernCopyRevealFrames(fromWidth, toWidth, copyLeft, copyWidth, fromOpacity, expanded) {
-    return [0, .2, .45, .7, .9, 1].map(function (progress) {
+  // 右侧按钮固定图标端点，内容向左展开；拖动后仍保留已选择的停靠方向。
+  function modernRightDocked(btn) {
+    var node = btn.parentNode;
+    while (node && node !== document.body) {
+      if (node.getAttribute && node.getAttribute('data-aura-dock')) return node.getAttribute('data-aura-dock') === 'right';
+      if (node.id === 'auraMobileEmbedFloatContainer' && node.classList) {
+        return node.classList.contains('aura-float--top-right') || node.classList.contains('aura-float--bottom-right');
+      }
+      node = node.parentNode;
+    }
+    return false;
+  }
+
+  // 裁切边界严格跟随壳体，不保留水平溢出；新字等壳体先展开一小段再出现。
+  function modernCopyRevealFrames(fromWidth, toWidth, copyLeft, copyWidth, fromOpacity, expanded, rightDocked) {
+    return [0, .18, .32, .55, .8, 1].map(function (progress) {
       var width = fromWidth + (toWidth - fromWidth) * progress;
-      var visible = Math.max(0, Math.min(copyWidth, width - copyLeft));
-      var opacity = expanded ? fromOpacity + (1 - fromOpacity) * Math.min(1, progress / .7)
+      var visible = Math.max(0, Math.min(copyWidth, width - copyLeft - 1));
+      var reveal = Math.max(0, Math.min(1, (progress - .18) / .62));
+      var opacity = expanded ? fromOpacity + (1 - fromOpacity) * reveal
         : fromOpacity * Math.max(0, 1 - Math.max(0, progress - .15) / .65);
-      return { offset: progress, opacity: opacity, clipPath: 'inset(-8px ' + Math.max(0, copyWidth - visible) + 'px -8px -8px)' };
+      if (visible <= 0) opacity = 0;
+      var hidden = Math.max(0, copyWidth - visible) + 'px';
+      return { offset: progress, opacity: opacity, clipPath: rightDocked
+        ? 'inset(0 0 0 ' + hidden + ')' : 'inset(0 ' + hidden + ' 0 0)' };
     });
   }
 
@@ -2116,6 +2295,7 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
     clearTimeout(btn._auraCollapseTimer);
     btn._auraCollapseTimer = null;
     cancelModernButtonEffects(btn);
+    removeModernCopyOut(btn);
     var settledScore = parseButtonLabel(btn.getAttribute('data-aura-copy')).scoreMatch;
     var number = btn.querySelector('.aura-status-score b');
     if (number && settledScore) number.textContent = settledScore[1];
@@ -2182,10 +2362,12 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
     }
     inner.innerHTML = modernButtonCopyMarkup(feature, status, text, loading, true);
     btn.classList.toggle('aura-status-button--icon-only', !expanded);
-    var toWidth = btn.getBoundingClientRect().width;
-    var toHeight = btn.getBoundingClientRect().height || MODERN_BUTTON_SIZE;
+    var targetSize = modernButtonTargetSize(btn);
+    var toWidth = targetSize.width;
+    var toHeight = targetSize.height;
     var toIcon = modernIconGeometry(icon);
     if (prefersReducedMotion() || !btn.animate) {
+      if (toWidth > 0) btn.style.width = toWidth + 'px';
       if (!expanded && !result) inner.innerHTML = '';
       btn.classList.remove('aura-status-button--disclosing');
       return true;
@@ -2194,16 +2376,19 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
     if (!expanded) btn.classList.remove('aura-status-button--icon-only');
     var copyRect = copy.getBoundingClientRect();
     var copyWidth = copyRect.width;
-    var copyLeft = copyRect.left - btn.getBoundingClientRect().left;
+    var rightDocked = modernRightDocked(btn);
+    var buttonRect = btn.getBoundingClientRect();
+    var copyLeft = rightDocked ? buttonRect.right - copyRect.right : copyRect.left - buttonRect.left;
     copy.style.width = copyWidth + 'px';
     copy.style.maxWidth = 'none';
     copy.style.flex = 'none';
+    btn.style.width = toWidth + 'px';
     var timing = { duration: expanded ? 580 : 680, easing: 'cubic-bezier(.32,0,.2,1)', fill: 'both' };
     var widthMotion = btn.animate([
       { width: fromWidth + 'px', height: fromHeight + 'px' },
       { width: toWidth + 'px', height: toHeight + 'px' }
     ], timing);
-    var copyMotion = copy.animate(modernCopyRevealFrames(fromWidth, toWidth, copyLeft, copyWidth, fromOpacity, expanded), timing);
+    var copyMotion = copy.animate(modernCopyRevealFrames(fromWidth, toWidth, copyLeft, copyWidth, fromOpacity, expanded, rightDocked), timing);
     var motions = [widthMotion, copyMotion];
     if (icon && fromIcon && toIcon) motions.push(icon.animate([fromIcon, toIcon], timing));
     btn._auraModernAnimations = motions;
@@ -2233,6 +2418,8 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
     var glyphKind = modernIconKind(feature, status, isLoading, displayText);
     var iconChanged = btn.getAttribute('data-aura-icon') !== iconKey || btn.getAttribute('data-aura-glyph') !== glyphKind;
     if (!iconChanged && btn.getAttribute('data-aura-copy') === displayText) return;
+    var hadPreviousState = !!btn.getAttribute('data-aura-icon');
+    var previousCopy = captureModernCopy(btn);
     var previousResult = ['green', 'yellow', 'red'].indexOf(btn.getAttribute('data-aura-state')) !== -1;
     var updatingResult = previousResult && ['green', 'yellow', 'red'].indexOf(status) !== -1 && !isLoading;
     var fromWidth = btn.getBoundingClientRect().width;
@@ -2255,6 +2442,7 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
     btn.setAttribute('data-aura-expanded', String(expanded));
     applyButtonTheme(btn, buttonTheme(status, isLoading));
     syncMotionClass(btn, status, isLoading, false);
+    btn.classList.add('aura-status-button--disclosing');
     btn.classList.toggle('aura-status-button--icon-only', iconOnly);
     btn.setAttribute('aria-label', modernAccessibleLabel(status, displayText, feature, isLoading));
     btn.setAttribute('aria-disabled', ((isUnavailableButton(status) || isLoading) && !disclosure) ? 'true' : 'false');
@@ -2273,45 +2461,55 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
       return;
     }
     if (iconChanged) btn.querySelector('.aura-status-icon').innerHTML = iconSvgMarkup(feature, status, isLoading, displayText);
+    btn.querySelector('.aura-status-copy').style.opacity = '0';
     btn.querySelector('.aura-status-copy-inner').innerHTML = modernButtonCopyMarkup(feature, status, displayText, isLoading, expanded);
     announceButtonState(btn, displayText);
+    var targetSize = modernButtonTargetSize(btn);
+    var toWidth = targetSize.width;
     if (intro) scheduleResultCollapse(btn);
     if (buttonEffectsSuspended || prefersReducedMotion() || !btn.animate || !window.requestAnimationFrame) {
+      if (toWidth > 0) btn.style.width = toWidth + 'px';
+      clearModernCopyGeometry(btn);
       btn.classList.remove('aura-status-button--disclosing');
       return;
     }
 
     var run = btn._auraEffects = { timers: [], animations: [], nodes: [], raf: 0, scoreRaf: 0 };
-    var toWidth = btn.getBoundingClientRect().width;
     btn.classList.add('aura-status-button--morph');
-    if (!iconOnly) btn.classList.add(updatingResult ? 'aura-status-button--update' : 'aura-status-button--reveal');
+    if (!iconOnly) btn.classList.add(hadPreviousState ? 'aura-status-button--update' : 'aura-status-button--reveal');
 
     // 宽度、徽章几何与文案裁切同步；先测量完整布局，再启动动画。
-    var timing = { duration: updatingResult ? 360 : 640, fill: 'both', easing: 'cubic-bezier(.32,0,.2,1)' };
+    var timing = { duration: hadPreviousState ? 560 : 640, fill: 'both', easing: 'cubic-bezier(.32,0,.2,1)' };
     var icon = btn.querySelector('.aura-status-icon');
     var toIconGeometry = modernIconGeometry(icon);
     var copy = !iconOnly && btn.querySelector('.aura-status-copy');
     var copyRect = copy && copy.getBoundingClientRect();
-    var copyLeft = copyRect ? copyRect.left - btn.getBoundingClientRect().left : 0;
+    var rightDocked = modernRightDocked(btn);
+    var buttonRect = btn.getBoundingClientRect();
+    var copyLeft = copyRect ? (rightDocked ? buttonRect.right - copyRect.right : copyRect.left - buttonRect.left) : 0;
     if (copy) {
       copy.style.width = copyRect.width + 'px';
       copy.style.maxWidth = 'none';
       copy.style.flex = 'none';
     }
+    btn.style.width = toWidth + 'px';
     var motion = btn.animate([{ width: fromWidth + 'px' }, { width: toWidth + 'px' }], timing);
     btn._auraModernAnimations.push(motion);
     if (fromIconGeometry && toIconGeometry) btn._auraModernAnimations.push(icon.animate([fromIconGeometry, toIconGeometry], timing));
-    if (copy) btn._auraModernAnimations.push(copy.animate(modernCopyRevealFrames(fromWidth, toWidth, copyLeft, copyRect.width, updatingResult ? .65 : 0, true), timing));
+    if (copy) btn._auraModernAnimations.push(copy.animate(modernCopyRevealFrames(fromWidth, toWidth, copyLeft, copyRect.width, 0, true, rightDocked), timing));
+    var outgoingMotion = animateModernCopyOut(btn, previousCopy, fromWidth, toWidth, timing);
+    if (outgoingMotion) btn._auraModernAnimations.push(outgoingMotion);
     if (parsed.scoreMatch) animateModernScore(btn, run, updatingResult ? fromScore : 0, Number(parsed.scoreMatch[1]), updatingResult ? 0 : 230);
-    if (iconChanged) playModernResultEffect(btn, run, modernEffectKind(feature, status, displayText, isLoading), updatingResult);
+    if (iconChanged) playModernResultEffect(btn, run, modernEffectKind(feature, status, displayText, isLoading), hadPreviousState);
     if (iconChanged && !isLoading && status === 'loading') modernEffectAnimate(btn, run, icon.querySelector('svg'), [
-      { transform: 'scale(.4) rotate(-80deg)' }, { transform: 'scale(1.12) rotate(0deg)', offset: .6 }, { transform: 'scale(1) rotate(0deg)' }
-    ], { duration: 520, easing: 'ease-out' });
+      { opacity: .5 }, { opacity: 1 }
+    ], { duration: 280, easing: 'ease-out' });
 
     var motions = btn._auraModernAnimations.slice();
     Promise.all(motions.map(function (item) { return item.finished; })).then(function () {
       if (btn._auraModernAnimations[0] !== motion) return;
       clearModernCopyGeometry(btn);
+      removeModernCopyOut(btn);
       motions.forEach(function (item) { item.cancel(); });
       btn._auraModernAnimations = [];
       void btn.offsetWidth;
@@ -2334,6 +2532,10 @@ ${cfg.urls.map(url => ` * - ${url}`).join('\n')}
         group.appendChild(btn);
       }
       if (reveal) morphModernStatusButton(btn, feature, status, displayText, isLoading, labelClass);
+      else if (isModernButtonStyle()) {
+        var targetSize = modernButtonTargetSize(btn);
+        if (targetSize.width > 0) btn.style.width = targetSize.width + 'px';
+      }
       return btn;
     }
     morphStatusButton(btn, feature, status, displayText, isLoading, labelClass);
