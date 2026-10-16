@@ -7,23 +7,31 @@ const html = fs.readFileSync(new URL('../../docs/oa-configurations/assets/aura-e
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1]
 const core = script.slice(0, script.indexOf('/* 拖拽与长按 Tooltip 系统 */'))
 const tooltip = script.slice(script.indexOf('function buttonTooltipText('), script.indexOf('function hideTooltip()'))
-const retry = script.slice(script.indexOf('function retryDemoButton('), script.indexOf('// 点击、拖拽与长按分别处理'))
 const click = script.slice(script.indexOf('function handleButtonClick('), script.indexOf("stageGroup.addEventListener('click'"))
 
-// 执行演示页的真实状态转换，模拟动画时钟，检查连续更新和异步重试边界。
+// 执行演示页的真实状态转换，模拟动画时钟，检查连续更新、可访问性和实际错误行为。
 function runtime({ style = 'modern', reduced = false, systemReduced = false, hover = true } = {}) {
   const timers = [], animations = [], announcements = { textContent: '' }
   let now = 0
+  function schedule(fn, ms) { const timer = { fn, at: now + ms }; timers.push(timer); return timer }
+  function cancel(timer) { const index = timers.indexOf(timer); if (index >= 0) timers.splice(index, 1) }
   const state = { style, reduced, opened: 0, hints: [], animations }
   const context = vm.createContext({
     document: {
       body: { getAttribute: key => key === 'data-button-style' ? state.style : String(state.reduced) },
       getElementById: id => id === 'buttonStatusAnnouncement' ? announcements : null,
+      createElement: tag => ({
+        tagName: tag, className: '', style: {}, removed: false,
+        setAttribute() {}, remove() { this.removed = true },
+        animate: (frames, options) => animate(tag, frames, options),
+        getContext: () => new Proxy({}, { get: () => () => {} }),
+      }),
     },
     window: { matchMedia: query => ({ matches: query.includes('prefers-reduced-motion') ? systemReduced : hover }) },
     Date: { now: () => now },
-    setTimeout(fn, ms) { const timer = { fn, at: now + ms }; timers.push(timer); return timer },
-    clearTimeout(timer) { const index = timers.indexOf(timer); if (index >= 0) timers.splice(index, 1) },
+    setTimeout: schedule, clearTimeout: cancel,
+    requestAnimationFrame: fn => schedule(() => fn(now), 16), cancelAnimationFrame: cancel,
+    performance: { now: () => now },
     sceneGeneration: 0, galleryGeneration: 0,
     dragSession: { ignoreNextClick: false, hasMoved: false, longPressTriggered: false },
     activeDialogScene: 'suggest-only',
@@ -31,7 +39,7 @@ function runtime({ style = 'modern', reduced = false, systemReduced = false, hov
     showTooltipForButton(btn, text) { state.hints.push(text) },
     openOptimizedEmbedDialog() { state.opened++ },
   })
-  vm.runInContext(core + '\n' + tooltip + '\n' + retry + '\n' + click, context)
+  vm.runInContext(core + '\n' + tooltip + '\n' + click, context)
   function animate(target, frames, options) {
     let resolve
     const motion = {
@@ -51,11 +59,18 @@ function runtime({ style = 'modern', reduced = false, systemReduced = false, hov
     Object.assign(attrs, Object.fromEntries([...outer.matchAll(/([\w-]+)="([^"]*)"/g)].map(match => [match[1], match[2]])))
     const classes = new Set(attrs.class.split(/\s+/))
     const icon = { innerHTML: context.iconSvgMarkup(feature, status, loading) }
-    const copy = { innerHTML: '', animate: (frames, options) => animate('copy', frames, options) }
+    const copy = { innerHTML: context.modernButtonCopyMarkup(feature, status, text, loading), animate: (frames, options) => animate('copy', frames, options) }
     icon.animate = (frames, options) => animate('icon', frames, options)
+    const number = { textContent: context.parseButtonLabel(text).scoreMatch?.[1] || '' }
+    const caption = { classList: { add() {} }, animate: (frames, options) => animate('caption', frames, options) }
+    const paths = Array.from({ length: 2 }, () => ({ animate: (frames, options) => animate('path', frames, options) }))
+    const glyph = { querySelectorAll: () => paths, animate: (frames, options) => animate('glyph', frames, options) }
+    icon.querySelector = () => glyph
+    const children = []
+    const holder = { appendChild(node) { children.push(node) } }
     const btn = {
       id: gallery ? 'g-error' : 'btnAudit_stage', isConnected: true,
-      attributes: attrs, icon, copy,
+      attributes: attrs, icon, copy, number, children,
       style: { setProperty() {}, removeProperty() {} },
       classList: {
         add(...names) { names.forEach(name => classes.add(name)) },
@@ -66,9 +81,16 @@ function runtime({ style = 'modern', reduced = false, systemReduced = false, hov
       getAttribute: key => attrs[key] ?? null,
       setAttribute(key, value) { attrs[key] = String(value) },
       removeAttribute(key) { delete attrs[key] },
-      querySelector(selector) { return selector === '.aura-status-icon' ? icon : copy },
+      appendChild(node) { children.push(node) },
+      querySelector(selector) {
+        if (selector === '.aura-status-icon') return icon
+        if (selector === '.aura-status-score b') return context.parseButtonLabel(attrs['data-aura-copy']).scoreMatch ? number : null
+        if (selector === '.aura-status-caption') return context.parseButtonLabel(attrs['data-aura-copy']).scoreMatch ? caption : null
+        if (selector === '.aura-status-score' || selector === '.aura-modern-sheen') return holder
+        return copy
+      },
       closest(selector) { return selector === '#galleryGroup' ? (gallery ? {} : null) : btn },
-      getBoundingClientRect() { return { width: btn.visualWidth ?? (classes.has('aura-status-button--icon-only') ? 44 : attrs['data-aura-expanded'] === 'true' ? 120 : 86) } },
+      getBoundingClientRect() { return { width: btn.visualWidth ?? (classes.has('aura-status-button--icon-only') ? 52 : 126) } },
       animate: (frames, options) => animate('button', frames, options),
     }
     return btn
@@ -85,7 +107,7 @@ function runtime({ style = 'modern', reduced = false, systemReduced = false, hov
   return { context, state, button, advance, announcements }
 }
 
-test('demo: modern states keep one icon and distinguish retry from audit rejection', () => {
+test('demo: modern states keep one icon and distinguish unavailable from audit rejection', () => {
   const { context } = runtime()
   for (const [feature, status, loading, text] of [
     ['audit', 'green', false, '审核通过 (95分)'],
@@ -95,12 +117,12 @@ test('demo: modern states keep one icon and distinguish retry from audit rejecti
     ['summary', 'gray', true, '总结加载中...'],
     ['audit', 'loading', false, '审核分析中'],
     ['audit', 'disabled', false, '保存查看AI智审'],
-    ['audit', 'error', false, '连接失败，点击重试'],
+    ['audit', 'error', false, '加载异常'],
   ]) {
     const markup = context.buildStatusButton('demo', feature, status, text, loading, false)
     assert.equal((markup.match(/<svg\b/g) || []).length, 1)
-    if (loading || status === 'loading' || status === 'disabled' || status === 'error') assert.match(markup, /aura-status-button--icon-only/)
-    if (status === 'error') { assert.match(markup, /data-icon-kind="retry"/); assert.match(markup, /aria-disabled="false"/); assert.doesNotMatch(markup, /aria-haspopup/); }
+    if (loading || status === 'loading') assert.match(markup, /aura-status-button--icon-only/)
+    if (status === 'error') { assert.match(markup, /data-icon-kind="unavailable"/); assert.match(markup, /aria-disabled="true"/); assert.doesNotMatch(markup, /aria-haspopup/); }
     if (status === 'red') assert.match(markup, /data-icon-kind="reject"/)
   }
 })
@@ -110,8 +132,8 @@ test('demo: initial result expands within 550ms and exposes accessible status', 
   const btn = button('loading', '审核分析中')
   context.morphModernStatusButton(btn, 'audit', 'green', '审核通过 (95分)', false)
   const width = state.animations.find(motion => motion.target === 'button')
-  assert.equal(width.frames[0].width, '44px')
-  assert.equal(width.frames[1].width, '86px')
+  assert.equal(width.frames[0].width, '52px')
+  assert.equal(width.frames.at(-1).width, '126px')
   assert.ok(width.options.delay + width.options.duration <= 550)
   assert.equal(btn.getAttribute('aria-busy'), 'false')
   assert.equal(announcements.textContent, '审核通过 (95分)')
@@ -123,8 +145,8 @@ test('demo: result refresh does not collapse and identical refresh does not anim
   const btn = button('green', '审核通过 (95分)')
   context.morphModernStatusButton(btn, 'audit', 'yellow', '建议关注 (78分)', false)
   const width = state.animations.find(motion => motion.target === 'button')
-  assert.equal(width.frames[0].width, '86px')
-  assert.equal(width.frames[1].width, '86px')
+  assert.equal(width.frames[0].width, '126px')
+  assert.equal(width.frames.at(-1).width, '126px')
   assert.ok(btn.classList.contains('aura-status-button--update'))
   assert.ok(!btn.classList.contains('aura-status-button--reveal'))
   const count = state.animations.length
@@ -172,35 +194,19 @@ test('demo: manual and system reduced motion both render the final result immedi
   }
 })
 
-test('demo: retry blocks duplicate requests while loading and recovers', () => {
-  const { context, button, advance, state } = runtime()
-  const btn = button('error', '连接失败，点击重试', false, 'audit', true)
-  const event = { target: btn, preventDefault() {}, stopPropagation() {} }
-  context.handleButtonClick(event)
-  assert.equal(btn.getAttribute('aria-busy'), 'true')
-  assert.equal(btn.getAttribute('aria-disabled'), 'true')
-  assert.equal(state.opened, 0)
-  context.handleButtonClick(event)
-  assert.equal(btn.getAttribute('data-aura-state'), 'gray')
-  assert.equal(btn.getAttribute('aria-expanded'), 'false')
-  advance(750)
-  assert.equal(btn.getAttribute('data-aura-state'), 'loading')
-  advance(950)
-  assert.equal(btn.getAttribute('data-aura-state'), 'green')
-  assert.equal(btn.getAttribute('aria-disabled'), 'false')
-  assert.equal(state.opened, 0)
-})
-
-test('demo: switching gallery invalidates pending retry callbacks', () => {
-  const { context, button, advance } = runtime()
-  const btn = button('error', '连接失败，点击重试', false, 'audit', true)
-  context.retryDemoButton(btn)
-  context.galleryGeneration++
+test('demo: unavailable status does not show a tooltip, retry or open details', () => {
+  const { context, button, state, advance } = runtime()
+  const btn = button('error', '加载异常')
+  context.handleButtonClick({ target: btn })
   advance(2000)
-  assert.equal(btn.getAttribute('data-aura-state'), 'gray')
+  assert.equal(btn.getAttribute('data-aura-state'), 'error')
+  assert.equal(btn.getAttribute('aria-disabled'), 'true')
+  assert.equal(state.hints.length, 0)
+  assert.equal(state.opened, 0)
+  assert.equal(state.animations.length, 0)
 })
 
-test('demo: long press suppresses accidental activation and locked buttons explain prerequisites', () => {
+test('demo: suppressed clicks and locked buttons do not open details or show tooltips', () => {
   const { context, button, state } = runtime()
   const btn = button('green', '审核通过 (95分)')
   btn._auraSuppressClickUntil = 1200
@@ -208,105 +214,53 @@ test('demo: long press suppresses accidental activation and locked buttons expla
   assert.equal(state.opened, 0)
   const locked = button('disabled', '保存查看AI智审')
   context.handleButtonClick({ target: locked })
-  assert.match(state.hints.at(-1), /请先保存流程/)
-  assert.equal(locked.getAttribute('data-aura-expanded'), 'false')
+  assert.equal(state.hints.length, 0)
   assert.equal(state.opened, 0)
 })
 
-test('demo: desktop hover changes the label and click still opens details', () => {
-  const { context, button, state, advance } = runtime()
+test('demo: result caption and score remain visible together when opening details', () => {
+  const { context, button, state } = runtime()
   const btn = button('green', '审核通过 (95分)')
-  const icon = btn.icon.innerHTML
-  context.queueModernButtonHover(btn, true, 'mouse')
-  advance(70)
-  assert.equal(btn.getAttribute('data-aura-expanded'), 'true')
-  assert.equal(btn.getAttribute('aria-expanded'), 'false')
-  assert.match(btn.copy.innerHTML, /审核通过/)
-  assert.doesNotMatch(btn.copy.innerHTML, /95/)
-  assert.equal(state.animations[0].frames[0].width, '86px')
-  assert.equal(state.animations[0].frames[1].width, '120px')
+  const copy = btn.copy.innerHTML
+  assert.match(copy, /aura-status-caption[^>]*>审核通过/)
+  assert.match(copy, /<b>95<\/b>/)
   context.handleButtonClick({ target: btn })
   assert.equal(state.opened, 1)
-  context.queueModernButtonHover(btn, false, 'mouse')
-  advance(110)
-  assert.equal(btn.getAttribute('data-aura-expanded'), 'false')
-  assert.match(btn.copy.innerHTML, /<b>95<\/b>/)
-  assert.equal(btn.icon.innerHTML, icon)
-  assert.equal(btn.getAttribute('aria-haspopup'), 'dialog')
-})
-
-test('demo: status refresh preserves the expanded reading mode', () => {
-  const { context, button } = runtime()
-  const btn = button('green', '审核通过 (95分)')
-  context.setModernButtonExpanded(btn, true)
+  assert.equal(btn.copy.innerHTML, copy)
   context.morphModernStatusButton(btn, 'audit', 'yellow', '建议关注 (78分)', false)
-  assert.equal(btn.getAttribute('data-aura-expanded'), 'true')
   assert.match(btn.copy.innerHTML, /建议关注/)
-  assert.doesNotMatch(btn.copy.innerHTML, /78/)
-  context.setModernButtonExpanded(btn, false)
   assert.match(btn.copy.innerHTML, /<b>78<\/b>/)
 })
 
-test('demo: loading and summary labels remain inside the same single-icon button', () => {
-  const { context, button, state } = runtime()
-  for (const [feature, status, loading, text, label] of [
-    ['audit', 'gray', true, '加载中...', '处理中'],
-    ['audit', 'loading', false, '审核分析中', '分析中'],
-    ['summary', 'green', false, '查看流程总结', '总结已完成'],
+test('demo: scoreless business states preserve their actual labels', () => {
+  const { context } = runtime()
+  for (const [feature, status, text] of [
+    ['audit', 'red', '审核异常'],
+    ['summary', 'red', '总结异常'],
+    ['summary', 'disabled', '未开启总结'],
+    ['audit', 'gray', '查看并生成审核'],
+    ['summary', 'green', '查看流程总结'],
+    ['audit', 'green', '审核通过'],
   ]) {
-    const btn = button(status, text, loading, feature)
-    const icon = btn.icon.innerHTML
-    context.setModernButtonExpanded(btn, true)
-    assert.match(btn.copy.innerHTML, new RegExp(label))
-    assert.equal(btn.icon.innerHTML, icon)
-    assert.ok(!btn.classList.contains('aura-status-button--icon-only'))
+    const markup = context.modernButtonCopyMarkup(feature, status, text, false)
+    assert.ok(markup.includes(feature === 'summary' && status === 'green' ? '>总结<' : text))
+    assert.doesNotMatch(markup, /aura-status-score/)
+    assert.equal(context.isIconOnlyButton(feature, status, false), false)
   }
-  assert.equal(state.opened, 0)
 })
 
-test('demo: rapid label toggles resume at visible width and reduced motion settles immediately', () => {
+test('demo: loading stays unavailable while analysis can open progress', () => {
   const { context, button, state } = runtime()
-  const btn = button('green', '审核通过 (95分)')
-  context.setModernButtonExpanded(btn, true)
-  const old = [...state.animations]
-  btn.visualWidth = 98
-  context.setModernButtonExpanded(btn, false)
-  assert.ok(old.every(motion => motion.cancelled))
-  assert.equal(btn._auraModernAnimations[0].frames[0].width, '98px')
-  state.reduced = true
-  context.setModernButtonExpanded(btn, true)
-  assert.equal(btn._auraModernAnimations.length, 0)
-  assert.equal(btn.getAttribute('data-aura-expanded'), 'true')
-  assert.match(btn.copy.innerHTML, /审核通过/)
-})
-
-test('demo: touch events and mobile capability never change the label but clicks open details', () => {
-  for (const hover of [true, false]) {
-    const { context, button, state, advance } = runtime({ hover })
-    const btn = button('green', '审核通过 (95分)')
-    context.queueModernButtonHover(btn, true, hover ? 'touch' : 'mouse')
-    advance(200)
-    assert.equal(btn.getAttribute('data-aura-expanded'), 'false')
-    if (!hover) {
-      context.setModernButtonExpanded(btn, true)
-      assert.equal(btn.getAttribute('data-aura-expanded'), 'false')
-    }
-    context.handleButtonClick({ target: btn })
-    assert.equal(state.opened, 1)
-  }
-})
-
-test('demo: moving past a button or starting a drag cancels hover expansion', () => {
-  const { context, button, advance } = runtime()
-  const btn = button('green', '审核通过 (95分)')
-  context.queueModernButtonHover(btn, true, 'mouse')
-  context.queueModernButtonHover(btn, false, 'mouse')
-  advance(200)
-  assert.equal(btn.getAttribute('data-aura-expanded'), 'false')
-  context.dragSession.isDown = true
-  context.queueModernButtonHover(btn, true, 'mouse')
-  advance(100)
-  assert.equal(btn.getAttribute('data-aura-expanded'), 'false')
+  const fetching = button('gray', '加载中...', true)
+  context.handleButtonClick({ target: fetching })
+  assert.equal(state.opened, 0)
+  assert.equal(fetching.getAttribute('aria-haspopup'), null)
+  assert.equal(fetching.getAttribute('aria-busy'), 'true')
+  const analyzing = button('loading', '审核分析中')
+  context.handleButtonClick({ target: analyzing })
+  assert.equal(state.opened, 1)
+  assert.equal(analyzing.getAttribute('aria-busy'), 'true')
+  assert.equal(analyzing.getAttribute('aria-haspopup'), 'dialog')
 })
 
 test('demo: classic colors, icons and disabled-error behavior stay intact', () => {
@@ -314,4 +268,64 @@ test('demo: classic colors, icons and disabled-error behavior stay intact', () =
   assert.equal(context.buttonTheme('green', false).surface, '#f1fbf5')
   assert.doesNotMatch(context.iconSvgMarkup('audit', 'loading', false), /aura-modern/)
   assert.match(context.buildStatusButton('demo', 'audit', 'error', '连接失败', false, false), /aria-disabled="true"/)
+})
+
+// 完成特效拥有独立生命周期，宽度过渡结束后仍可播放，状态改变时必须立即清理。
+test('demo: success confetti finishes and a new state cancels particles and score frames', () => {
+  const { context, button, advance } = runtime()
+  const btn = button('loading', '审核分析中')
+  context.morphModernStatusButton(btn, 'audit', 'green', '审核通过 (95分)', false)
+  advance(700)
+  const canvas = btn.children.find(node => node.tagName === 'canvas')
+  assert.ok(canvas)
+  assert.ok(Number(btn.number.textContent) > 0)
+  context.morphModernStatusButton(btn, 'audit', 'loading', '审核分析中', false)
+  assert.equal(canvas.removed, true)
+  advance(2000)
+  assert.equal(btn.getAttribute('data-aura-state'), 'loading')
+  assert.equal(btn.children.filter(node => node.tagName === 'canvas').length, 1)
+})
+
+test('demo: pass, review, return and summary have different completion effects', () => {
+  for (const [feature, status, text, expected] of [
+    ['audit', 'green', '审核通过 (95分)', 'success'],
+    ['audit', 'yellow', '建议关注 (78分)', 'warning'],
+    ['audit', 'red', '建议退回 (45分)', 'reject'],
+    ['summary', 'green', '查看流程总结', 'summary'],
+  ]) {
+    const { context, button, advance, state } = runtime()
+    assert.equal(context.modernEffectKind(feature, status, text, false), expected)
+    const btn = button('loading', '分析中', false, feature)
+    context.morphModernStatusButton(btn, feature, status, text, false)
+    advance(1100)
+    if (expected === 'success' || expected === 'reject') assert.ok(btn.children.some(node => node.tagName === 'canvas'))
+    else assert.ok(btn.children.some(node => node.className === 'aura-modern-scan'))
+    if (expected === 'warning') assert.ok(btn.children.some(node => node.className === 'aura-modern-mark'))
+    if (expected === 'reject') assert.ok(state.animations.some(motion => motion.target === 'caption'))
+    if (feature === 'audit') assert.equal(btn.number.textContent, Number(context.parseButtonLabel(text).scoreMatch[1]))
+    if (feature === 'summary') assert.match(btn.copy.innerHTML, />总结</)
+  }
+})
+
+test('demo: reduced motion removes all particles and settles the score', () => {
+  const { context, button, advance, state } = runtime()
+  const btn = button('loading', '分析中')
+  context.morphModernStatusButton(btn, 'audit', 'green', '审核通过 (95分)', false)
+  advance(700)
+  state.reduced = true
+  context.cancelModernButtonMotion(btn)
+  assert.equal(btn.number.textContent, '95')
+  assert.ok(btn.children.every(node => node.removed))
+  advance(2000)
+  assert.equal(btn.number.textContent, '95')
+})
+
+test('demo: modern hover and touch tooltip entry returns before creating a popup', () => {
+  const { context, button } = runtime()
+  const popup = script.slice(script.indexOf('function showTooltipForButton('), script.indexOf('function setupDraggableFloatContainer('))
+  vm.runInContext(popup, context)
+  let created = 0
+  context.document.createElement = () => { created++; throw new Error('Unexpected tooltip') }
+  context.showTooltipForButton(button('red', '建议退回 (45分)'), 'AI 流程审核 · 建议退回 (45分)')
+  assert.equal(created, 0)
 })
