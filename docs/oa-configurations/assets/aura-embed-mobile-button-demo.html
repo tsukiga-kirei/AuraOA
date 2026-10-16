@@ -1059,9 +1059,9 @@
       --aura-modern-g1: rgba(120,160,255,.4);
       --aura-modern-g2: rgba(170,150,255,.32);
       --aura-modern-g3: rgba(140,200,255,.3);
-      min-height: 52px !important;
-      height: 52px;
-      min-width: 52px;
+      min-height: 64px !important;
+      height: 64px;
+      min-width: 64px;
       width: auto;
       padding: 0 !important;
       gap: 0 !important;
@@ -1077,7 +1077,7 @@
       font-weight: 600;
       letter-spacing: 0;
       animation: none;
-      transform-origin: 26px center;
+      transform-origin: 32px center;
       transition: --aura-modern-light .6s ease, --aura-modern-g1 .6s ease, --aura-modern-g2 .6s ease, --aura-modern-g3 .6s ease, --aura-modern-halo .3s ease, color .4s ease, box-shadow .3s ease, transform .4s cubic-bezier(.2,.9,.3,1.3);
     }
     /* 主题光色与深色文字分开，轮廓轻透，光晕保持同色系。 */
@@ -1104,9 +1104,9 @@
     .aura-modern-glow i:nth-child(3) { width: 48.9px; height: 29.1px; left: 46%; bottom: -16.8px; animation-name: auraModernGlowDrift3; animation-duration: 11s; }
     .aura-modern-sheen { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; z-index: 2; }
     .aura-modern-sheen::after { content: ""; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,.65) 49%, transparent 68%); transform: translateX(-125%); }
-    body[data-button-style="modern"] .aura-status-button--icon-only { width: 52px; justify-content: flex-start !important; }
+    body[data-button-style="modern"] .aura-status-button--icon-only { width: 64px; justify-content: flex-start !important; }
     body[data-button-style="modern"] .aura-status-icon {
-      flex: 0 0 42.8px; width: 42.8px; height: 42.8px; margin: 3.8px;
+      flex: 0 0 54px; width: 54px; height: 54px; margin: 4px;
       border-radius: 50%; box-sizing: border-box;
       border: 1.15px solid rgba(255,255,255,.95);
       background: radial-gradient(circle at 32% 24%, #fff 0, #f6f8fc 55%, #e8edf5 100%);
@@ -1115,17 +1115,17 @@
       overflow: visible; opacity: 1; transform: none; animation: none;
       transition: box-shadow .3s ease, color .4s ease;
     }
-    body[data-button-style="modern"] .aura-status-icon > svg { width: 26px; height: 26px; animation: none; opacity: 1; filter: drop-shadow(0 1px 0 rgba(255,255,255,.8)); }
+    body[data-button-style="modern"] .aura-status-icon > svg { width: 30px; height: 30px; animation: none; opacity: 1; filter: drop-shadow(0 1px 0 rgba(255,255,255,.8)); }
     body[data-button-style="modern"] .aura-status-icon svg > * { stroke-dashoffset: 0; animation: none; }
     body[data-button-style="modern"] .aura-status-button--loading .aura-status-icon > svg { animation: none; }
     body[data-button-style="modern"] .aura-status-button--running .aura-modern-glyph[data-icon-kind="analysis"] .aura-modern-star { transform-origin: 12px 12px; animation: auraModernAnalysis 4s cubic-bezier(.45,0,.55,1) infinite; }
-    body[data-button-style="modern"] .aura-status-copy { flex: 0 1 auto; max-width: calc(100% - 50.4px); padding: 0 24.5px 0 5.4px; background: transparent; opacity: 1; transform: none; animation: none; }
-    body[data-button-style="modern"] .aura-status-copy-inner { display: inline-flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; min-width: 0; max-width: 100%; }
-    body[data-button-style="modern"] .aura-status-caption { font-size: 9.2px; line-height: 1.3; font-weight: 500; letter-spacing: .06em; opacity: .75; }
+    body[data-button-style="modern"] .aura-status-copy { flex: 0 1 auto; max-width: calc(100% - 62px); padding: 6px 24px 6px 8px; box-sizing: border-box; overflow: visible; background: transparent; opacity: 1; transform: none; animation: none; }
+    body[data-button-style="modern"] .aura-status-copy-inner { display: inline-flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; min-width: 0; max-width: 100%; overflow: visible; }
+    body[data-button-style="modern"] .aura-status-caption { font-size: 12px; line-height: 1.35; font-weight: 600; letter-spacing: .035em; opacity: .95; }
     body[data-button-style="modern"] .aura-status-score { padding: 0 !important; border: 0; gap: 4px; opacity: 1; transform: none; animation: none; }
-    body[data-button-style="modern"] .aura-status-score b { font-size: 21.4px !important; line-height: 1.05; font-weight: 600; letter-spacing: -.01em; font-variant-numeric: tabular-nums lining-nums; text-shadow: 0 1px 0 #fff; }
+    body[data-button-style="modern"] .aura-status-score b { font-size: 30px !important; line-height: 1; font-weight: 650; letter-spacing: -.01em; font-variant-numeric: tabular-nums lining-nums; text-shadow: 0 1px 0 #fff; }
     body[data-button-style="modern"] .aura-status-score small { font-size: 10px !important; font-weight: 500; opacity: .8; }
-    body[data-button-style="modern"] .aura-status-inline-label { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--aura-status-color); font-size: 13px; font-weight: 600; line-height: 1.4; letter-spacing: .02em; }
+    body[data-button-style="modern"] .aura-status-inline-label { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--aura-status-color); font-size: 15px; font-weight: 600; line-height: 1.4; letter-spacing: .02em; }
     @keyframes auraModernGlowDrift { 0%,100% { transform: translate(0,0) scale(1); opacity: .85; } 50% { transform: translate(6.9px,5.4px) scale(1.2); opacity: 1; } }
     @keyframes auraModernGlowDrift2 { 0%,100% { transform: translate(0,0) scale(1.05); opacity: 1; } 50% { transform: translate(9.2px,-3.1px) scale(.85); opacity: .7; } }
     @keyframes auraModernGlowDrift3 { 0%,100% { transform: translate(0,0) scale(.9); opacity: .7; } 50% { transform: translate(-10.7px,2.3px) scale(1.15); opacity: 1; } }
@@ -1152,7 +1152,7 @@
     body[data-button-style="modern"] .aura-status-button--icon-only::before,
     body[data-button-style="modern"] .aura-status-button--icon-only::after { display: none; }
     body[data-button-style="modern"] .aura-status-button--icon-only .aura-status-icon {
-      flex-basis: 50px; width: 50px; height: 50px; margin: 0;
+      flex-basis: 62px; width: 62px; height: 62px; margin: 0;
       box-shadow: 0 0 0 .76px rgba(140,155,190,.22), inset 0 1.9px 2.7px #fff, inset 0 -3px 6px rgba(110,125,170,.1), 0 4px 12px -5px rgba(60,72,115,.16);
       animation: auraModernBusyBreath 3.2s ease-in-out infinite;
     }
@@ -1166,10 +1166,10 @@
     .aura-modern-glow i:nth-child(3) { background: radial-gradient(ellipse, var(--aura-modern-g3), transparent 70%); }
     .aura-modern-glow i:nth-child(4) { width: 35.2px; height: 39.8px; right: -13.8px; top: 3.1px; animation-name: auraModernGlowDrift2; animation-duration: 8s; animation-direction: reverse; }
     .aura-modern-fx { position: absolute; pointer-events: none; z-index: 3; }
-    .aura-modern-scan { position: absolute; top: 0; bottom: 0; left: 0; width: 52px; opacity: 0; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--aura-modern-light) 34%, transparent), transparent); }
+    .aura-modern-scan { position: absolute; top: 0; bottom: 0; left: 0; width: 64px; opacity: 0; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--aura-modern-light) 34%, transparent), transparent); }
     body[data-button-style="modern"] .aura-status-score { isolation: isolate; }
     .aura-modern-mark { position: absolute; left: -1px; right: -1px; bottom: 1px; height: 5px; border-radius: 2px; background: color-mix(in srgb, var(--aura-modern-light) 24%, transparent); z-index: -1; transform-origin: left; }
-    body[data-button-style="modern"] .aura-status-caption--stamp { align-self: flex-start; border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; font-weight: 700; letter-spacing: .12em; line-height: 1.3; }
+    body[data-button-style="modern"] .aura-status-caption--stamp { align-self: flex-start; border: 1px solid currentColor; border-radius: 4px; padding: 1px 5px; font-weight: 700; letter-spacing: .08em; line-height: 1.2; transform-origin: center; }
     @keyframes auraModernBusyBreath { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-1px) scale(1.025); } }
     body[data-button-style="modern"] .aura-status-description {
       display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
@@ -1187,9 +1187,9 @@
     body.aura-dialog-active .aura-status-button::after,
     body.aura-dialog-active .aura-status-button *::before,
     body.aura-dialog-active .aura-status-button *::after { animation-play-state: paused !important; }
-    body[data-button-style="modern"] .aura-status-button--running { min-width: 104px; }
+    body[data-button-style="modern"] .aura-status-button--running { min-width: 132px; }
     body[data-button-style="modern"] .aura-status-button--running .aura-status-inline-label {
-      font-size: 13px; letter-spacing: .05em;
+      font-size: 15px; letter-spacing: .04em;
       background: linear-gradient(100deg, var(--aura-status-color) 38%, #a9c6ff 50%, var(--aura-status-color) 62%) 120% 0 / 260% 100%;
       -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
       animation: auraModernTextShimmer 1.8s linear infinite;
@@ -1198,10 +1198,10 @@
     /* 辅助状态展开后按短文案定宽，保持单行完整显示。 */
     body[data-button-style="modern"] .aura-status-button[data-aura-disclosure="true"][data-aura-expanded="true"],
     body[data-button-style="modern"] .aura-status-button--disclosing {
-      width: max-content; max-width: calc(100vw - 32px); height: 52px;
-      min-height: 52px; flex-shrink: 0;
+      width: max-content; max-width: calc(100vw - 32px); height: 64px;
+      min-height: 64px; flex-shrink: 0;
     }
-    body[data-button-style="modern"] .aura-status-button[data-aura-disclosure="true"] .aura-status-copy { flex: 1 1 auto; padding: 7px 18px 7px 6px; box-sizing: border-box; }
+    body[data-button-style="modern"] .aura-status-button[data-aura-disclosure="true"] .aura-status-copy { flex: 1 1 auto; padding: 8px 22px 8px 8px; box-sizing: border-box; overflow: hidden; }
     body[data-button-style="modern"] .aura-status-button[data-aura-disclosure="true"] .aura-status-inline-label,
     body[data-button-style="modern"] .aura-status-button[data-aura-disclosure="true"] .aura-status-description {
       white-space: nowrap; overflow: visible; text-overflow: clip; overflow-wrap: normal;
@@ -1221,6 +1221,8 @@
     }
     .aura-modern-glow i:nth-child(3), .aura-modern-glow i:nth-child(4) { display: none; }
     @keyframes auraModernCleanGlow { 0%,100% { transform: translateY(0) scale(.98); opacity: .55; } 50% { transform: translateY(-2px) scale(1.04); opacity: .8; } }
+    body[data-button-style="modern"] .aura-status-button--ready:not([data-aura-disclosure="true"]) { min-width: 156px; }
+    body[data-button-style="modern"] .aura-status-caption--stamp { margin-top: 2px; margin-bottom: 1px; }
     .demo-motion-toggle { display: inline-flex; align-items: center; gap: 7px; margin: 0 0 18px; color: #64748b; font-size: 13px; cursor: pointer; }
     .demo-motion-toggle input { accent-color: #2563eb; width: 16px; height: 16px; margin: 0; }
     .demo-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -1480,6 +1482,7 @@
 
   <script>
     var BUTTON_BUSY_MIN_MS = 480;
+    var MODERN_BUTTON_SIZE = 64;
     var STATUS_MOTION_CLASSES = [
       'aura-status-button--enter', 'aura-status-button--loading', 'aura-status-button--running',
       'aura-status-button--enter-shake', 'aura-status-button--enter-pop', 'aura-status-button--enter-bounce',
@@ -1855,7 +1858,7 @@
     }
     // 移植参考页的纸屑物理：通过向外抛洒并下落，退回则短促扩散后消散。
     function burstModernParticles(btn, run, kind) {
-      var scale = 52 / 68, dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var scale = MODERN_BUTTON_SIZE / 68, dpr = Math.min(window.devicePixelRatio || 1, 2);
       var canvas = document.createElement('canvas');
       canvas.className = 'aura-modern-fx';
       canvas.setAttribute('aria-hidden', 'true');
@@ -1863,8 +1866,8 @@
       canvas.height = Math.round(300 * scale * dpr);
       canvas.style.width = (520 * scale) + 'px';
       canvas.style.height = (300 * scale) + 'px';
-      canvas.style.left = (26 - 260 * scale) + 'px';
-      canvas.style.top = (26 - 150 * scale) + 'px';
+      canvas.style.left = (MODERN_BUTTON_SIZE / 2 - 260 * scale) + 'px';
+      canvas.style.top = (MODERN_BUTTON_SIZE / 2 - 150 * scale) + 'px';
       var ctx = canvas.getContext('2d');
       if (!ctx) return;
       ctx.scale(dpr * scale, dpr * scale);
@@ -1946,7 +1949,7 @@
           var scan = document.createElement('span'); scan.className = 'aura-modern-scan'; scan.setAttribute('aria-hidden', 'true');
           btn.querySelector('.aura-modern-sheen').appendChild(scan); run.nodes.push(scan);
           modernEffectAnimate(btn, run, scan, [
-            { transform: 'translateX(-52px)', opacity: 0 }, { opacity: 1, offset: .15 }, { opacity: 1, offset: .8 },
+            { transform: 'translateX(-' + MODERN_BUTTON_SIZE + 'px)', opacity: 0 }, { opacity: 1, offset: .15 }, { opacity: 1, offset: .8 },
             { transform: 'translateX(' + btn.getBoundingClientRect().width + 'px)', opacity: 0 }
           ], { duration: kind === 'warning' ? 1000 : 800, easing: 'ease-in-out' });
           if (kind === 'warning') {
@@ -1993,7 +1996,7 @@
       if (!isModernButtonStyle() || buttonEffectsSuspended || btn.getAttribute('data-aura-disclosure') !== 'true') return false;
       if ((btn.getAttribute('data-aura-expanded') === 'true') === expanded) return false;
       var fromWidth = btn.getBoundingClientRect().width;
-      var fromHeight = btn.getBoundingClientRect().height || 52;
+      var fromHeight = btn.getBoundingClientRect().height || MODERN_BUTTON_SIZE;
       cancelModernButtonMotion(btn);
       var feature = btn.getAttribute('data-aura-feature');
       var status = btn.getAttribute('data-aura-state');
@@ -2007,7 +2010,7 @@
       btn.setAttribute('aria-expanded', String(expanded));
       btn.classList.toggle('aura-status-button--icon-only', !expanded);
       var toWidth = btn.getBoundingClientRect().width;
-      var toHeight = btn.getBoundingClientRect().height || 52;
+      var toHeight = btn.getBoundingClientRect().height || MODERN_BUTTON_SIZE;
       if (expanded && inner.getBoundingClientRect) textWidth = inner.getBoundingClientRect().width;
       if (buttonEffectsSuspended || prefersReducedMotion() || !btn.animate) {
         if (!expanded) btn.querySelector('.aura-status-copy-inner').innerHTML = '';
@@ -2101,8 +2104,8 @@
           { opacity: .5, transform: 'translateY(1px)' },
           { opacity: 1, transform: 'translateY(0)' }
         ] : [
-          { clipPath: 'inset(0 100% 0 0)', opacity: 0, transform: 'translateX(-4px)' },
-          { clipPath: 'inset(0 0% 0 0)', opacity: 1, transform: 'translateX(0)' }
+          { clipPath: 'inset(-8px 100% -8px -8px)', opacity: 0, transform: 'translateX(-4px)' },
+          { clipPath: 'inset(-8px -8px -8px -8px)', opacity: 1, transform: 'translateX(0)' }
         ];
         btn._auraModernAnimations.push(btn.querySelector('.aura-status-copy').animate(copyFrames,
           { duration: updatingResult ? 200 : 280, delay: updatingResult ? 0 : 160, fill: 'backwards', easing: 'cubic-bezier(.22, .7, .2, 1)' }));
