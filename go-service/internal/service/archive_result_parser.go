@@ -25,6 +25,7 @@ type archiveExtractionPayload struct {
 	Suggestions       []string                   `json:"suggestions"`
 	AISummary         string                     `json:"ai_summary"`
 	Summary           string                     `json:"summary"`
+	Deductions        []deductionPayload         `json:"deductions"`
 }
 
 type archiveFlowAuditPayload struct {
@@ -131,6 +132,27 @@ func ParseArchiveReviewResult(raw string) (*model.ArchiveResultJSON, error) {
 	}
 
 	result.RuleAudit = normalizeArchiveRuleAudits(result.RuleAudit)
+
+	// 自检兜底：若 overall_score < 100 但 risk_points 与 suggestions 均为空，自动补充
+	if result.OverallScore < 100 && len(result.RiskPoints) == 0 && len(result.Suggestions) == 0 {
+		for _, d := range payload.Deductions {
+			if strings.TrimSpace(d.Item) != "" || strings.TrimSpace(d.Reason) != "" {
+				text := strings.TrimSpace(d.Item)
+				if strings.TrimSpace(d.Reason) != "" {
+					text += "：" + strings.TrimSpace(d.Reason)
+				}
+				result.RiskPoints = append(result.RiskPoints, text)
+			}
+		}
+		if len(result.RiskPoints) == 0 {
+			for _, r := range result.RuleAudit {
+				if !r.Passed && strings.TrimSpace(r.Reasoning) != "" {
+					result.RiskPoints = append(result.RiskPoints, fmt.Sprintf("未满足归档复核规则：%s（%s）", r.RuleName, r.Reasoning))
+				}
+			}
+		}
+	}
+
 	return result, nil
 }
 

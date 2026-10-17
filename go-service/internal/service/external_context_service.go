@@ -210,19 +210,52 @@ func (s *AuditExecuteService) resolveAuditRulesExternalContext(c *gin.Context, t
 	if s.externalCtx == nil || len(rules) == 0 {
 		return ""
 	}
-	var sections []string
+	type contextGroup struct {
+		ruleContents []string
+		text         string
+	}
+	var order []string
+	groups := make(map[string]*contextGroup)
+	mountCache := make(map[string]string)
+
 	for _, rule := range rules {
 		if !isRuleEnabled(&rule) || !rule.ContextEnabled || len(rule.ContextMounts) == 0 {
 			continue
 		}
-		text := s.externalCtx.ResolveForPrompt(c, tenant, processID, processData, rule.ContextMounts)
-		if strings.TrimSpace(text) == "" {
+		cacheKey := string(rule.ContextMounts)
+		text, hit := mountCache[cacheKey]
+		if !hit {
+			text = strings.TrimSpace(s.externalCtx.ResolveForPrompt(c, tenant, processID, processData, rule.ContextMounts))
+			mountCache[cacheKey] = text
+		}
+		if text == "" {
 			continue
 		}
-		sections = append(sections, fmt.Sprintf("规则：%s\n%s", rule.RuleContent, text))
+		if g, exists := groups[text]; exists {
+			g.ruleContents = append(g.ruleContents, rule.RuleContent)
+		} else {
+			groups[text] = &contextGroup{
+				ruleContents: []string{rule.RuleContent},
+				text:         text,
+			}
+			order = append(order, text)
+		}
 	}
-	if len(sections) == 0 {
+	if len(order) == 0 {
 		return ""
+	}
+	var sections []string
+	for _, key := range order {
+		g := groups[key]
+		if len(g.ruleContents) == 1 {
+			sections = append(sections, fmt.Sprintf("规则：%s\n%s", g.ruleContents[0], g.text))
+		} else {
+			var ruleList []string
+			for _, r := range g.ruleContents {
+				ruleList = append(ruleList, "- "+r)
+			}
+			sections = append(sections, fmt.Sprintf("关联规则（共%d条）：\n%s\n%s", len(g.ruleContents), strings.Join(ruleList, "\n"), g.text))
+		}
 	}
 	return "规则关联外部数据：\n" + strings.Join(sections, "\n\n")
 }
@@ -231,19 +264,52 @@ func (s *ArchiveReviewService) resolveArchiveRulesExternalContext(c *gin.Context
 	if s.externalCtx == nil || len(rules) == 0 {
 		return ""
 	}
-	var sections []string
+	type contextGroup struct {
+		ruleContents []string
+		text         string
+	}
+	var order []string
+	groups := make(map[string]*contextGroup)
+	mountCache := make(map[string]string)
+
 	for _, rule := range rules {
 		if !rule.IsEnabled() || !rule.ContextEnabled || len(rule.ContextMounts) == 0 {
 			continue
 		}
-		text := s.externalCtx.ResolveForPrompt(c, tenant, processID, processData, rule.ContextMounts)
-		if strings.TrimSpace(text) == "" {
+		cacheKey := string(rule.ContextMounts)
+		text, hit := mountCache[cacheKey]
+		if !hit {
+			text = strings.TrimSpace(s.externalCtx.ResolveForPrompt(c, tenant, processID, processData, rule.ContextMounts))
+			mountCache[cacheKey] = text
+		}
+		if text == "" {
 			continue
 		}
-		sections = append(sections, fmt.Sprintf("规则：%s\n%s", rule.RuleContent, text))
+		if g, exists := groups[text]; exists {
+			g.ruleContents = append(g.ruleContents, rule.RuleContent)
+		} else {
+			groups[text] = &contextGroup{
+				ruleContents: []string{rule.RuleContent},
+				text:         text,
+			}
+			order = append(order, text)
+		}
 	}
-	if len(sections) == 0 {
+	if len(order) == 0 {
 		return ""
+	}
+	var sections []string
+	for _, key := range order {
+		g := groups[key]
+		if len(g.ruleContents) == 1 {
+			sections = append(sections, fmt.Sprintf("规则：%s\n%s", g.ruleContents[0], g.text))
+		} else {
+			var ruleList []string
+			for _, r := range g.ruleContents {
+				ruleList = append(ruleList, "- "+r)
+			}
+			sections = append(sections, fmt.Sprintf("关联规则（共%d条）：\n%s\n%s", len(g.ruleContents), strings.Join(ruleList, "\n"), g.text))
+		}
 	}
 	return "规则关联外部数据：\n" + strings.Join(sections, "\n\n")
 }

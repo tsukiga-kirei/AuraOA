@@ -38,6 +38,7 @@ export interface AuditResult {
   updated_at?: string
   recommendation?: 'approve' | 'return' | 'review'
   overall_score?: number
+  deductions?: DeductionItem[]
   rule_results: RuleResultItem[]
   risk_points: string[]
   suggestions: string[]
@@ -53,6 +54,13 @@ export interface AuditResult {
 	/** 本次结果实际使用的不可变执行配置版本；历史存量结果可能为空 */
 	config_version_id?: string
 	config_version_no?: number
+}
+
+/** 扣分细项定义 */
+export interface DeductionItem {
+  item: string
+  points: number
+  reason: string
 }
 
 /** 单条规则校验结果 */

@@ -1,4 +1,5 @@
 import type { QueryEvidence } from './audit-data-query'
+import type { DeductionItem } from './audit'
 export type ArchiveCompliance = 'compliant' | 'partially_compliant' | 'non_compliant'
 
 export type ArchiveRunStatus =
@@ -69,6 +70,7 @@ export interface ArchiveReviewResult {
   status?: ArchiveRunStatus
   overall_compliance?: ArchiveCompliance
   overall_score?: number
+  deductions?: DeductionItem[]
   confidence?: number
   duration_ms?: number
   deep_thinking?: string

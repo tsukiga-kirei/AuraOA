@@ -8,6 +8,12 @@ import (
 	"auraoa/go-service/internal/model"
 )
 
+type deductionPayload struct {
+	Item   string  `json:"item"`
+	Points float64 `json:"points"`
+	Reason string  `json:"reason"`
+}
+
 // extractionPayload 审核提取阶段的宽松解析结构，核心字段为 recommendation（审核结论）。
 // 分数字段使用 float64，避免模型输出 85.0 时整型反序列化失败。
 type extractionPayload struct {
@@ -18,6 +24,7 @@ type extractionPayload struct {
 	RiskPoints     []string               `json:"risk_points"`
 	Suggestions    []string               `json:"suggestions"`
 	Confidence     float64                `json:"confidence"`
+	Deductions     []deductionPayload     `json:"deductions"`
 }
 
 // ParseAuditResult 解析 AI 提取阶段返回的 JSON，转换为结构化审核结论。
@@ -35,6 +42,26 @@ func ParseAuditResult(raw string) (*model.AuditResultJSON, error) {
 		Suggestions:  coalesceStringSlice(p.Suggestions),
 		OverallScore: pickOverallScoreInt(p.OverallScore, p.Score),
 		Confidence:   clampPercentInt(p.Confidence),
+	}
+
+	// 自检兜底：若 overall_score < 100 但 risk_points 与 suggestions 均为空，自动从未通过规则或 deductions 中提取补充
+	if out.OverallScore < 100 && len(out.RiskPoints) == 0 && len(out.Suggestions) == 0 {
+		for _, d := range p.Deductions {
+			if strings.TrimSpace(d.Item) != "" || strings.TrimSpace(d.Reason) != "" {
+				text := strings.TrimSpace(d.Item)
+				if strings.TrimSpace(d.Reason) != "" {
+					text += "：" + strings.TrimSpace(d.Reason)
+				}
+				out.RiskPoints = append(out.RiskPoints, text)
+			}
+		}
+		if len(out.RiskPoints) == 0 {
+			for _, r := range out.RuleResults {
+				if !r.Passed && strings.TrimSpace(r.Reason) != "" {
+					out.RiskPoints = append(out.RiskPoints, fmt.Sprintf("未满足规则要求：%s（%s）", r.RuleContent, r.Reason))
+				}
+			}
+		}
 	}
 
 	rec := normalizeAuditRecommendation(strings.TrimSpace(p.Recommendation))
