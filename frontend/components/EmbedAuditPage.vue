@@ -59,10 +59,15 @@ const currentRuleDetails = computed(() => (currentResult.value?.rule_results || 
   reason: rule.reason,
 })))
 
+const ruleOutcomeSummary = computed(() => {
+  if (!currentRuleDetails.value.length) return ''
+  const failed = currentRuleDetails.value.filter(rule => !rule.passed).length
+  return failed ? t('embed.auditFailedRuleSummary', [failed]) : t('embed.auditPassedRuleSummary', [currentRuleDetails.value.length])
+})
 
 const recommendationConfig = computed(() => ({
   approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: t('dashboard.rec.approve') },
-  return: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: ReloadOutlined, label: t('dashboard.rec.return') },
+  return: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: CloseCircleOutlined, label: t('dashboard.rec.return') },
   review: { color: 'var(--color-info)', bg: 'var(--color-info-bg)', icon: InfoCircleOutlined, label: t('dashboard.rec.review') },
 }))
 
@@ -675,7 +680,7 @@ onBeforeUnmount(() => {
             </div>
           </template>
 
-          <template v-else>
+          <div v-else :key="`result-${currentResult.id || currentResult.process_id}-${activePerspective}`" class="audit-result-content">
             <div
               class="result-banner"
               :style="{
@@ -686,6 +691,7 @@ onBeforeUnmount(() => {
               <component
                 :is="recommendationConfig[currentResult.recommendation || 'review']?.icon"
                 class="result-banner-icon"
+                aria-hidden="true"
                 :style="{ color: getScoreColorConfig(currentResult.overall_score)?.color }"
               />
               <div class="result-banner-info">
@@ -695,17 +701,18 @@ onBeforeUnmount(() => {
                 >
                   {{ recommendationConfig[currentResult.recommendation || 'review']?.label }}
                 </div>
-                <div class="result-banner-meta">
-                  {{ t('dashboard.overallScore') }} {{ currentResult.overall_score }}{{ t('dashboard.points') }}
-                  · {{ t('dashboard.confidence') }} {{ currentResult.confidence }}%
+                <div class="result-banner-meta result-banner-meta--summary">
+                  <span v-if="ruleOutcomeSummary">{{ ruleOutcomeSummary }} · </span>{{ t('dashboard.confidence') }} {{ currentResult.confidence }}%
                 </div>
               </div>
-              <div class="result-score" :style="{ color: getScoreColorConfig(currentResult.overall_score)?.color }">
-                {{ currentResult.overall_score }}
+              <div class="result-score-block">
+                <div class="result-score" :style="{ color: getScoreColorConfig(currentResult.overall_score)?.color }">{{ currentResult.overall_score ?? '—' }}</div>
+                <div class="result-score-label">{{ t('dashboard.overallScore') }}</div>
               </div>
             </div>
 
             <ResultRuleDetails
+              embedded
               v-if="currentRuleDetails.length"
               :key="`rules-${currentResult.id || currentResult.process_id}-${activePerspective}`"
               :title="t('dashboard.ruleCheckDetail')"
@@ -715,8 +722,8 @@ onBeforeUnmount(() => {
             <div v-if="currentResult.risk_points?.length || currentResult.suggestions?.length" class="risk-suggest-row">
               <div v-if="currentResult.risk_points?.length" class="insight-card insight-card--risk">
                 <div class="insight-card-header">
-                  <CloseCircleOutlined style="color: var(--color-danger);" />
-                  <span>{{ t('dashboard.riskPoints') }}</span>
+                  <span class="insight-card-marker"><WarningOutlined aria-hidden="true" /></span>
+                  <h4>{{ t('dashboard.riskPoints') }}</h4>
                 </div>
                 <ul class="insight-card-list">
                   <li v-for="(rp, i) in currentResult.risk_points" :key="i">{{ rp }}</li>
@@ -724,8 +731,8 @@ onBeforeUnmount(() => {
               </div>
               <div v-if="currentResult.suggestions?.length" class="insight-card insight-card--suggest">
                 <div class="insight-card-header">
-                  <InfoCircleOutlined style="color: var(--color-primary);" />
-                  <span>{{ t('dashboard.suggestions') }}</span>
+                  <span class="insight-card-marker"><InfoCircleOutlined aria-hidden="true" /></span>
+                  <h4>{{ t('dashboard.suggestions') }}</h4>
                 </div>
                 <ul class="insight-card-list">
                   <li v-for="(sg, i) in currentResult.suggestions" :key="i">{{ sg }}</li>
@@ -750,7 +757,7 @@ onBeforeUnmount(() => {
               :text="currentResult.ai_reasoning || ''"
               max-height="320px"
             ><template #icon><ExperimentOutlined /></template></ResultReasoningPanel>
-          </template>
+          </div>
         </template>
 
         <div v-else-if="!auditing" class="result-empty">
@@ -1057,7 +1064,7 @@ onBeforeUnmount(() => {
 .result-banner--error { background: var(--color-danger-bg); border-color: var(--color-danger); }
 .result-banner-icon { font-size: 28px; flex-shrink: 0; }
 .result-banner-info { flex: 1; min-width: 0; }
-.result-banner-title { font-size: 16px; font-weight: 700; }
+.result-banner-title { font-size: 16px; font-weight: 600; line-height: 1.5; }
 .result-banner-meta {
   margin-top: 2px;
   color: var(--color-text-tertiary);
@@ -1066,7 +1073,12 @@ onBeforeUnmount(() => {
   overflow-wrap: anywhere;
   word-break: break-word;
 }
-.result-score { font-size: 36px; font-weight: 800; line-height: 1; }
+.result-banner-meta--summary { margin-top: 4px; color: var(--color-text-secondary); line-height: 1.7; }
+.result-score-block { flex-shrink: 0; text-align: right; padding-left: 8px; }
+.result-score { font-size: 36px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
+.result-score-label { margin-top: 6px; color: var(--color-text-secondary); font-size: 10px; line-height: 1.4; }
+.audit-result-content > .result-banner { animation: audit-result-appear 180ms cubic-bezier(.2,.8,.2,1); }
+@keyframes audit-result-appear { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
 .result-section { margin-bottom: 24px; }
 .result-section-title { font-size: 14px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 12px; }
@@ -1088,18 +1100,22 @@ onBeforeUnmount(() => {
 .rule-check-name { font-size: 14px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 4px; }
 .rule-check-reasoning { font-size: 13px; color: var(--color-text-secondary); line-height: 1.5; }
 
-.risk-suggest-row { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 24px; }
+.risk-suggest-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-bottom: 18px; }
 @media (min-width: 640px) {
-  .risk-suggest-row { grid-template-columns: 1fr 1fr; }
+  .risk-suggest-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .risk-suggest-row:has(.insight-card:only-child) { grid-template-columns: 1fr; }
   .risk-suggest-row > .insight-card:only-child { grid-column: 1 / -1; }
 }
-.insight-card { border-radius: var(--radius-md); padding: 16px; border: 1px solid var(--color-border-light); }
-.insight-card--risk { background: color-mix(in srgb, var(--color-danger) 3%, var(--color-bg-card)); border-color: color-mix(in srgb, var(--color-danger) 12%, var(--color-border-light)); }
-.insight-card--suggest { background: color-mix(in srgb, var(--color-primary) 3%, var(--color-bg-card)); border-color: color-mix(in srgb, var(--color-primary) 12%, var(--color-border-light)); }
-.insight-card-header { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 10px; }
+.insight-card { min-width: 0; border-radius: 10px; padding: 15px 16px; border: 1px solid var(--color-border); background: var(--color-bg-card); transition: border-color 160ms ease; }
+.insight-card--risk { --insight-accent: var(--color-danger); --insight-tint: var(--color-danger-bg); }
+.insight-card--suggest { --insight-accent: var(--color-primary); --insight-tint: var(--color-primary-bg); }
+.insight-card-header { display: flex; align-items: center; gap: 8px; color: var(--color-text-primary); min-height: 26px; margin-bottom: 10px; }
+.insight-card-header h4 { margin: 0; font-family: inherit; font-size: 14px; font-weight: 600; line-height: 1.5; }
+.insight-card-marker { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 7px; color: var(--insight-accent); background: var(--insight-tint); font-size: 18px; }
 .insight-card-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
-.insight-card-list li { font-size: 13px; line-height: 1.6; color: var(--color-text-secondary); }
+.insight-card-list li { font-size: 13px; line-height: 1.8; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.insight-card-list li::marker { color: var(--color-text-tertiary); }
+@media (hover: hover) and (pointer: fine) { .insight-card:hover { border-color: color-mix(in srgb, var(--insight-accent) 22%, var(--color-border)); } }
 
 .result-empty { text-align: center; padding: 40px 20px; }
 .result-empty-icon {
@@ -1115,6 +1131,8 @@ onBeforeUnmount(() => {
 .embed-audit :deep(.result-rule-details__header) { flex-wrap: wrap; }
 .embed-audit :deep(.result-rule-details__summary) { gap: 4px; }
 .embed-audit :deep(.result-rule-details__item) { border-radius: 10px; }
+.audit-result-content :deep(.result-rule-details) { margin-bottom: 18px; }
+.audit-result-content :deep(.result-rule-details__title) { font-family: inherit; font-weight: 600; }
 .embed-audit :deep(.result-reasoning-panel__toggle) { min-height: 50px; }
 .embed-audit :deep(.markdown-body table) { display: block; max-width: 100%; overflow-x: auto; }
 .embed-audit :deep(.markdown-body pre) { max-width: 100%; }
@@ -1130,11 +1148,12 @@ onBeforeUnmount(() => {
   .embed-process-card__stat { margin-right: auto; }
   .result-banner { padding: 14px; }
   .result-score { font-size: 32px; }
+  .insight-card { padding: 14px; }
   .embed-auditing-center { padding: 24px 0; min-height: 300px; }
   .embed-audit :deep(.result-rule-details__title) { font-size: 14px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .embed-audit, .embed-audit :deep(*) { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  .embed-audit, .embed-audit :deep(*) { animation: none !important; transition: none !important; }
 }
 
 /* 限定到审核文档，避免影响共用 embed 布局的流程总结页或 OA 父页。 */

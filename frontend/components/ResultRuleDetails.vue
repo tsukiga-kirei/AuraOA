@@ -18,12 +18,38 @@ const props = withDefaults(defineProps<{
   title: string
   rules: ResultRuleDetailItem[]
   emptyText?: string
+  embedded?: boolean
 }>(), {
   emptyText: '',
+  embedded: false,
 })
 
 const { t } = useI18n()
 const expanded = ref(false)
+const listRef = ref<HTMLElement | null>(null)
+const listId = useId()
+let heightAnimation: Animation | null = null
+
+async function togglePassed() {
+  if (!props.embedded) { expanded.value = !expanded.value; return }
+  const list = listRef.value
+  const before = list?.getBoundingClientRect().height || 0
+  heightAnimation?.cancel()
+  heightAnimation = null
+  expanded.value = !expanded.value
+  if (!list || typeof list.animate !== 'function' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  await nextTick()
+  if (listRef.value !== list) return
+  const after = list.getBoundingClientRect().height
+  if (Math.abs(before - after) < 1) return
+  // 只在嵌入审核页对列表的真实高度做短过渡，结束后恢复自然高度以适应换行与窄屏。
+  const animation = list.animate([{ height: `${before}px` }, { height: `${after}px` }], {
+    duration: 200,
+    easing: 'cubic-bezier(.2,.8,.2,1)',
+  })
+  heightAnimation = animation
+  animation.onfinish = () => { if (heightAnimation === animation) heightAnimation = null }
+}
 
 // 未通过项优先展示；相同状态下保持后端原始顺序。
 const sortedRules = computed(() => props.rules
@@ -39,12 +65,15 @@ const visibleRules = computed(() => (
 ))
 
 watch(() => props.rules, () => {
+  heightAnimation?.cancel()
+  heightAnimation = null
   expanded.value = false
 })
+onBeforeUnmount(() => { heightAnimation?.cancel() })
 </script>
 
 <template>
-  <section class="result-rule-details">
+  <section class="result-rule-details" :class="{ 'result-rule-details--embedded': embedded }">
     <div class="result-rule-details__header">
       <h4 class="result-rule-details__title">{{ title }}</h4>
       <div class="result-rule-details__summary">
@@ -62,7 +91,8 @@ watch(() => props.rules, () => {
           type="button"
           class="result-rule-details__toggle"
           :aria-expanded="expanded"
-          @click="expanded = !expanded"
+          :aria-controls="listId"
+          @click="togglePassed"
         >
           <span>{{ t(expanded ? 'resultDetails.collapsePassed' : 'resultDetails.expandPassed') }}</span>
           <UpOutlined v-if="expanded" />
@@ -71,7 +101,7 @@ watch(() => props.rules, () => {
       </div>
     </div>
 
-    <div v-if="visibleRules.length" class="result-rule-details__list">
+    <div v-if="visibleRules.length || (embedded && totalCount > 0)" :id="listId" ref="listRef" class="result-rule-details__list">
       <div
         v-for="(rule, index) in visibleRules"
         :key="rule.id ?? `${rule.name}-${rule.originalIndex}-${index}`"
@@ -236,6 +266,26 @@ watch(() => props.rules, () => {
   text-align: center;
 }
 
+/* 嵌入页单独启用轻量卡片与动效，工作台、归档页沿用默认表现。 */
+.result-rule-details--embedded .result-rule-details__list { overflow: hidden; gap: 10px; }
+.result-rule-details--embedded .result-rule-details__item { background: var(--color-bg-card); border-color: var(--color-border); border-left-width: 3px; padding: 14px 16px; transition: border-color 160ms ease; animation: embedded-rule-appear 160ms ease; }
+.result-rule-details--embedded .result-rule-details__item--pass { background: color-mix(in srgb, var(--color-success) 2%, var(--color-bg-card)); border-color: color-mix(in srgb, var(--color-success) 20%, var(--color-border)); border-left-color: var(--color-success); }
+.result-rule-details--embedded .result-rule-details__item--fail { background: color-mix(in srgb, var(--color-danger) 5%, var(--color-bg-card)); border-color: color-mix(in srgb, var(--color-danger) 28%, var(--color-border)); border-left-color: var(--color-danger); }
+.result-rule-details--embedded .result-rule-details__status { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; font-size: 18px; padding-top: 0; }
+.result-rule-details--embedded .result-rule-details__item--pass .result-rule-details__status { background: var(--color-success-bg); }
+.result-rule-details--embedded .result-rule-details__item--fail .result-rule-details__status { background: var(--color-danger-bg); }
+.result-rule-details--embedded .result-rule-details__name { font-weight: 600; line-height: 1.65; overflow-wrap: anywhere; }
+.result-rule-details--embedded .result-rule-details__reason { margin-top: 5px; line-height: 1.8; }
+.result-rule-details--embedded .result-rule-details__toggle { min-height: 32px; }
+@keyframes embedded-rule-appear { from { opacity: 0; } to { opacity: 1; } }
+@media (hover: hover) and (pointer: fine) {
+  .result-rule-details--embedded .result-rule-details__item--pass:hover { border-color: color-mix(in srgb, var(--color-success) 32%, var(--color-border)); border-left-color: var(--color-success); }
+  .result-rule-details--embedded .result-rule-details__item--fail:hover { border-color: color-mix(in srgb, var(--color-danger) 42%, var(--color-border)); border-left-color: var(--color-danger); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .result-rule-details--embedded .result-rule-details__item { animation: none; transition: none; }
+}
+
 @media (max-width: 640px) {
   .result-rule-details__header {
     align-items: flex-start;
@@ -250,5 +300,7 @@ watch(() => props.rules, () => {
   .result-rule-details__item {
     padding: 11px 12px;
   }
+  .result-rule-details--embedded .result-rule-details__item { padding: 12px; }
+  .result-rule-details--embedded .result-rule-details__toggle { min-height: 36px; }
 }
 </style>

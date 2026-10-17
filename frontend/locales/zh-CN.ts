@@ -5,6 +5,8 @@ export default {
   'experience.shareThoughts': '分享看法',
   'experience.collapseComposer': '收起输入',
   'embed.auditRunning': '执行中',
+  'embed.auditFailedRuleSummary': '{0} 项规则未通过',
+  'embed.auditPassedRuleSummary': '{0} 项规则全部通过',
   'embed.auditPageScroll': '滚动审核页面',
   'embed.auditRulesUpdated': '有新版审核规则',
   'embed.auditRulesUpdatedHint': '当前结果仍使用原执行配置；规则更新不代表原结论已失效。',

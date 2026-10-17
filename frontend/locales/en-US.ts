@@ -4,6 +4,8 @@ export default {
   'experience.shareThoughts': 'Share thoughts',
   'experience.collapseComposer': 'Hide editor',
   'embed.auditRunning': 'Running',
+  'embed.auditFailedRuleSummary': '{0} rules not passed',
+  'embed.auditPassedRuleSummary': 'All {0} rules passed',
   'embed.auditPageScroll': 'Scroll audit page',
   'embed.auditRulesUpdated': 'New audit rules available',
   'embed.auditRulesUpdatedHint': 'This result uses its original execution configuration. Updated rules do not invalidate the previous conclusion.',
