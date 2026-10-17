@@ -8,42 +8,55 @@ const props = withDefaults(defineProps<{
   text: string
   defaultExpanded?: boolean
   maxHeight?: string
+  pageFlow?: boolean
 }>(), {
   defaultExpanded: false,
   maxHeight: '360px',
+  pageFlow: false,
 })
 
 const { t } = useI18n()
 const expanded = ref(props.defaultExpanded)
 const panelId = useId()
+const panelRef = ref<HTMLElement | null>(null)
+
+function toggle() {
+  // 收起吸顶的长正文前，先保留标题在视口中的位置，避免跳到后续内容。
+  if (props.pageFlow && expanded.value && panelRef.value && panelRef.value.getBoundingClientRect().top < 0) {
+    panelRef.value.scrollIntoView({ block: 'start', behavior: 'instant' })
+  }
+  expanded.value = !expanded.value
+}
 
 const html = computed(() => renderSafeMarkdown(props.text || ''))
 </script>
 
 <template>
-  <section class="result-reasoning-panel" :class="{ 'result-reasoning-panel--expanded': expanded }">
+  <section ref="panelRef" class="result-reasoning-panel" :class="{ 'result-reasoning-panel--expanded': expanded, 'result-reasoning-panel--page-flow': pageFlow }">
     <button
       type="button"
       class="result-reasoning-panel__toggle"
       :aria-controls="panelId"
       :aria-expanded="expanded"
-      @click="expanded = !expanded"
+      @click="toggle"
     >
-      <span class="result-reasoning-panel__title">{{ title }}</span>
+      <span class="result-reasoning-panel__title"><span v-if="$slots.icon" class="result-reasoning-panel__icon" aria-hidden="true"><slot name="icon" /></span>{{ title }}</span>
       <span class="result-reasoning-panel__action">
         {{ t(expanded ? 'resultDetails.collapse' : 'resultDetails.expand') }}
         <UpOutlined v-if="expanded" />
         <DownOutlined v-else />
       </span>
     </button>
+    <Transition name="reasoning-reveal">
     <div
       v-if="expanded"
       :id="panelId"
       class="result-reasoning-panel__body"
-      :style="{ maxHeight }"
+      :style="{ maxHeight: pageFlow ? 'none' : maxHeight }"
     >
       <div class="markdown-body result-reasoning-panel__content" v-html="html" />
     </div>
+    </Transition>
   </section>
 </template>
 
@@ -88,6 +101,16 @@ const html = computed(() => renderSafeMarkdown(props.text || ''))
   font-weight: 600;
   line-height: 1.5;
 }
+
+.result-reasoning-panel__icon { color: var(--color-primary); font-size: 16px; display: inline-flex; }
+.result-reasoning-panel--page-flow .result-reasoning-panel__title { display: inline-flex; align-items: center; gap: 9px; }
+.result-reasoning-panel--page-flow { overflow: visible; margin-bottom: 12px; border-radius: 12px; }
+.result-reasoning-panel--page-flow .result-reasoning-panel__toggle { position: sticky; top: 0; z-index: 4; border-radius: 12px; transition: background 160ms ease; }
+.result-reasoning-panel--page-flow.result-reasoning-panel--expanded .result-reasoning-panel__toggle { border-radius: 12px 12px 0 0; box-shadow: 0 3px 8px rgb(15 23 42 / 3%); }
+.result-reasoning-panel--page-flow .result-reasoning-panel__body { overflow: visible; border-radius: 0 0 12px 12px; }
+.result-reasoning-panel--page-flow .reasoning-reveal-enter-active { transition: opacity 180ms ease, transform 180ms ease; }
+.result-reasoning-panel--page-flow .reasoning-reveal-enter-from { opacity: 0; transform: translateY(-4px); }
+@media (prefers-reduced-motion: reduce) { .reasoning-reveal-enter-active { transition: none; } }
 
 .result-reasoning-panel__action {
   display: inline-flex;

@@ -6,11 +6,13 @@ const props = withDefaults(defineProps<{
   text?: string
   emptyText?: string
   maxHeight?: string
+  pageFlow?: boolean
 }>(), {
   title: '',
   text: '',
   emptyText: '等待模型输出',
   maxHeight: '260px',
+  pageFlow: false,
 })
 
 const bodyRef = ref<HTMLElement | null>(null)
@@ -33,6 +35,7 @@ const html = computed(() => {
 })
 
 const scrollToBottom = () => {
+  if (props.pageFlow) return
   const el = bodyRef.value
   if (!el) return
   el.scrollTop = el.scrollHeight
@@ -70,13 +73,13 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="ai-stream">
-    <div v-if="title" class="ai-stream__header">{{ title }}</div>
+  <div class="ai-stream" :class="{ 'ai-stream--page-flow': pageFlow }">
+    <div v-if="title" class="ai-stream__header"><span v-if="$slots.icon" class="ai-stream__icon" aria-hidden="true"><slot name="icon" /></span>{{ title }}</div>
     <div
       ref="bodyRef"
       class="ai-stream__body"
       :class="{ 'ai-stream__body--scrolling': isScrolling }"
-      :style="{ maxHeight }"
+      :style="{ maxHeight: pageFlow ? 'none' : maxHeight }"
       @scroll="handleScroll"
     >
       <div v-if="text" class="markdown-body ai-stream__content" v-html="html" />
@@ -151,4 +154,9 @@ onBeforeUnmount(() => {
   color: var(--color-text-tertiary);
   font-size: 13px;
 }
+
+.ai-stream--page-flow { overflow: visible; border-radius: 12px; }
+.ai-stream--page-flow .ai-stream__header { position: sticky; top: 0; z-index: 4; display: flex; align-items: center; gap: 9px; border-radius: 12px 12px 0 0; background: var(--color-bg-card); }
+.ai-stream__icon { display: inline-flex; color: var(--color-primary); font-size: 16px; }
+.ai-stream--page-flow .ai-stream__body { overflow: visible; border-radius: 0 0 12px 12px; }
 </style>
