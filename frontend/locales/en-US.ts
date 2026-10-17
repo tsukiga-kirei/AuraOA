@@ -1932,14 +1932,16 @@ export default {
     'admin.ruleConfig.phase2Label': 'Phase 2: Structured Extraction',
 
     //Variable Descriptions
+    'admin.ruleConfig.varProcessTypeDesc': 'Process type name, identifying the business workflow category',
     'admin.ruleConfig.varMainTableDesc': 'Main table field data (JSON), containing primary form field information',
     'admin.ruleConfig.varDetailTablesDesc': 'Detail table data (JSON array), may contain multiple detail table records',
+    'admin.ruleConfig.varAttachmentsDesc': 'Attachment recognition content, including OCR/parsed attachment text summaries',
     'admin.ruleConfig.varRulesDesc': 'Currently active rules list (JSON), including rule content, priority and status',
+    'admin.ruleConfig.varCurrentNodeDesc': 'Current approval node name, identifies the current stage in the approval process',
     'admin.ruleConfig.varFlowHistoryDesc': 'Completed approval flow node info (JSON), injected only when rules reference flow',
     'admin.ruleConfig.varFlowGraphDesc': 'Complete flow graph node info (JSON), all approval nodes, sequence and status',
-    'admin.ruleConfig.varCurrentNodeDesc': 'Current approval node name, identifies the current stage in the approval process',
+    'admin.ruleConfig.varExternalContextDesc': 'External context and query data, including referenced workflow forms and SQL query results',
     'admin.ruleConfig.varProcessMetaDesc': 'Process metadata (ID, title, applicant, department, current node, submit time, etc.)',
-    'admin.ruleConfig.varAttachmentsDesc': 'Attachment recognition content, including OCR/parsed attachment text summaries',
 
     //System Variable Descriptions
     'admin.ruleConfig.insertDataVariable': 'Data Variables',

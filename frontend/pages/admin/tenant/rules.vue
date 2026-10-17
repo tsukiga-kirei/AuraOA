@@ -1397,12 +1397,15 @@ const strictnessOptions = computed(() => [
 
 //用户推理提示词可用变量
 const reasoningPromptVariables = computed(() => [
+  { key: '{{process_type}}', desc: t('admin.ruleConfig.varProcessTypeDesc') },
   { key: '{{main_table}}', desc: t('admin.ruleConfig.varMainTableDesc') },
   { key: '{{detail_tables}}', desc: t('admin.ruleConfig.varDetailTablesDesc') },
+  { key: '{{attachments}}', desc: t('admin.ruleConfig.varAttachmentsDesc') },
   { key: '{{rules}}', desc: t('admin.ruleConfig.varRulesDesc') },
+  { key: '{{current_node}}', desc: t('admin.ruleConfig.varCurrentNodeDesc') },
   { key: '{{flow_history}}', desc: t('admin.ruleConfig.varFlowHistoryDesc') },
   { key: '{{flow_graph}}', desc: t('admin.ruleConfig.varFlowGraphDesc') },
-  { key: '{{current_node}}', desc: t('admin.ruleConfig.varCurrentNodeDesc') },
+  { key: '{{external_context}}', desc: t('admin.ruleConfig.varExternalContextDesc') },
 ])
 
 // 提示词编辑器会记住最近一次有效选区，变量按钮点击后仍可在原光标位置插入。
@@ -2891,12 +2894,15 @@ async function persistArchiveRuleDrafts(silent = false): Promise<boolean> {
 
 //=====存档AI提示变量（与审计工作台相同）=====
 const archiveReasoningPromptVariables = computed(() => [
+  { key: '{{process_type}}', desc: t('admin.ruleConfig.varProcessTypeDesc') },
   { key: '{{main_table}}', desc: t('admin.ruleConfig.varMainTableDesc') },
   { key: '{{detail_tables}}', desc: t('admin.ruleConfig.varDetailTablesDesc') },
+  { key: '{{attachments}}', desc: t('admin.ruleConfig.varAttachmentsDesc') },
   { key: '{{rules}}', desc: t('admin.ruleConfig.varRulesDesc') },
+  { key: '{{current_node}}', desc: t('admin.ruleConfig.varCurrentNodeDesc') },
   { key: '{{flow_history}}', desc: t('admin.ruleConfig.varFlowHistoryDesc') },
   { key: '{{flow_graph}}', desc: t('admin.ruleConfig.varFlowGraphDesc') },
-  { key: '{{current_node}}', desc: t('admin.ruleConfig.varCurrentNodeDesc') },
+  { key: '{{external_context}}', desc: t('admin.ruleConfig.varExternalContextDesc') },
 ])
 const archiveReasoningTextareaRef = ref<any>(null)
 

@@ -1948,14 +1948,16 @@ export default {
     'admin.ruleConfig.phase2Label': '阶段二：结构化提取',
 
     //变量描述
+    'admin.ruleConfig.varProcessTypeDesc': '流程类型名称，标识当前流程的业务类别',
     'admin.ruleConfig.varMainTableDesc': '主表字段数据（JSON 格式），包含流程表单的主要字段信息',
     'admin.ruleConfig.varDetailTablesDesc': '明细表数据（JSON 数组），可能包含多个明细表的详细记录',
+    'admin.ruleConfig.varAttachmentsDesc': '附件识别内容，包含 OCR/解析后的附件文本摘要',
     'admin.ruleConfig.varRulesDesc': '当前生效的规则列表（JSON），包含规则内容、优先级和启用状态',
+    'admin.ruleConfig.varCurrentNodeDesc': '当前审批节点名称，标识流程当前所处的审批环节',
     'admin.ruleConfig.varFlowHistoryDesc': '已过审批流节点信息（JSON），仅当有规则关联审批流时注入',
     'admin.ruleConfig.varFlowGraphDesc': '流程图完整节点信息（JSON），包含流程的全部审批节点、顺序和状态',
-    'admin.ruleConfig.varCurrentNodeDesc': '当前审批节点名称，标识流程当前所处的审批环节',
+    'admin.ruleConfig.varExternalContextDesc': '外部关联与查询数据，包含关联外部流程表单数据与规则 SQL 查询结果',
     'admin.ruleConfig.varProcessMetaDesc': '流程基础信息（编号、标题、申请人、部门、当前节点、提交时间等）',
-    'admin.ruleConfig.varAttachmentsDesc': '附件识别内容，包含 OCR/解析后的附件文本摘要',
 
     //系统变量描述
     'admin.ruleConfig.insertDataVariable': '数据变量',
