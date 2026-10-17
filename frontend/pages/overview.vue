@@ -14,6 +14,7 @@ import {
   BarChartOutlined,
   RobotOutlined,
   CommentOutlined,
+  UndoOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { OVERVIEW_WIDGETS, OVERVIEW_WIDGET_ID_SET, WIDGET_PAGE_PERMISSION_MAP } from '~/constants/overviewWidgets'
@@ -174,6 +175,24 @@ const savePrefs = async () => {
   }
 }
 
+// 恢复系统默认仪表盘布局
+const resetToDefaultPrefs = async () => {
+  enabledWidgets.value = [...defaultPrefs.value]
+  widgetSizes.value = {}
+  customizing.value = false
+  try {
+    await updateDashboardPrefs({
+      enabled_widgets: [...enabledWidgets.value],
+      widget_sizes: {},
+    })
+    message.success(t('overview.layoutReset'))
+  }
+  catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    message.error(msg || t('overview.saveLayoutFailed'))
+  }
+}
+
 // 获取指定组件的当前尺寸，未设置时使用默认值
 const getWidgetSize = (id: OverviewWidgetId) => {
   if (widgetSizes.value[id]) return widgetSizes.value[id]
@@ -314,7 +333,19 @@ function tokenPct(used: number, quota: number) {
     <!--自定义面板-->
     <transition name="slide-down">
       <div v-if="customizing" class="customize-panel">
-        <p class="customize-hint">{{ t('overview.customizeHint') }}</p>
+        <div class="customize-header">
+          <p class="customize-hint">{{ t('overview.customizeHint') }}</p>
+          <a-popconfirm
+            :title="t('overview.resetLayoutConfirm')"
+            :ok-text="t('common.confirm')"
+            :cancel-text="t('common.cancel')"
+            @confirm="resetToDefaultPrefs"
+          >
+            <a-button size="small" danger ghost>
+              <UndoOutlined /> {{ t('overview.resetLayout') }}
+            </a-button>
+          </a-popconfirm>
+        </div>
         <div class="customize-grid">
           <div v-for="w in availableWidgets" :key="w.id" class="customize-chip" :class="{ 'customize-chip--active': isEnabled(w.id) }" @click="toggleWidget(w.id)">
             <component :is="isEnabled(w.id) ? EyeOutlined : EyeInvisibleOutlined" />
@@ -419,7 +450,7 @@ function tokenPct(used: number, quota: number) {
           v-if="dash.weekly_trend.length > 0"
           :categories="trendCategories"
           :series="trendSeries"
-          height="240px"
+          height="250px"
         />
         <div v-else class="widget-empty">{{ t('overview.noData') }}</div>
       </div>
@@ -619,7 +650,7 @@ function tokenPct(used: number, quota: number) {
           v-if="dash.dept_distribution?.length"
           :data="dash.dept_distribution"
           :labels="deptChartLabels"
-          height="300px"
+          height="250px"
         />
         <div v-else class="widget-empty">{{ t('overview.noData') }}</div>
       </div>
@@ -837,7 +868,13 @@ function tokenPct(used: number, quota: number) {
   background: var(--color-bg-card); border: 1px solid var(--color-border);
   border-radius: var(--radius-lg); padding: 16px 20px; margin-bottom: 20px;
 }
-.customize-hint { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 12px; }
+.customize-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.customize-hint { font-size: 13px; color: var(--color-text-secondary); margin: 0; }
 .customize-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .customize-chip {
   display: flex; align-items: center; gap: 6px;
@@ -859,11 +896,16 @@ function tokenPct(used: number, quota: number) {
   align-items: start;
 }
 .widget {
-  background: var(--color-bg-card); border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-lg); padding: 20px;
-  box-shadow: var(--shadow-xs); transition: box-shadow var(--transition-base);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  transition: all var(--transition-base);
 }
-.widget:hover { box-shadow: var(--shadow-sm); }
+.widget:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+}
 .widget--editing { border: 1px dashed var(--color-primary); cursor: grab; transform: scale(0.99); }
 .widget--editing:active { cursor: grabbing; }
 .widget--sm { grid-column: span 4; min-height: 160px; }

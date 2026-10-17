@@ -56,7 +56,7 @@ export function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`
 }
 
-// ── 堆叠柱状图选项构建 ──
+// ── 堆叠柱状图 & 平滑面积折线图选项构建 ──
 
 /** 部门分布图系列配色映射 */
 const SERIES_COLORS = {
@@ -64,11 +64,122 @@ const SERIES_COLORS = {
   cron: '#06b6d4',
   archive: '#10b981',
   summary: '#f59e0b',
-  chat: '#722ed1',
+  chat: '#8b5cf6',
 } as const
+
+/** 通用 Tooltip 配置，具有现代微投影与圆角风格 */
+function createModernTooltip(colors: ChartThemeColors, isAxis = true) {
+  return {
+    trigger: isAxis ? ('axis' as const) : ('item' as const),
+    axisPointer: {
+      type: 'cross' as const,
+      lineStyle: {
+        color: colors.isDark ? '#475569' : '#cbd5e1',
+        type: 'dashed' as const,
+        width: 1,
+      },
+      crossStyle: {
+        color: colors.isDark ? '#475569' : '#cbd5e1',
+      },
+      shadowStyle: {
+        color: colors.isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.03)',
+      },
+    },
+    backgroundColor: colors.isDark ? '#1e293b' : '#ffffff',
+    borderColor: colors.border || (colors.isDark ? '#334155' : '#e2e8f0'),
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: [10, 14],
+    textStyle: {
+      color: colors.textPrimary || '#0f172a',
+      fontSize: 12,
+    },
+    extraCssText: 'box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); border-radius: 8px;',
+  }
+}
+
+/**
+ * 构建平滑渐变面积折线图的 ECharts option（趋势图默认高级形态）。
+ *
+ * @param categories - X 轴分类标签
+ * @param series - 系列数据（含名称、数值、颜色）
+ * @param themeColors - 当前主题色配置
+ * @returns ECharts option 对象
+ */
+export function buildTrendLineOption(
+  categories: string[],
+  series: StackedBarSeriesItem[],
+  themeColors: ChartThemeColors,
+) {
+  const colors = themeColors
+
+  return {
+    tooltip: createModernTooltip(colors, true),
+    legend: {
+      top: 0,
+      right: 0,
+      icon: 'circle',
+      itemWidth: 8,
+      itemHeight: 8,
+      itemGap: 14,
+      textStyle: {
+        fontSize: 12,
+        color: colors.textSecondary || '#64748b',
+      },
+    },
+    grid: {
+      left: 10,
+      right: 16,
+      top: 36,
+      bottom: 12,
+      containLabel: true,
+    },
+    xAxis: {
+      type: 'category' as const,
+      data: categories,
+      boundaryGap: false,
+      axisLine: { lineStyle: { color: colors.border || (colors.isDark ? '#334155' : '#e2e8f0') } },
+      axisLabel: { color: colors.textTertiary || '#94a3b8', fontSize: 11, margin: 10 },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: 'value' as const,
+      minInterval: 1,
+      axisLine: { show: false },
+      axisLabel: { color: colors.textTertiary || '#94a3b8', fontSize: 11 },
+      splitLine: {
+        lineStyle: {
+          color: colors.isDark ? '#334155' : '#f1f5f9',
+          type: 'dashed' as const,
+        },
+      },
+    },
+    animationDuration: 800,
+    animationEasing: 'cubicOut' as const,
+    series: series.map(s => ({
+      name: s.name,
+      type: 'line' as const,
+      smooth: 0.38,
+      showSymbol: false,
+      symbol: 'circle',
+      symbolSize: 6,
+      lineStyle: { width: 2.2, color: s.color },
+      itemStyle: { color: s.color, borderWidth: 2, borderColor: colors.bgCard || '#ffffff' },
+      areaStyle: {
+        color: new LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: hexToRgba(s.color, 0.28) },
+          { offset: 1, color: hexToRgba(s.color, 0.01) },
+        ]),
+      },
+      emphasis: { focus: 'series' as const },
+      data: s.data,
+    })),
+  }
+}
 
 /**
  * 构建纵向堆叠柱状图的 ECharts option。
+ * 优化排版：图例置于顶部右侧，彻底解决图例与底部 X 轴日期重叠的问题。
  *
  * @param categories - X 轴分类标签
  * @param series - 系列数据（含名称、数值、颜色）
@@ -83,70 +194,59 @@ export function buildStackedBarOption(
   const colors = themeColors
 
   return {
-    // tooltip：圆角、阴影、主题适配背景色
-    tooltip: {
-      trigger: 'axis' as const,
-      axisPointer: { type: 'shadow' as const },
-      backgroundColor: colors.isDark ? '#1e293b' : '#ffffff',
-      borderColor: colors.border || '#e2e8f0',
-      borderWidth: 1,
-      borderRadius: 8,
-      padding: [8, 12],
-      textStyle: {
-        color: colors.textPrimary || '#0f172a',
-        fontSize: 13,
-      },
-      extraCssText: 'box-shadow: 0 4px 12px rgba(0,0,0,0.12);',
-    },
-
-    // 图例：使用主题文字色
+    tooltip: createModernTooltip(colors, true),
     legend: {
-      bottom: 0,
+      top: 0,
+      right: 0,
+      icon: 'circle',
+      itemWidth: 8,
+      itemHeight: 8,
+      itemGap: 14,
       textStyle: {
         fontSize: 12,
-        color: colors.textSecondary || '#475569',
+        color: colors.textSecondary || '#64748b',
       },
     },
-
-    grid: { left: 40, right: 16, top: 16, bottom: 40 },
-
-    // X 轴：分类轴，颜色从 chartColors 读取
+    grid: {
+      left: 10,
+      right: 16,
+      top: 36,
+      bottom: 12,
+      containLabel: true,
+    },
     xAxis: {
       type: 'category' as const,
       data: categories,
-      axisLine: { lineStyle: { color: colors.border || '#e2e8f0' } },
-      axisLabel: { color: colors.textSecondary || '#475569' },
-      axisTick: { lineStyle: { color: colors.border || '#e2e8f0' } },
+      axisLine: { lineStyle: { color: colors.border || (colors.isDark ? '#334155' : '#e2e8f0') } },
+      axisLabel: { color: colors.textTertiary || '#94a3b8', fontSize: 11, margin: 10 },
+      axisTick: { show: false },
     },
-
-    // Y 轴：数值轴，颜色从 chartColors 读取
     yAxis: {
       type: 'value' as const,
       minInterval: 1,
       axisLine: { show: false },
-      axisLabel: { color: colors.textSecondary || '#475569' },
-      splitLine: { lineStyle: { color: colors.border || '#e2e8f0', type: 'dashed' as const } },
+      axisLabel: { color: colors.textTertiary || '#94a3b8', fontSize: 11 },
+      splitLine: {
+        lineStyle: {
+          color: colors.isDark ? '#334155' : '#f1f5f9',
+          type: 'dashed' as const,
+        },
+      },
     },
-
-    // 全局动画配置
     animationDuration: 600,
     animationEasing: 'cubicOut' as const,
-
-    // 为每个系列创建渐变色填充 + 圆角柱体
-    series: series.map(s => ({
+    series: series.map((s, idx) => ({
       name: s.name,
       type: 'bar' as const,
       stack: 'total',
       data: s.data,
-      barMaxWidth: 32,
+      barMaxWidth: 18,
       itemStyle: {
-        // 使用 LinearGradient 实现从上到下的渐变色填充
         color: new LinearGradient(0, 0, 0, 1, [
           { offset: 0, color: s.color },
-          { offset: 1, color: hexToRgba(s.color, 0.6) },
+          { offset: 1, color: hexToRgba(s.color, 0.75) },
         ]),
-        // 圆角柱体：仅顶部两个角为圆角
-        borderRadius: [4, 4, 0, 0] as [number, number, number, number],
+        borderRadius: idx === series.length - 1 ? [4, 4, 0, 0] : [2, 2, 0, 0],
       },
     })),
   }
@@ -156,9 +256,13 @@ export function buildStackedBarOption(
 
 /**
  * 构建横向堆叠柱状图（部门分布）的 ECharts option。
+ * 优化排版与信息密度：
+ * 1. 过滤无效/长尾全为 0 的部门，按总业务量降序提取 Top 8 活跃部门，避免大片空白；
+ * 2. 图例置于顶部右侧，彻底解决与底部 X 轴标签重叠拥挤；
+ * 3. 柱条附带底色槽与圆角，更显精致。
  *
  * @param data - 部门分布数据数组
- * @param labels - 图例标签（审核 / 定时任务 / 归档）
+ * @param labels - 图例标签
  * @param themeColors - 当前主题色配置
  * @returns ECharts option 对象
  */
@@ -168,131 +272,157 @@ export function buildDeptChartOption(
   themeColors: ChartThemeColors,
 ) {
   const colors = themeColors
-  const depts = data.map(d => d.department)
+
+  // 1. 部门数据按总业务量（total）降序排序
+  const sorted = [...data].sort((a, b) => (b.total ?? (b.audit_count + b.cron_count + b.archive_count + b.summary_count + (b.chat_count ?? 0))) - (a.total ?? (a.audit_count + a.cron_count + a.archive_count + a.summary_count + (a.chat_count ?? 0))))
+
+  // 2. 取 Top 7 部门，若有更多，将余下非零部门归并为“其他”；若无数据则兜底展示空或原始项
+  let displayData: DeptDistributionData[] = []
+  if (sorted.length <= 8) {
+    displayData = sorted
+  } else {
+    const top7 = sorted.slice(0, 7)
+    const rest = sorted.slice(7)
+    const restTotal = rest.reduce((acc, cur) => acc + (cur.total ?? 0), 0)
+    if (restTotal > 0) {
+      const otherItem: DeptDistributionData = {
+        department: '其他部门',
+        total: restTotal,
+        audit_count: rest.reduce((acc, cur) => acc + cur.audit_count, 0),
+        cron_count: rest.reduce((acc, cur) => acc + cur.cron_count, 0),
+        archive_count: rest.reduce((acc, cur) => acc + cur.archive_count, 0),
+        summary_count: rest.reduce((acc, cur) => acc + cur.summary_count, 0),
+        chat_count: rest.reduce((acc, cur) => acc + (cur.chat_count ?? 0), 0),
+      }
+      displayData = [...top7, otherItem]
+    } else {
+      displayData = top7
+    }
+  }
+
+  // 如果全部部门业务都为 0，只保留前 5 项避免无限空白
+  if (displayData.every(d => (d.total ?? 0) === 0) && displayData.length > 5) {
+    displayData = displayData.slice(0, 5)
+  }
+
+  const depts = displayData.map(d => d.department)
 
   return {
-    // tooltip：圆角、阴影、主题适配背景色（与趋势图一致）
-    tooltip: {
-      trigger: 'axis' as const,
-      axisPointer: { type: 'shadow' as const },
-      backgroundColor: colors.isDark ? '#1e293b' : '#ffffff',
-      borderColor: colors.border || '#e2e8f0',
-      borderWidth: 1,
-      borderRadius: 8,
-      padding: [8, 12],
-      textStyle: {
-        color: colors.textPrimary || '#0f172a',
-        fontSize: 13,
-      },
-      extraCssText: 'box-shadow: 0 4px 12px rgba(0,0,0,0.12);',
-    },
-
-    // 图例：使用主题文字色
+    tooltip: createModernTooltip(colors, true),
     legend: {
-      bottom: 0,
+      top: 0,
+      right: 0,
+      icon: 'circle',
+      itemWidth: 8,
+      itemHeight: 8,
+      itemGap: 14,
       textStyle: {
         fontSize: 12,
-        color: colors.textSecondary || '#475569',
+        color: colors.textSecondary || '#64748b',
       },
     },
-
-    grid: { left: 100, right: 16, top: 16, bottom: 40 },
-
-    // Y 轴：分类轴（横向柱状图的分类在 Y 轴），颜色从 chartColors 读取
+    grid: {
+      left: 10,
+      right: 28,
+      top: 36,
+      bottom: 10,
+      containLabel: true,
+    },
     yAxis: {
       type: 'category' as const,
       data: depts,
       inverse: true,
-      axisLine: { lineStyle: { color: colors.border || '#e2e8f0' } },
-      axisLabel: { color: colors.textSecondary || '#475569' },
-      axisTick: { lineStyle: { color: colors.border || '#e2e8f0' } },
+      axisLine: { lineStyle: { color: colors.border || (colors.isDark ? '#334155' : '#e2e8f0') } },
+      axisLabel: {
+        color: colors.textSecondary || '#475569',
+        fontSize: 12,
+        formatter: (val: string) => (val.length > 7 ? val.slice(0, 6) + '…' : val),
+      },
+      axisTick: { show: false },
     },
-
-    // X 轴：数值轴，颜色从 chartColors 读取
     xAxis: {
       type: 'value' as const,
       minInterval: 1,
       axisLine: { show: false },
-      axisLabel: { color: colors.textSecondary || '#475569' },
-      splitLine: { lineStyle: { color: colors.border || '#e2e8f0', type: 'dashed' as const } },
+      axisLabel: { color: colors.textTertiary || '#94a3b8', fontSize: 11 },
+      splitLine: {
+        lineStyle: {
+          color: colors.isDark ? '#334155' : '#f1f5f9',
+          type: 'dashed' as const,
+        },
+      },
     },
-
-    // 全局动画配置
     animationDuration: 600,
     animationEasing: 'cubicOut' as const,
-
-    // 为每个系列创建渐变色填充 + 圆角柱体（横向方向）
     series: [
       {
         name: labels.audit,
         type: 'bar' as const,
         stack: 'total',
-        data: data.map(d => d.audit_count),
-        barMaxWidth: 24,
+        data: displayData.map(d => d.audit_count),
+        barMaxWidth: 14,
         itemStyle: {
-          // 使用 LinearGradient 实现从左到右的渐变色填充（横向柱状图方向）
           color: new LinearGradient(0, 0, 1, 0, [
-            { offset: 0, color: hexToRgba(SERIES_COLORS.audit, 0.6) },
+            { offset: 0, color: hexToRgba(SERIES_COLORS.audit, 0.75) },
             { offset: 1, color: SERIES_COLORS.audit },
           ]),
-          // 横向柱体圆角：右侧两个角为圆角 [左上, 右上, 右下, 左下]
-          borderRadius: [0, 4, 4, 0] as [number, number, number, number],
+          borderRadius: [0, 4, 4, 0],
         },
       },
       {
         name: labels.cron,
         type: 'bar' as const,
         stack: 'total',
-        data: data.map(d => d.cron_count),
-        barMaxWidth: 24,
+        data: displayData.map(d => d.cron_count),
+        barMaxWidth: 14,
         itemStyle: {
           color: new LinearGradient(0, 0, 1, 0, [
-            { offset: 0, color: hexToRgba(SERIES_COLORS.cron, 0.6) },
+            { offset: 0, color: hexToRgba(SERIES_COLORS.cron, 0.75) },
             { offset: 1, color: SERIES_COLORS.cron },
           ]),
-          borderRadius: [0, 4, 4, 0] as [number, number, number, number],
+          borderRadius: [0, 4, 4, 0],
         },
       },
       {
         name: labels.archive,
         type: 'bar' as const,
         stack: 'total',
-        data: data.map(d => d.archive_count),
-        barMaxWidth: 24,
+        data: displayData.map(d => d.archive_count),
+        barMaxWidth: 14,
         itemStyle: {
           color: new LinearGradient(0, 0, 1, 0, [
-            { offset: 0, color: hexToRgba(SERIES_COLORS.archive, 0.6) },
+            { offset: 0, color: hexToRgba(SERIES_COLORS.archive, 0.75) },
             { offset: 1, color: SERIES_COLORS.archive },
           ]),
-          borderRadius: [0, 4, 4, 0] as [number, number, number, number],
+          borderRadius: [0, 4, 4, 0],
         },
       },
       {
         name: labels.summary,
         type: 'bar' as const,
         stack: 'total',
-        data: data.map(d => d.summary_count),
-        barMaxWidth: 24,
+        data: displayData.map(d => d.summary_count),
+        barMaxWidth: 14,
         itemStyle: {
           color: new LinearGradient(0, 0, 1, 0, [
-            { offset: 0, color: hexToRgba(SERIES_COLORS.summary, 0.6) },
+            { offset: 0, color: hexToRgba(SERIES_COLORS.summary, 0.75) },
             { offset: 1, color: SERIES_COLORS.summary },
           ]),
-          borderRadius: [0, 4, 4, 0] as [number, number, number, number],
+          borderRadius: [0, 4, 4, 0],
         },
       },
       ...(labels.chat ? [{
         name: labels.chat,
         type: 'bar' as const,
         stack: 'total',
-        data: data.map(d => d.chat_count ?? 0),
-        barMaxWidth: 24,
+        data: displayData.map(d => d.chat_count ?? 0),
+        barMaxWidth: 14,
         itemStyle: {
           color: new LinearGradient(0, 0, 1, 0, [
-            { offset: 0, color: hexToRgba(SERIES_COLORS.chat, 0.6) },
+            { offset: 0, color: hexToRgba(SERIES_COLORS.chat, 0.75) },
             { offset: 1, color: SERIES_COLORS.chat },
           ]),
-          borderRadius: [0, 4, 4, 0] as [number, number, number, number],
+          borderRadius: [0, 4, 4, 0],
         },
       }] : []),
     ],
@@ -353,23 +483,27 @@ export function buildGaugeOption(
     series: [
       {
         type: 'gauge' as const,
-        startAngle: 220,
-        endAngle: -40,
-        center: ['50%', '60%'],
-        radius: '85%',
+        startAngle: 215,
+        endAngle: -35,
+        center: ['50%', '52%'],
+        radius: '92%',
         min: 0,
         max: 100,
-        // 粗圆弧进度条
+        // 精致圆弧进度条
         progress: {
           show: true,
-          width: 16,
+          width: 11,
           roundCap: true,
-          itemStyle: { color },
+          itemStyle: {
+            color,
+            shadowBlur: 8,
+            shadowColor: hexToRgba(color, 0.35),
+          },
         },
-        // 轨道背景
+        // 轨道底槽
         axisLine: {
           roundCap: true,
-          lineStyle: { width: 16, color: [[1, trackColor]] },
+          lineStyle: { width: 11, color: [[1, trackColor]] },
         },
         pointer: { show: false },
         axisTick: { show: false },
@@ -378,19 +512,19 @@ export function buildGaugeOption(
         // 中心百分比数字
         detail: {
           valueAnimation: true,
-          offsetCenter: [0, '-5%'],
-          fontSize: 26,
-          fontWeight: 'bold' as const,
-          color,
+          offsetCenter: [0, '-4%'],
+          fontSize: 22,
+          fontWeight: '700' as const,
+          color: themeColors.textPrimary || '#0f172a',
           formatter: '{value}%',
         },
         // 指标名称
         title: {
           show: true,
-          offsetCenter: [0, '25%'],
-          fontSize: 13,
-          fontWeight: 'normal' as const,
-          color: themeColors.textSecondary || '#475569',
+          offsetCenter: [0, '36%'],
+          fontSize: 12,
+          fontWeight: '500' as const,
+          color: themeColors.textSecondary || '#64748b',
         },
         data: [{ value, name: label }],
         animationDuration: 800,

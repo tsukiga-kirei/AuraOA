@@ -88,16 +88,20 @@ onMounted(() => {
 
 <template>
   <div class="monitor-widget">
-    <!-- 顶部：刷新按钮 + 系统运行时间 -->
+    <!-- 顶部状态指示栏：运行状态药丸 + 连续运行时长 + 刷新 -->
     <div class="monitor-header">
-      <div class="monitor-uptime" v-if="monitorData">
+      <div class="monitor-status-pill" v-if="monitorData">
+        <span class="status-pulse-dot" />
+        <span class="status-pill-text">{{ t('overview.monitor.statusNormal') }}</span>
+        <span class="status-pill-divider">·</span>
         <span class="monitor-uptime-label">{{ t('overview.monitor.uptimeLabel') }}:</span>
         <span class="monitor-uptime-value">{{ formatUptime(monitorData.uptime_seconds) }}</span>
       </div>
-      <div v-else class="monitor-uptime" />
+      <div v-else class="monitor-status-pill" />
       <a-button
         size="small"
         :loading="loading"
+        class="refresh-btn"
         @click="loadMonitorData"
       >
         <template #icon><ReloadOutlined /></template>
@@ -106,7 +110,7 @@ onMounted(() => {
     </div>
 
     <!-- 加载状态 -->
-    <a-spin v-if="loading && !monitorData" style="display: flex; justify-content: center; padding: 40px 0;" />
+    <a-spin v-if="loading && !monitorData" style="display: flex; justify-content: center; padding: 48px 0;" />
 
     <!-- 错误状态 -->
     <div v-else-if="error" class="monitor-error">
@@ -118,75 +122,100 @@ onMounted(() => {
 
     <!-- 数据展示 -->
     <template v-else-if="monitorData">
-      <!-- 中部：CPU / 内存 Gauge 并排 -->
-      <div class="monitor-gauges">
-        <div class="monitor-gauge-item">
+      <!-- 核心硬件资源三联卡片：CPU / 内存 / 磁盘 平权统一展示 -->
+      <div class="monitor-metrics-grid">
+        <!-- CPU 使用率卡片 -->
+        <div class="metric-card">
+          <div class="metric-card-header">
+            <span class="metric-card-title">{{ t('overview.monitor.cpuUsage') }}</span>
+            <span
+              class="metric-badge"
+              :style="{
+                color: getMetricColor(monitorData.cpu_usage, MONITOR_THRESHOLDS.cpu),
+                background: `color-mix(in srgb, ${getMetricColor(monitorData.cpu_usage, MONITOR_THRESHOLDS.cpu)} 12%, transparent)`,
+              }"
+            >
+              {{ monitorData.cpu_usage > MONITOR_THRESHOLDS.cpu.warning ? 'High' : 'Normal' }}
+            </span>
+          </div>
           <GaugeChart
             :value="monitorData.cpu_usage"
             :label="t('overview.monitor.cpuUsage')"
             :thresholds="MONITOR_THRESHOLDS.cpu"
-            height="160px"
+            height="130px"
           />
         </div>
-        <div class="monitor-gauge-item">
+
+        <!-- 内存使用率卡片 -->
+        <div class="metric-card">
+          <div class="metric-card-header">
+            <span class="metric-card-title">{{ t('overview.monitor.memoryUsage') }}</span>
+            <span
+              class="metric-badge"
+              :style="{
+                color: getMetricColor(monitorData.memory_usage, MONITOR_THRESHOLDS.memory),
+                background: `color-mix(in srgb, ${getMetricColor(monitorData.memory_usage, MONITOR_THRESHOLDS.memory)} 12%, transparent)`,
+              }"
+            >
+              {{ monitorData.memory_usage > MONITOR_THRESHOLDS.memory.warning ? 'High' : 'Normal' }}
+            </span>
+          </div>
           <GaugeChart
             :value="monitorData.memory_usage"
             :label="t('overview.monitor.memoryUsage')"
             :thresholds="MONITOR_THRESHOLDS.memory"
-            height="160px"
+            height="130px"
+          />
+        </div>
+
+        <!-- 磁盘使用率卡片 -->
+        <div class="metric-card">
+          <div class="metric-card-header">
+            <span class="metric-card-title">{{ t('overview.monitor.diskUsage') }}</span>
+            <span
+              class="metric-badge"
+              :style="{
+                color: getMetricColor(monitorData.disk_usage, MONITOR_THRESHOLDS.disk),
+                background: `color-mix(in srgb, ${getMetricColor(monitorData.disk_usage, MONITOR_THRESHOLDS.disk)} 12%, transparent)`,
+              }"
+            >
+              {{ monitorData.disk_usage > MONITOR_THRESHOLDS.disk.warning ? 'High' : 'Normal' }}
+            </span>
+          </div>
+          <GaugeChart
+            :value="monitorData.disk_usage"
+            :label="t('overview.monitor.diskUsage')"
+            :thresholds="MONITOR_THRESHOLDS.disk"
+            height="130px"
           />
         </div>
       </div>
 
-      <!-- 磁盘使用率进度条 -->
-      <div class="monitor-disk">
-        <div class="monitor-disk-header">
-          <span class="monitor-disk-label">{{ t('overview.monitor.diskUsage') }}</span>
-          <span
-            class="monitor-disk-value"
-            :style="{ color: getMetricColor(monitorData.disk_usage, MONITOR_THRESHOLDS.disk) }"
-          >
-            {{ monitorData.disk_usage }}%
-          </span>
-        </div>
-        <a-progress
-          :percent="monitorData.disk_usage"
-          :show-info="false"
-          :stroke-color="getMetricColor(monitorData.disk_usage, MONITOR_THRESHOLDS.disk)"
-          :trail-color="'var(--color-bg-page)'"
-          size="small"
-        />
-      </div>
-
-      <!-- 底部：关键服务状态列表 -->
+      <!-- 关键服务状态横向网格卡片 -->
       <div class="monitor-services">
-        <div class="monitor-services-title">{{ t('overview.monitor.serviceStatus') }}</div>
-        <div class="monitor-service-list">
+        <div class="monitor-section-title">{{ t('overview.monitor.serviceStatus') }}</div>
+        <div class="monitor-services-grid">
           <div
             v-for="svc in monitorData.services"
             :key="svc.name"
-            class="monitor-service-item"
+            class="service-pill"
           >
             <span
-              class="monitor-service-dot"
+              class="service-status-dot"
               :style="{ background: getServiceStatusColor(svc.status) }"
             />
-            <span class="monitor-service-name">{{ svc.name }}</span>
-            <span class="monitor-service-status" :style="{ color: getServiceStatusColor(svc.status) }">
-              {{ serviceStatusLabel(svc.status) }}
-            </span>
-            <span class="monitor-service-rt">
-              {{ svc.response_time_ms }}ms
-            </span>
+            <span class="service-name" :title="svc.name">{{ svc.name }}</span>
+            <span class="service-rt">{{ svc.response_time_ms }}ms</span>
           </div>
         </div>
       </div>
 
-      <!-- 系统告警列表 -->
+      <!-- 系统告警流 -->
       <div class="monitor-alerts">
-        <div class="monitor-alerts-title">{{ t('overview.monitor.recentAlerts') }}</div>
-        <div v-if="sortedAlerts.length === 0" class="monitor-alerts-empty">
-          {{ t('overview.monitor.noAlerts') }}
+        <div class="monitor-section-title">{{ t('overview.monitor.recentAlerts') }}</div>
+        <div v-if="sortedAlerts.length === 0" class="monitor-alerts-clean">
+          <span class="clean-dot">✓</span>
+          <span>{{ t('overview.monitor.noAlerts') }}</span>
         </div>
         <div v-else class="monitor-alert-list">
           <div
@@ -206,27 +235,62 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* 系统监控小部件 — 使用 CSS 自定义属性定义样式 */
-
 .monitor-widget {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-/* 顶部：刷新按钮 + 运行时间 */
+/* 顶部状态指示栏 */
 .monitor-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.monitor-uptime {
-  display: flex;
+.monitor-status-pill {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
+  padding: 4px 10px;
+  background: var(--color-bg-page);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-full);
+  font-size: 12px;
   color: var(--color-text-secondary);
+}
+
+.status-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-success);
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 5px rgba(16, 185, 129, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+.status-pill-text {
+  font-weight: 500;
+  color: var(--color-success);
+}
+
+.status-pill-divider {
+  color: var(--color-text-tertiary);
 }
 
 .monitor-uptime-label {
@@ -236,142 +300,124 @@ onMounted(() => {
 .monitor-uptime-value {
   font-weight: 500;
   color: var(--color-text-primary);
+  font-family: var(--font-mono, monospace);
 }
 
-/* 错误状态 */
-.monitor-error {
+/* 核心硬件 3 列网格卡片 */
+.monitor-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.metric-card {
+  background: var(--color-bg-page);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  padding: 12px 10px 6px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 32px 0;
+  transition: all var(--transition-fast);
 }
 
-.monitor-error-text {
-  font-size: 13px;
-  color: var(--color-danger);
-  margin: 0;
+.metric-card:hover {
+  border-color: var(--color-border);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
 }
 
-/* Gauge 图表并排 */
-.monitor-gauges {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.monitor-gauge-item {
-  min-width: 0;
-  overflow: hidden;
-}
-
-/* 磁盘使用率 */
-.monitor-disk {
-  padding: 12px 16px;
-  background: var(--color-bg-page);
-  border-radius: var(--radius-md);
-}
-
-.monitor-disk-header {
+.metric-card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  padding: 0 4px;
 }
 
-.monitor-disk-label {
-  font-size: 13px;
-  font-weight: 500;
+.metric-card-title {
+  font-size: 12px;
+  font-weight: 600;
   color: var(--color-text-secondary);
 }
 
-.monitor-disk-value {
-  font-size: 14px;
+.metric-badge {
+  font-size: 10px;
   font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-/* 服务状态列表 */
-.monitor-services {
-  display: flex;
-  flex-direction: column;
+/* 服务状态横向铺展微卡片 */
+.monitor-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.monitor-services-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   gap: 8px;
 }
 
-.monitor-services-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-}
-
-.monitor-service-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.monitor-service-item {
+.service-pill {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--color-border-light);
-  font-size: 13px;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--color-bg-page);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  transition: all var(--transition-fast);
 }
 
-.monitor-service-item:last-child {
-  border-bottom: none;
+.service-pill:hover {
+  background: var(--color-bg-card);
 }
 
-.monitor-service-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-full);
+.service-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
   flex-shrink: 0;
 }
 
-.monitor-service-name {
+.service-name {
   flex: 1;
+  min-width: 0;
   color: var(--color-text-primary);
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.monitor-service-status {
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.monitor-service-rt {
-  font-size: 12px;
+.service-rt {
+  font-size: 11px;
   color: var(--color-text-tertiary);
   font-family: var(--font-mono, monospace);
-  min-width: 50px;
-  text-align: right;
+  flex-shrink: 0;
 }
 
-/* 响应式：小屏幕下 Gauge 图表改为单列 */
-@media (max-width: 480px) {
-  .monitor-gauges {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* 系统告警列表 */
-.monitor-alerts {
+/* 告警状态 */
+.monitor-alerts-clean {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--color-success) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-success) 20%, transparent);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--color-success);
 }
 
-.monitor-alerts-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-}
-
-.monitor-alerts-empty {
-  font-size: 13px;
-  color: var(--color-text-tertiary);
-  padding: 8px 0;
+.clean-dot {
+  font-weight: 700;
 }
 
 .monitor-alert-list {
@@ -385,8 +431,8 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  border-radius: var(--radius-md);
-  font-size: 13px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
 }
 
 .monitor-alert-item--critical {
@@ -403,19 +449,26 @@ onMounted(() => {
 
 .monitor-alert-icon {
   flex-shrink: 0;
-  font-size: 14px;
-}
-
-.monitor-alert-icon--critical {
-  color: var(--color-danger);
-}
-
-.monitor-alert-icon--warning {
-  color: var(--color-warning);
+  font-size: 13px;
 }
 
 .monitor-alert-msg {
   flex: 1;
   line-height: 1.4;
 }
+
+.monitor-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 0;
+}
+
+.monitor-error-text {
+  font-size: 13px;
+  color: var(--color-danger);
+  margin: 0;
+}
 </style>
+
