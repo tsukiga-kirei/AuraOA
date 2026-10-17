@@ -1553,32 +1553,132 @@ onMounted(async () => {
   finally { loadingSummary.value = false }
 })
 
+interface PromptDraftSnapshot {
+  system_reasoning_prompt: string
+  system_extraction_prompt: string
+  user_reasoning_prompt: string
+  user_extraction_prompt: string
+}
+
+// 审核工作台按流程 ID 和尺度缓存提示词草稿: [configId][strictness] -> PromptDraftSnapshot
+const auditPromptDraftsByStrictness = reactive<Record<string, Record<string, PromptDraftSnapshot>>>({})
+// 记录审核流程在数据库中原始保存的配置快照，用于判断是否是该流程原本的保存值
+const originalSavedAuditAiConfig = reactive<Record<string, {
+  strictness: string
+  prompts: PromptDraftSnapshot
+}>>({})
+
+watch(selectedProcessId, (newId) => {
+  if (!newId) return
+  const cfg = processConfigs.value.find(c => c.id === newId)
+  if (cfg && !originalSavedAuditAiConfig[newId]) {
+    const s = cfg.ai_config.audit_strictness || 'standard'
+    originalSavedAuditAiConfig[newId] = {
+      strictness: s,
+      prompts: {
+        system_reasoning_prompt: cfg.ai_config.system_reasoning_prompt || '',
+        system_extraction_prompt: cfg.ai_config.system_extraction_prompt || '',
+        user_reasoning_prompt: cfg.ai_config.user_reasoning_prompt || '',
+        user_extraction_prompt: cfg.ai_config.user_extraction_prompt || '',
+      },
+    }
+  }
+}, { immediate: true })
+
 const getTemplateContent = (promptKey: string) => {
   return promptTemplates.value.find(t => t.prompt_key === promptKey)?.content || ''
 }
 
 const handleStrictnessChange = (value: string) => {
   if (!selectedConfig.value) return
-  selectedConfig.value.ai_config.audit_strictness = value as any
-  selectedConfig.value.ai_config.system_reasoning_prompt = getTemplateContent(`audit_system_reasoning_${value}`)
-  selectedConfig.value.ai_config.system_extraction_prompt = getTemplateContent(`audit_system_extraction_${value}`)
-  selectedConfig.value.ai_config.user_reasoning_prompt = getTemplateContent(`audit_user_reasoning_${value}`)
-  selectedConfig.value.ai_config.user_extraction_prompt = getTemplateContent(`audit_user_extraction_${value}`)
+  const cfg = selectedConfig.value
+  const configId = cfg.id
+  const currentStrictness = cfg.ai_config.audit_strictness || 'standard'
+
+  if (currentStrictness === value) return
+
+  // 1. 先把当前尺度下用户正在编辑的内容存入草稿缓存
+  if (!auditPromptDraftsByStrictness[configId]) {
+    auditPromptDraftsByStrictness[configId] = {}
+  }
+  auditPromptDraftsByStrictness[configId][currentStrictness] = {
+    system_reasoning_prompt: cfg.ai_config.system_reasoning_prompt || '',
+    system_extraction_prompt: cfg.ai_config.system_extraction_prompt || '',
+    user_reasoning_prompt: cfg.ai_config.user_reasoning_prompt || '',
+    user_extraction_prompt: cfg.ai_config.user_extraction_prompt || '',
+  }
+
+  // 2. 切换尺度
+  cfg.ai_config.audit_strictness = value as any
+
+  // 3. 优先还原用户此前在当前流程下的草稿
+  if (auditPromptDraftsByStrictness[configId]?.[value]) {
+    const draft = auditPromptDraftsByStrictness[configId][value]
+    cfg.ai_config.system_reasoning_prompt = draft.system_reasoning_prompt
+    cfg.ai_config.system_extraction_prompt = draft.system_extraction_prompt
+    cfg.ai_config.user_reasoning_prompt = draft.user_reasoning_prompt
+    cfg.ai_config.user_extraction_prompt = draft.user_extraction_prompt
+    return
+  }
+
+  // 4. 次优先：若目标尺度恰好是数据库该流程原本保存的尺度，还原数据库已保存内容
+  const orig = originalSavedAuditAiConfig[configId]
+  if (orig && orig.strictness === value) {
+    cfg.ai_config.system_reasoning_prompt = orig.prompts.system_reasoning_prompt
+    cfg.ai_config.system_extraction_prompt = orig.prompts.system_extraction_prompt
+    cfg.ai_config.user_reasoning_prompt = orig.prompts.user_reasoning_prompt
+    cfg.ai_config.user_extraction_prompt = orig.prompts.user_extraction_prompt
+    return
+  }
+
+  // 5. 首次切到该尺度且数据库原本不是此尺度：从系统预设模板加载
+  cfg.ai_config.system_reasoning_prompt = getTemplateContent(`audit_system_reasoning_${value}`)
+  cfg.ai_config.system_extraction_prompt = getTemplateContent(`audit_system_extraction_${value}`)
+  cfg.ai_config.user_reasoning_prompt = getTemplateContent(`audit_user_reasoning_${value}`)
+  cfg.ai_config.user_extraction_prompt = getTemplateContent(`audit_user_extraction_${value}`)
 }
 
 const resetSystemPrompts = () => {
   if (!selectedConfig.value) return
-  const strictness = selectedConfig.value.ai_config.audit_strictness || 'standard'
-  selectedConfig.value.ai_config.system_reasoning_prompt = getTemplateContent(`audit_system_reasoning_${strictness}`)
-  selectedConfig.value.ai_config.system_extraction_prompt = getTemplateContent(`audit_system_extraction_${strictness}`)
+  const cfg = selectedConfig.value
+  const strictness = cfg.ai_config.audit_strictness || 'standard'
+  cfg.ai_config.system_reasoning_prompt = getTemplateContent(`audit_system_reasoning_${strictness}`)
+  cfg.ai_config.system_extraction_prompt = getTemplateContent(`audit_system_extraction_${strictness}`)
+  // 更新当前草稿
+  if (auditPromptDraftsByStrictness[cfg.id]) {
+    if (!auditPromptDraftsByStrictness[cfg.id][strictness]) {
+      auditPromptDraftsByStrictness[cfg.id][strictness] = {
+        system_reasoning_prompt: '',
+        system_extraction_prompt: '',
+        user_reasoning_prompt: '',
+        user_extraction_prompt: '',
+      }
+    }
+    auditPromptDraftsByStrictness[cfg.id][strictness].system_reasoning_prompt = cfg.ai_config.system_reasoning_prompt
+    auditPromptDraftsByStrictness[cfg.id][strictness].system_extraction_prompt = cfg.ai_config.system_extraction_prompt
+  }
   message.success(t('admin.ruleConfig.systemPromptsReset'))
 }
 
 const resetUserPrompts = () => {
   if (!selectedConfig.value) return
-  const strictness = selectedConfig.value.ai_config.audit_strictness || 'standard'
-  selectedConfig.value.ai_config.user_reasoning_prompt = getTemplateContent(`audit_user_reasoning_${strictness}`)
-  selectedConfig.value.ai_config.user_extraction_prompt = getTemplateContent(`audit_user_extraction_${strictness}`)
+  const cfg = selectedConfig.value
+  const strictness = cfg.ai_config.audit_strictness || 'standard'
+  cfg.ai_config.user_reasoning_prompt = getTemplateContent(`audit_user_reasoning_${strictness}`)
+  cfg.ai_config.user_extraction_prompt = getTemplateContent(`audit_user_extraction_${strictness}`)
+  // 更新当前草稿
+  if (auditPromptDraftsByStrictness[cfg.id]) {
+    if (!auditPromptDraftsByStrictness[cfg.id][strictness]) {
+      auditPromptDraftsByStrictness[cfg.id][strictness] = {
+        system_reasoning_prompt: '',
+        system_extraction_prompt: '',
+        user_reasoning_prompt: '',
+        user_extraction_prompt: '',
+      }
+    }
+    auditPromptDraftsByStrictness[cfg.id][strictness].user_reasoning_prompt = cfg.ai_config.user_reasoning_prompt
+    auditPromptDraftsByStrictness[cfg.id][strictness].user_extraction_prompt = cfg.ai_config.user_extraction_prompt
+  }
   message.success(t('admin.ruleConfig.userPromptsReset'))
 }
 
@@ -2804,6 +2904,31 @@ const insertArchiveReasoningVariable = (variable: string) => {
   archiveReasoningTextareaRef.value?.insertAtCursor(variable)
 }
 
+// 归档复盘按流程 ID 和尺度缓存提示词草稿: [configId][strictness] -> PromptDraftSnapshot
+const archivePromptDraftsByStrictness = reactive<Record<string, Record<string, PromptDraftSnapshot>>>({})
+// 记录归档流程在数据库中原始保存的配置快照
+const originalSavedArchiveAiConfig = reactive<Record<string, {
+  strictness: string
+  prompts: PromptDraftSnapshot
+}>>({})
+
+watch(selectedArchiveId, (newId) => {
+  if (!newId) return
+  const cfg = archiveConfigs.value.find(c => c.id === newId)
+  if (cfg && !originalSavedArchiveAiConfig[newId]) {
+    const s = cfg.ai_config.audit_strictness || 'standard'
+    originalSavedArchiveAiConfig[newId] = {
+      strictness: s,
+      prompts: {
+        system_reasoning_prompt: cfg.ai_config.system_reasoning_prompt || '',
+        system_extraction_prompt: cfg.ai_config.system_extraction_prompt || '',
+        user_reasoning_prompt: cfg.ai_config.user_reasoning_prompt || '',
+        user_extraction_prompt: cfg.ai_config.user_extraction_prompt || '',
+      },
+    }
+  }
+}, { immediate: true })
+
 // 归档复盘：恢复默认提示词模板
 const getArchiveTemplateContent = (promptKey: string) => {
   return archivePromptTemplates.value.find(t => t.prompt_key === promptKey)?.content || ''
@@ -2811,26 +2936,93 @@ const getArchiveTemplateContent = (promptKey: string) => {
 
 const resetArchiveSystemPrompts = () => {
   if (!selectedArchiveConfig.value) return
-  const strictness = selectedArchiveConfig.value.ai_config.audit_strictness || 'standard'
-  selectedArchiveConfig.value.ai_config.system_reasoning_prompt = getArchiveTemplateContent(`archive_system_reasoning_${strictness}`)
-  selectedArchiveConfig.value.ai_config.system_extraction_prompt = getArchiveTemplateContent(`archive_system_extraction_${strictness}`)
+  const cfg = selectedArchiveConfig.value
+  const strictness = cfg.ai_config.audit_strictness || 'standard'
+  cfg.ai_config.system_reasoning_prompt = getArchiveTemplateContent(`archive_system_reasoning_${strictness}`)
+  cfg.ai_config.system_extraction_prompt = getArchiveTemplateContent(`archive_system_extraction_${strictness}`)
+  if (archivePromptDraftsByStrictness[cfg.id]) {
+    if (!archivePromptDraftsByStrictness[cfg.id][strictness]) {
+      archivePromptDraftsByStrictness[cfg.id][strictness] = {
+        system_reasoning_prompt: '',
+        system_extraction_prompt: '',
+        user_reasoning_prompt: '',
+        user_extraction_prompt: '',
+      }
+    }
+    archivePromptDraftsByStrictness[cfg.id][strictness].system_reasoning_prompt = cfg.ai_config.system_reasoning_prompt
+    archivePromptDraftsByStrictness[cfg.id][strictness].system_extraction_prompt = cfg.ai_config.system_extraction_prompt
+  }
   message.success(t('admin.ruleConfig.systemPromptsReset'))
 }
 
 const resetArchiveUserPrompts = () => {
   if (!selectedArchiveConfig.value) return
-  const strictness = selectedArchiveConfig.value.ai_config.audit_strictness || 'standard'
-  selectedArchiveConfig.value.ai_config.user_reasoning_prompt = getArchiveTemplateContent(`archive_user_reasoning_${strictness}`)
-  selectedArchiveConfig.value.ai_config.user_extraction_prompt = getArchiveTemplateContent(`archive_user_extraction_${strictness}`)
+  const cfg = selectedArchiveConfig.value
+  const strictness = cfg.ai_config.audit_strictness || 'standard'
+  cfg.ai_config.user_reasoning_prompt = getArchiveTemplateContent(`archive_user_reasoning_${strictness}`)
+  cfg.ai_config.user_extraction_prompt = getArchiveTemplateContent(`archive_user_extraction_${strictness}`)
+  if (archivePromptDraftsByStrictness[cfg.id]) {
+    if (!archivePromptDraftsByStrictness[cfg.id][strictness]) {
+      archivePromptDraftsByStrictness[cfg.id][strictness] = {
+        system_reasoning_prompt: '',
+        system_extraction_prompt: '',
+        user_reasoning_prompt: '',
+        user_extraction_prompt: '',
+      }
+    }
+    archivePromptDraftsByStrictness[cfg.id][strictness].user_reasoning_prompt = cfg.ai_config.user_reasoning_prompt
+    archivePromptDraftsByStrictness[cfg.id][strictness].user_extraction_prompt = cfg.ai_config.user_extraction_prompt
+  }
   message.success(t('admin.ruleConfig.userPromptsReset'))
 }
 
 const handleArchiveStrictnessChange = (value: string) => {
   if (!selectedArchiveConfig.value) return
-  selectedArchiveConfig.value.ai_config.audit_strictness = value as any
-  // 更新尺度时，同时重置系统和用户提示词为该尺度下的默认值
-  resetArchiveSystemPrompts()
-  resetArchiveUserPrompts()
+  const cfg = selectedArchiveConfig.value
+  const configId = cfg.id
+  const currentStrictness = cfg.ai_config.audit_strictness || 'standard'
+
+  if (currentStrictness === value) return
+
+  // 1. 暂存当前尺度正在编辑的草稿
+  if (!archivePromptDraftsByStrictness[configId]) {
+    archivePromptDraftsByStrictness[configId] = {}
+  }
+  archivePromptDraftsByStrictness[configId][currentStrictness] = {
+    system_reasoning_prompt: cfg.ai_config.system_reasoning_prompt || '',
+    system_extraction_prompt: cfg.ai_config.system_extraction_prompt || '',
+    user_reasoning_prompt: cfg.ai_config.user_reasoning_prompt || '',
+    user_extraction_prompt: cfg.ai_config.user_extraction_prompt || '',
+  }
+
+  // 2. 切换尺度
+  cfg.ai_config.audit_strictness = value as any
+
+  // 3. 优先还原用户此前在当前流程下的草稿
+  if (archivePromptDraftsByStrictness[configId]?.[value]) {
+    const draft = archivePromptDraftsByStrictness[configId][value]
+    cfg.ai_config.system_reasoning_prompt = draft.system_reasoning_prompt
+    cfg.ai_config.system_extraction_prompt = draft.system_extraction_prompt
+    cfg.ai_config.user_reasoning_prompt = draft.user_reasoning_prompt
+    cfg.ai_config.user_extraction_prompt = draft.user_extraction_prompt
+    return
+  }
+
+  // 4. 次优先：若目标尺度恰好是数据库该流程原本保存的尺度，还原数据库已保存内容
+  const orig = originalSavedArchiveAiConfig[configId]
+  if (orig && orig.strictness === value) {
+    cfg.ai_config.system_reasoning_prompt = orig.prompts.system_reasoning_prompt
+    cfg.ai_config.system_extraction_prompt = orig.prompts.system_extraction_prompt
+    cfg.ai_config.user_reasoning_prompt = orig.prompts.user_reasoning_prompt
+    cfg.ai_config.user_extraction_prompt = orig.prompts.user_extraction_prompt
+    return
+  }
+
+  // 5. 首次切到该尺度且数据库原本不是此尺度：从系统预设模板加载
+  cfg.ai_config.system_reasoning_prompt = getArchiveTemplateContent(`archive_system_reasoning_${value}`)
+  cfg.ai_config.system_extraction_prompt = getArchiveTemplateContent(`archive_system_extraction_${value}`)
+  cfg.ai_config.user_reasoning_prompt = getArchiveTemplateContent(`archive_user_reasoning_${value}`)
+  cfg.ai_config.user_extraction_prompt = getArchiveTemplateContent(`archive_user_extraction_${value}`)
 }
 
 const archiveInfoTestingConnection = ref(false)
@@ -2974,6 +3166,16 @@ const handleSaveArchiveConfig = async (silent = false): Promise<boolean> => {
     const idx = archiveConfigs.value.findIndex(c => c.id === cfg.id)
     if (idx >= 0) archiveConfigs.value[idx] = updated
     originalArchivePerms.value = { ...(cfg.user_permissions as any) }
+    const s = updated.ai_config.audit_strictness || 'standard'
+    originalSavedArchiveAiConfig[cfg.id] = {
+      strictness: s,
+      prompts: {
+        system_reasoning_prompt: updated.ai_config.system_reasoning_prompt || '',
+        system_extraction_prompt: updated.ai_config.system_extraction_prompt || '',
+        user_reasoning_prompt: updated.ai_config.user_reasoning_prompt || '',
+        user_extraction_prompt: updated.ai_config.user_extraction_prompt || '',
+      },
+    }
     await refreshVersionStatus('archive', cfg.id)
     if (!silent) message.success(t('admin.ruleConfig.archiveSaved'))
     return true
@@ -3118,6 +3320,16 @@ const handleSave = async (silent = false): Promise<boolean> => {
     const idx = processConfigs.value.findIndex(c => c.id === cfg.id)
     if (idx !== -1) processConfigs.value[idx] = normalizeAuditConfigForUI(updated)
     originalAuditPerms.value = { ...(cfg.user_permissions as any) }
+    const s = updated.ai_config.audit_strictness || 'standard'
+    originalSavedAuditAiConfig[cfg.id] = {
+      strictness: s,
+      prompts: {
+        system_reasoning_prompt: updated.ai_config.system_reasoning_prompt || '',
+        system_extraction_prompt: updated.ai_config.system_extraction_prompt || '',
+        user_reasoning_prompt: updated.ai_config.user_reasoning_prompt || '',
+        user_extraction_prompt: updated.ai_config.user_extraction_prompt || '',
+      },
+    }
     await refreshVersionStatus('audit', cfg.id)
     if (!silent) message.success(t('admin.ruleConfig.configSaved'))
     return true
