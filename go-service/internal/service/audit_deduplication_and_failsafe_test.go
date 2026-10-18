@@ -37,6 +37,9 @@ func TestParseAuditResult_DeductionsAndFailSafe(t *testing.T) {
 	if parsed.OverallScore != 85 {
 		t.Errorf("期望得分 85，实际得到 %d", parsed.OverallScore)
 	}
+	if parsed.Recommendation != "approve" {
+		t.Errorf("85分应自动校准为 approve，实际得到: %s", parsed.Recommendation)
+	}
 	if len(parsed.RiskPoints) == 0 {
 		t.Errorf("触发了自检兜底，RiskPoints 不应为空")
 	}

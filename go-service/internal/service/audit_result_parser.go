@@ -65,15 +65,24 @@ func ParseAuditResult(raw string) (*model.AuditResultJSON, error) {
 	}
 
 	rec := normalizeAuditRecommendation(strings.TrimSpace(p.Recommendation))
-	if rec == "" {
-		return nil, fmt.Errorf("缺少有效结论：请提供 recommendation（approve/return/review）")
-	}
-	if rec != "approve" && rec != "return" && rec != "review" {
-		return nil, fmt.Errorf("审核结论无法归一化: recommendation=%q", p.Recommendation)
-	}
-	out.Recommendation = rec
+	out.Recommendation = CalibrateAuditRecommendationByScore(rec, out.OverallScore)
 
 	return out, nil
+}
+
+// CalibrateAuditRecommendationByScore 以分数为基准点进行确定性仲裁校准：
+// >= 80: approve（通过）
+// 60-79: review（建议复核）
+// < 60: return（建议退回）
+// 当模型输出结论与分数区间不一致时，严格以统一分数标准为准对齐，避免状态错位。
+func CalibrateAuditRecommendationByScore(rec string, score int) string {
+	if score >= 80 {
+		return "approve"
+	}
+	if score >= 60 {
+		return "review"
+	}
+	return "return"
 }
 
 // coalesceRuleResults 将 nil 规则结果切片转为空切片，并清洗 rule_content 中的作用域前缀。

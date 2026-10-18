@@ -8,6 +8,7 @@ import {
   WarningOutlined,
   ThunderboltOutlined,
   EyeOutlined,
+  ExclamationCircleOutlined,
   UserOutlined,
   ApartmentOutlined,
   BulbOutlined,
@@ -67,15 +68,15 @@ const ruleOutcomeSummary = computed(() => {
 
 const recommendationConfig = computed(() => ({
   approve: { color: 'var(--color-success)', bg: 'var(--color-success-bg)', icon: CheckCircleOutlined, label: t('dashboard.rec.approve') },
-  return: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: CloseCircleOutlined, label: t('dashboard.rec.return') },
-  review: { color: 'var(--color-info)', bg: 'var(--color-info-bg)', icon: InfoCircleOutlined, label: t('dashboard.rec.review') },
+  review: { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)', icon: ExclamationCircleOutlined, label: t('dashboard.rec.review') },
+  return: { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)', icon: CloseCircleOutlined, label: t('dashboard.rec.return') },
 }))
 
 const getScoreColorConfig = (score: number | undefined) => {
   if (score === undefined || score === null) return { color: 'var(--color-info)', bg: 'var(--color-info-bg)' }
-  if (score < 60) return { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)' }
-  if (score > 80) return { color: 'var(--color-success)', bg: 'var(--color-success-bg)' }
-  return { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)' }
+  if (score >= 80) return { color: 'var(--color-success)', bg: 'var(--color-success-bg)' }
+  if (score >= 60) return { color: 'var(--color-warning)', bg: 'var(--color-warning-bg)' }
+  return { color: 'var(--color-danger)', bg: 'var(--color-danger-bg)' }
 }
 
 const isResultAsyncRunning = (r: AuditResult | null) =>
@@ -150,9 +151,9 @@ const embedHeaderStatus = computed(() => {
   }
   return {
     label: t('embed.statusReview'),
-    color: 'var(--color-info)',
-    bg: 'var(--color-info-bg)',
-    icon: EyeOutlined,
+    color: 'var(--color-warning)',
+    bg: 'var(--color-warning-bg)',
+    icon: ExclamationCircleOutlined,
     spin: false,
   }
 })
@@ -684,20 +685,20 @@ onBeforeUnmount(() => {
             <div
               class="result-banner"
               :style="{
-                background: getScoreColorConfig(currentResult.overall_score)?.bg,
-                borderColor: getScoreColorConfig(currentResult.overall_score)?.color,
+                background: recommendationConfig[currentResult.recommendation || 'review']?.bg,
+                borderColor: recommendationConfig[currentResult.recommendation || 'review']?.color,
               }"
             >
               <component
                 :is="recommendationConfig[currentResult.recommendation || 'review']?.icon"
                 class="result-banner-icon"
                 aria-hidden="true"
-                :style="{ color: getScoreColorConfig(currentResult.overall_score)?.color }"
+                :style="{ color: recommendationConfig[currentResult.recommendation || 'review']?.color }"
               />
               <div class="result-banner-info">
                 <div
                   class="result-banner-title"
-                  :style="{ color: getScoreColorConfig(currentResult.overall_score)?.color }"
+                  :style="{ color: recommendationConfig[currentResult.recommendation || 'review']?.color }"
                 >
                   {{ recommendationConfig[currentResult.recommendation || 'review']?.label }}
                 </div>

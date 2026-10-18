@@ -73,14 +73,12 @@ func ParseArchiveReviewResult(raw string) (*model.ArchiveResultJSON, error) {
 		return nil, fmt.Errorf("JSON 解析失败: %w, 原始内容: %s", err, truncate(raw, 500))
 	}
 
-	compliance := normalizeArchiveCompliance(payload.OverallCompliance)
-	if compliance == "" {
-		return nil, fmt.Errorf("缺少有效结论：请提供 overall_compliance（compliant/non_compliant/partially_compliant）")
-	}
+	score := pickOverallScoreInt(payload.OverallScore, payload.Score)
+	compliance := CalibrateArchiveComplianceByScore(normalizeArchiveCompliance(payload.OverallCompliance), score)
 
 	result := &model.ArchiveResultJSON{
 		OverallCompliance: compliance,
-		OverallScore:      pickOverallScoreInt(payload.OverallScore, payload.Score),
+		OverallScore:      score,
 		Confidence:        clampPercentInt(payload.Confidence),
 		FlowAudit: model.ArchiveFlowAuditJSON{
 			IsComplete:   payload.FlowAudit.IsComplete,
@@ -173,4 +171,18 @@ func normalizeArchiveCompliance(compliance string) string {
 	default:
 		return ""
 	}
+}
+
+// CalibrateArchiveComplianceByScore 以分数为基准点进行确定性仲裁校准：
+// >= 80: compliant（合规）
+// 60-79: partially_compliant（部分合规/需复查）
+// < 60: non_compliant（不合规）
+func CalibrateArchiveComplianceByScore(comp string, score int) string {
+	if score >= 80 {
+		return "compliant"
+	}
+	if score >= 60 {
+		return "partially_compliant"
+	}
+	return "non_compliant"
 }
