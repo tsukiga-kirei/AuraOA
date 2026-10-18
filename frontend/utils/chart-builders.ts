@@ -59,7 +59,7 @@ export function hexToRgba(hex: string, alpha: number): string {
 // ── 堆叠柱状图 & 平滑面积折线图选项构建 ──
 
 /** 部门分布图系列配色映射 */
-const SERIES_COLORS = {
+export const SERIES_COLORS = {
   audit: '#4f46e5',
   cron: '#06b6d4',
   archive: '#10b981',
@@ -533,3 +533,70 @@ export function buildGaugeOption(
     ],
   }
 }
+
+/**
+ * 构建部门业务类型构成环形图（Donut Chart）的 ECharts option。
+ *
+ * @param data - 部门分布数据数组
+ * @param labels - 图例标签
+ * @param themeColors - 当前主题色配置
+ * @returns ECharts option 对象
+ */
+export function buildDeptDonutOption(
+  data: DeptDistributionData[],
+  labels: DeptChartLabels,
+  themeColors: ChartThemeColors,
+) {
+  const colors = themeColors
+  const auditTotal = data.reduce((acc, cur) => acc + (cur.audit_count || 0), 0)
+  const cronTotal = data.reduce((acc, cur) => acc + (cur.cron_count || 0), 0)
+  const archiveTotal = data.reduce((acc, cur) => acc + (cur.archive_count || 0), 0)
+  const summaryTotal = data.reduce((acc, cur) => acc + (cur.summary_count || 0), 0)
+  const chatTotal = data.reduce((acc, cur) => acc + (cur.chat_count || 0), 0)
+
+  const pieData = [
+    { name: labels.summary, value: summaryTotal, itemStyle: { color: SERIES_COLORS.summary } },
+    { name: labels.audit, value: auditTotal, itemStyle: { color: SERIES_COLORS.audit } },
+    { name: labels.cron, value: cronTotal, itemStyle: { color: SERIES_COLORS.cron } },
+    { name: labels.archive, value: archiveTotal, itemStyle: { color: SERIES_COLORS.archive } },
+    ...(labels.chat ? [{ name: labels.chat, value: chatTotal, itemStyle: { color: SERIES_COLORS.chat } }] : []),
+  ].filter(item => item.value > 0)
+
+  return {
+    tooltip: {
+      trigger: 'item' as const,
+      backgroundColor: colors.isDark ? '#1e293b' : '#ffffff',
+      borderColor: colors.border || (colors.isDark ? '#334155' : '#e2e8f0'),
+      borderWidth: 1,
+      borderRadius: 8,
+      padding: [8, 12],
+      textStyle: { color: colors.textPrimary || '#0f172a', fontSize: 12 },
+      formatter: '{b}: <b>{c}</b> 次 ({d}%)',
+      extraCssText: 'box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1); border-radius: 8px;',
+    },
+    series: [
+      {
+        type: 'pie' as const,
+        radius: ['52%', '78%'],
+        center: ['50%', '50%'],
+        avoidLabelOverlap: false,
+        itemStyle: {
+          borderRadius: 4,
+          borderColor: colors.bgCard || (colors.isDark ? '#1e293b' : '#ffffff'),
+          borderWidth: 2,
+        },
+        label: {
+          show: false,
+        },
+        emphasis: {
+          scale: true,
+          scaleSize: 5,
+        },
+        data: pieData.length > 0 ? pieData : [{ name: '无数据', value: 0 }],
+        animationDuration: 800,
+        animationEasing: 'cubicOut' as const,
+      },
+    ],
+  }
+}
+

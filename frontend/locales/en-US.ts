@@ -950,6 +950,7 @@ export default {
     'overview.monitor.alert.service.offline': 'Service offline: {0}',
     'overview.monitor.alert.service.degraded': 'Service degraded: {0}',
     // System monitor widget
+    'overview.monitor.statusNormal': 'Healthy',
     'overview.monitor.cpuUsage': 'CPU Usage',
     'overview.monitor.memoryUsage': 'Memory Usage',
     'overview.monitor.diskUsage': 'Disk Usage',
@@ -1077,6 +1078,9 @@ export default {
     'overview.layoutReset': 'Dashboard layout reset to default',
     'overview.chartType.line': 'Smooth Trend',
     'overview.chartType.bar': 'Stacked Bar',
+    'overview.chartType.dual': 'Donut & Ranking',
+    'overview.deptRankTitle': 'Top Active Departments',
+    'overview.deptTotalProcess': 'Total Volume',
     'overview.topDepartments': 'Top Departments',
     'overview.otherDepartments': 'Other Departments',
     'overview.customizeDashboard': 'Customize Dashboard',

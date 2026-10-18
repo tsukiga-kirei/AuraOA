@@ -951,6 +951,7 @@ export default {
     'overview.monitor.alert.service.offline': '服务离线：{0}',
     'overview.monitor.alert.service.degraded': '服务降级：{0}',
     // 系统运行监控小部件
+    'overview.monitor.statusNormal': '运行正常',
     'overview.monitor.cpuUsage': 'CPU 使用率',
     'overview.monitor.memoryUsage': '内存使用率',
     'overview.monitor.diskUsage': '磁盘使用率',
@@ -1078,6 +1079,9 @@ export default {
     'overview.layoutReset': '已恢复为系统默认布局',
     'overview.chartType.line': '趋势平滑曲线',
     'overview.chartType.bar': '堆叠柱状图',
+    'overview.chartType.dual': '业务占比与排行',
+    'overview.deptRankTitle': '活跃部门 Top 排行',
+    'overview.deptTotalProcess': '总业务量',
     'overview.topDepartments': 'Top 活跃部门',
     'overview.otherDepartments': '其他部门',
     'overview.customizeDashboard': '自定义仪表盘',
