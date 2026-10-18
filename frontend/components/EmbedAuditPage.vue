@@ -642,7 +642,7 @@ onBeforeUnmount(() => {
               <span class="async-step-label">{{ s.label }}</span>
             </div>
           </div>
-          <div v-if="currentResult?.deep_thinking" class="result-section embed-reasoning-live">
+          <div v-if="currentResult?.deep_thinking" class="embed-reasoning-live">
             <AiMarkdownStream
               page-flow
               :title="t('dashboard.deepThinking', '深度思考过程')"
@@ -650,7 +650,7 @@ onBeforeUnmount(() => {
               max-height="260px"
             ><template #icon><BulbOutlined /></template></AiMarkdownStream>
           </div>
-          <div v-if="currentResult?.ai_reasoning" class="result-section embed-reasoning-live">
+          <div v-if="currentResult?.ai_reasoning" class="embed-reasoning-live">
             <AiMarkdownStream
               page-flow
               :title="t('dashboard.aiReasoning')"
@@ -1022,15 +1022,18 @@ onBeforeUnmount(() => {
 }
 
 .embed-auditing-center {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  min-height: calc(100vh - 200px); padding: 32px 16px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+  min-height: calc(100vh - 200px); padding: 20px 0; text-align: center; width: 100%; box-sizing: border-box;
 }
 .embed-auditing-title {
   margin: 16px 0 20px; font-size: 14px; font-weight: 500;
   color: var(--color-text-secondary);
 }
 .embed-reasoning-live {
-  width: 100%; margin-top: 24px; text-align: left;
+  width: 100%; margin-top: 10px; text-align: left;
+}
+.embed-reasoning-live:first-of-type {
+  margin-top: 18px;
 }
 
 .unsupported-process { text-align: left; margin-top: 8px; }
@@ -1150,7 +1153,7 @@ onBeforeUnmount(() => {
   .result-banner { padding: 14px; }
   .result-score { font-size: 32px; }
   .insight-card { padding: 14px; }
-  .embed-auditing-center { padding: 24px 0; min-height: 300px; }
+  .embed-auditing-center { padding: 14px 0; min-height: 280px; }
   .embed-audit :deep(.result-rule-details__title) { font-size: 14px; }
 }
 @media (prefers-reduced-motion: reduce) {

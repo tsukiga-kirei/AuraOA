@@ -4,7 +4,7 @@ import sanitizeHtml from 'sanitize-html'
 /** 模型回复及外部工具内容只渲染安全的阅读型 Markdown。 */
 export function renderSafeMarkdown(content: string): string {
   try {
-    return sanitizeHtml(marked.parse(content || '', { async: false, gfm: true }) as string, {
+    return sanitizeHtml(marked.parse(content || '', { async: false, gfm: true, breaks: true }) as string, {
       allowedTags: sanitizeHtml.defaults.allowedTags.concat(['del', 'input']),
       allowedAttributes: { ...sanitizeHtml.defaults.allowedAttributes, a: ['href', 'name', 'target', 'rel'], code: ['class'], input: ['type', 'checked', 'disabled'] },
       allowedSchemes: ['http', 'https', 'mailto'], allowProtocolRelative: false,
