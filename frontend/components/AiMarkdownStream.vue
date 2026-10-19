@@ -9,12 +9,14 @@ const props = withDefaults(defineProps<{
   emptyText?: string
   maxHeight?: string
   pageFlow?: boolean
+  loading?: boolean
 }>(), {
   title: '',
   text: '',
   emptyText: '等待模型输出',
   maxHeight: '260px',
   pageFlow: false,
+  loading: false,
 })
 
 const { t } = useI18n()
@@ -82,7 +84,7 @@ onBeforeUnmount(() => {
         <span v-if="$slots.icon" class="ai-stream__icon" aria-hidden="true"><slot name="icon" /></span>
         {{ title }}
       </span>
-      <span class="ai-stream__status">
+      <span v-if="loading" class="ai-stream__status">
         <LoadingOutlined spin />
         <span>{{ t('dashboard.aiAnalyzingSub', '实时分析中') }}</span>
       </span>

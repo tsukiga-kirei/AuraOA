@@ -645,6 +645,7 @@ onBeforeUnmount(() => {
           <div v-if="currentResult?.deep_thinking" class="embed-reasoning-live">
             <AiMarkdownStream
               page-flow
+              :loading="isAuditingActive"
               :title="t('dashboard.deepThinking', '深度思考过程')"
               :text="currentResult.deep_thinking || ''"
               max-height="260px"
@@ -653,6 +654,7 @@ onBeforeUnmount(() => {
           <div v-if="currentResult?.ai_reasoning" class="embed-reasoning-live">
             <AiMarkdownStream
               page-flow
+              :loading="isAuditingActive"
               :title="t('dashboard.aiReasoning')"
               :text="currentResult.ai_reasoning || ''"
               max-height="260px"
