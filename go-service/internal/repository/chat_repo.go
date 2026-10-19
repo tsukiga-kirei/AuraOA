@@ -278,11 +278,11 @@ func (r *ChatRepo) CountThisWeek(c *gin.Context, userID *uuid.UUID) (int64, erro
 	return count, err
 }
 
-// WeeklyTrendByDay 本周每天的智能体会话条数（按实际发生消息的时间聚合，generate_series 填充）。
+// WeeklyTrendByDay 近一周每天的智能体会话条数（按实际发生消息的时间聚合，generate_series 填充）。
 func (r *ChatRepo) WeeklyTrendByDay(c *gin.Context, userID *uuid.UUID) ([]DayCount, error) {
 	tenantID, _ := c.Get("tenant_id")
 	userFilter := ""
-	args := []interface{}{apptime.Name(), apptime.Name(), apptime.Name(), tenantID, apptime.Name()}
+	args := []interface{}{apptime.Name(), apptime.Name(), apptime.Name(), tenantID, apptime.Name(), apptime.Name()}
 	if userID != nil {
 		userFilter = "AND s.user_id = ?"
 		args = append(args, *userID)
@@ -291,7 +291,7 @@ func (r *ChatRepo) WeeklyTrendByDay(c *gin.Context, userID *uuid.UUID) ([]DayCou
 	sql := `
 WITH days AS (
   SELECT generate_series(
-    date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)::date,
+    (CURRENT_TIMESTAMP AT TIME ZONE ?)::date - 6,
     (CURRENT_TIMESTAMP AT TIME ZONE ?)::date,
     INTERVAL '1 day'
   )::date AS d
@@ -305,7 +305,7 @@ LEFT JOIN (
   FROM chat_messages m
   JOIN chat_sessions s ON s.id = m.session_id
   WHERE s.tenant_id = ?
-    AND m.created_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)
+    AND m.created_at >= ((CURRENT_TIMESTAMP AT TIME ZONE ?)::date - 6)::timestamp AT TIME ZONE ?
     ` + userFilter + `
   GROUP BY 1
 ) b ON b.d = days.d

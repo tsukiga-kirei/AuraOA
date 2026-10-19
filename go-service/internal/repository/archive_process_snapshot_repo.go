@@ -247,12 +247,12 @@ func (r *ArchiveProcessSnapshotRepo) CountThisWeek(c *gin.Context, userID *uuid.
 	return count, err
 }
 
-// WeeklyTrendByDay 本周每天的归档快照条数（generate_series 填充无数据日期）。
+// WeeklyTrendByDay 近一周每天的归档快照条数（generate_series 填充无数据日期）。
 func (r *ArchiveProcessSnapshotRepo) WeeklyTrendByDay(c *gin.Context, userID *uuid.UUID) ([]DayCount, error) {
 	tenantID, _ := c.Get("tenant_id")
 
 	userFilter := ""
-	args := []interface{}{apptime.Name(), apptime.Name(), apptime.Name(), tenantID, apptime.Name()}
+	args := []interface{}{apptime.Name(), apptime.Name(), apptime.Name(), tenantID, apptime.Name(), apptime.Name()}
 	if userID != nil {
 		userFilter = "AND arl.user_id = ?"
 		args = append(args, *userID)
@@ -261,7 +261,7 @@ func (r *ArchiveProcessSnapshotRepo) WeeklyTrendByDay(c *gin.Context, userID *uu
 	sql := `
 WITH days AS (
   SELECT generate_series(
-    date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)::date,
+    (CURRENT_TIMESTAMP AT TIME ZONE ?)::date - 6,
     (CURRENT_TIMESTAMP AT TIME ZONE ?)::date,
     INTERVAL '1 day'
   )::date AS d
@@ -280,7 +280,7 @@ LEFT JOIN (
 		return ""
 	}() + `
   WHERE aps.tenant_id = ?
-    AND aps.updated_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)
+    AND aps.updated_at >= ((CURRENT_TIMESTAMP AT TIME ZONE ?)::date - 6)::timestamp AT TIME ZONE ?
     ` + userFilter + `
   GROUP BY 1
 ) b ON b.d = days.d

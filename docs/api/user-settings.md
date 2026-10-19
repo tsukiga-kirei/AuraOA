@@ -279,7 +279,7 @@ GET /api/tenant/settings/dashboard-overview
 
 **时间窗口**
 
-- 本周概览 `weekly_overview` 与审核趋势 `weekly_trend` 同源：应用时区本周一 00:00 至当前。趋势是按日拆开的堆叠柱，各日分项之和应与概览对应计数一致（智能体因按会话/按消息日略有差异）。
+- 本周概览 `weekly_overview`：应用时区本周一 00:00 至当前；审核趋势 `weekly_trend`：近一周（应用时区近 7 个自然日，含当天）按日拆开的堆叠柱。
 - 部门分布 `dept_distribution`：近 30 天。OA 嵌入部门快照与当前组织部门**同名**时合并到该部门。
 - 用户活跃排行 `user_activity`：近 30 天。OA 通用嵌入按操作人快照，不归到内部承载账号；部门名与组织同名时合并展示。无法识别 OA 人员时显示「OA 嵌入用户/未识别」。
 - 最近动态 `recent_activity`：近 7 天，最多 10 条。

@@ -193,6 +193,16 @@ export function buildStackedBarOption(
 ) {
   const colors = themeColors
 
+  // 计算每个分类（X 轴位置）上处于顶部的非零系列索引，使堆叠柱仅在最顶端圆角，各子项间平直无缝衔接
+  const topSeriesIndexPerCat = categories.map((_, catIdx) => {
+    for (let sIdx = series.length - 1; sIdx >= 0; sIdx--) {
+      if ((series[sIdx].data[catIdx] ?? 0) > 0) {
+        return sIdx
+      }
+    }
+    return -1
+  })
+
   return {
     tooltip: createModernTooltip(colors, true),
     legend: {
@@ -235,19 +245,26 @@ export function buildStackedBarOption(
     },
     animationDuration: 600,
     animationEasing: 'cubicOut' as const,
-    series: series.map((s, idx) => ({
+    series: series.map((s, sIdx) => ({
       name: s.name,
       type: 'bar' as const,
       stack: 'total',
-      data: s.data,
       barMaxWidth: 18,
       itemStyle: {
         color: new LinearGradient(0, 0, 0, 1, [
           { offset: 0, color: s.color },
           { offset: 1, color: hexToRgba(s.color, 0.75) },
         ]),
-        borderRadius: idx === series.length - 1 ? [4, 4, 0, 0] : [2, 2, 0, 0],
       },
+      data: s.data.map((val, catIdx) => {
+        const isTop = topSeriesIndexPerCat[catIdx] === sIdx && val > 0
+        return {
+          value: val,
+          itemStyle: {
+            borderRadius: isTop ? [4, 4, 0, 0] : [0, 0, 0, 0],
+          },
+        }
+      }),
     })),
   }
 }
@@ -307,6 +324,25 @@ export function buildDeptChartOption(
 
   const depts = displayData.map(d => d.department)
 
+  // 系列定义与字段提取器
+  const seriesDefs = [
+    { name: labels.audit, color: SERIES_COLORS.audit, getVal: (d: DeptDistributionData) => d.audit_count },
+    { name: labels.cron, color: SERIES_COLORS.cron, getVal: (d: DeptDistributionData) => d.cron_count },
+    { name: labels.archive, color: SERIES_COLORS.archive, getVal: (d: DeptDistributionData) => d.archive_count },
+    { name: labels.summary, color: SERIES_COLORS.summary, getVal: (d: DeptDistributionData) => d.summary_count },
+    ...(labels.chat ? [{ name: labels.chat, color: SERIES_COLORS.chat, getVal: (d: DeptDistributionData) => d.chat_count ?? 0 }] : []),
+  ]
+
+  // 计算每个部门（Y 轴位置）上处于最右侧的非零系列索引，使堆叠柱仅在最右端圆角，各子项间平直无缝衔接
+  const rightmostSeriesIndexPerDept = displayData.map((d) => {
+    for (let sIdx = seriesDefs.length - 1; sIdx >= 0; sIdx--) {
+      if (seriesDefs[sIdx].getVal(d) > 0) {
+        return sIdx
+      }
+    }
+    return -1
+  })
+
   return {
     tooltip: createModernTooltip(colors, true),
     legend: {
@@ -354,78 +390,28 @@ export function buildDeptChartOption(
     },
     animationDuration: 600,
     animationEasing: 'cubicOut' as const,
-    series: [
-      {
-        name: labels.audit,
-        type: 'bar' as const,
-        stack: 'total',
-        data: displayData.map(d => d.audit_count),
-        barMaxWidth: 14,
-        itemStyle: {
-          color: new LinearGradient(0, 0, 1, 0, [
-            { offset: 0, color: hexToRgba(SERIES_COLORS.audit, 0.75) },
-            { offset: 1, color: SERIES_COLORS.audit },
-          ]),
-          borderRadius: [0, 4, 4, 0],
-        },
+    series: seriesDefs.map((s, sIdx) => ({
+      name: s.name,
+      type: 'bar' as const,
+      stack: 'total',
+      barMaxWidth: 14,
+      itemStyle: {
+        color: new LinearGradient(0, 0, 1, 0, [
+          { offset: 0, color: hexToRgba(s.color, 0.75) },
+          { offset: 1, color: s.color },
+        ]),
       },
-      {
-        name: labels.cron,
-        type: 'bar' as const,
-        stack: 'total',
-        data: displayData.map(d => d.cron_count),
-        barMaxWidth: 14,
-        itemStyle: {
-          color: new LinearGradient(0, 0, 1, 0, [
-            { offset: 0, color: hexToRgba(SERIES_COLORS.cron, 0.75) },
-            { offset: 1, color: SERIES_COLORS.cron },
-          ]),
-          borderRadius: [0, 4, 4, 0],
-        },
-      },
-      {
-        name: labels.archive,
-        type: 'bar' as const,
-        stack: 'total',
-        data: displayData.map(d => d.archive_count),
-        barMaxWidth: 14,
-        itemStyle: {
-          color: new LinearGradient(0, 0, 1, 0, [
-            { offset: 0, color: hexToRgba(SERIES_COLORS.archive, 0.75) },
-            { offset: 1, color: SERIES_COLORS.archive },
-          ]),
-          borderRadius: [0, 4, 4, 0],
-        },
-      },
-      {
-        name: labels.summary,
-        type: 'bar' as const,
-        stack: 'total',
-        data: displayData.map(d => d.summary_count),
-        barMaxWidth: 14,
-        itemStyle: {
-          color: new LinearGradient(0, 0, 1, 0, [
-            { offset: 0, color: hexToRgba(SERIES_COLORS.summary, 0.75) },
-            { offset: 1, color: SERIES_COLORS.summary },
-          ]),
-          borderRadius: [0, 4, 4, 0],
-        },
-      },
-      ...(labels.chat ? [{
-        name: labels.chat,
-        type: 'bar' as const,
-        stack: 'total',
-        data: displayData.map(d => d.chat_count ?? 0),
-        barMaxWidth: 14,
-        itemStyle: {
-          color: new LinearGradient(0, 0, 1, 0, [
-            { offset: 0, color: hexToRgba(SERIES_COLORS.chat, 0.75) },
-            { offset: 1, color: SERIES_COLORS.chat },
-          ]),
-          borderRadius: [0, 4, 4, 0],
-        },
-      }] : []),
-    ],
+      data: displayData.map((d, dIdx) => {
+        const val = s.getVal(d)
+        const isRightmost = rightmostSeriesIndexPerDept[dIdx] === sIdx && val > 0
+        return {
+          value: val,
+          itemStyle: {
+            borderRadius: isRightmost ? [0, 4, 4, 0] : [0, 0, 0, 0],
+          },
+        }
+      }),
+    })),
   }
 }
 

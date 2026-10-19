@@ -143,11 +143,11 @@ func (r *ProcessSummaryLogRepo) CountThisWeek(c *gin.Context, userID *uuid.UUID)
 	return count, err
 }
 
-// WeeklyTrendByDay 本周每天的流程总结工作台完成记录数。
+// WeeklyTrendByDay 近一周每天的流程总结工作台完成记录数。
 func (r *ProcessSummaryLogRepo) WeeklyTrendByDay(c *gin.Context, userID *uuid.UUID) ([]DayCount, error) {
 	tenantID, _ := c.Get("tenant_id")
 	userFilter := ""
-	args := []interface{}{apptime.Name(), apptime.Name(), apptime.Name(), tenantID, apptime.Name()}
+	args := []interface{}{apptime.Name(), apptime.Name(), apptime.Name(), tenantID, apptime.Name(), apptime.Name()}
 	if userID != nil {
 		userFilter = summaryDashboardPersonalWhere(userID)
 		args = append(args, *userID)
@@ -155,7 +155,7 @@ func (r *ProcessSummaryLogRepo) WeeklyTrendByDay(c *gin.Context, userID *uuid.UU
 	sql := `
 WITH days AS (
   SELECT generate_series(
-    date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)::date,
+    (CURRENT_TIMESTAMP AT TIME ZONE ?)::date - 6,
     (CURRENT_TIMESTAMP AT TIME ZONE ?)::date,
     INTERVAL '1 day'
   )::date AS d
@@ -168,7 +168,7 @@ LEFT JOIN (
   FROM process_summary_logs psl
   WHERE psl.tenant_id = ?
     AND psl.status = 'completed'
-    AND psl.created_at >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE ?)
+    AND psl.created_at >= ((CURRENT_TIMESTAMP AT TIME ZONE ?)::date - 6)::timestamp AT TIME ZONE ?
     ` + userFilter + `
   GROUP BY 1
 ) b ON b.d = days.d
