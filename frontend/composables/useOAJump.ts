@@ -59,19 +59,10 @@ export const useOAJump = () => {
     if (!pid) return ''
 
     const template = configState.value.resolved_template || configState.value.process_url_template
-    if (template) {
-      return template
-        .replace(/\{process_id\}/gi, encodeURIComponent(pid))
-        .replace(/\{requestid\}/gi, encodeURIComponent(pid))
-    }
-
-    let base = (configState.value.oa_base_url || '').trim()
-    if (!base) return ''
-    if (!/^https?:\/\//i.test(base)) {
-      base = `http://${base}`
-    }
-    base = base.replace(/\/+$/, '')
-    return `${base}/workflow/request/ViewRequestForwardSPA.jsp?requestid=${encodeURIComponent(pid)}`
+    if (!template) return ''
+    return template
+      .replace(/\{process_id\}/gi, encodeURIComponent(pid))
+      .replace(/\{requestid\}/gi, encodeURIComponent(pid))
   }
 
   const jumpToOA = (processId: string): boolean => {

@@ -70,6 +70,14 @@ func TestBuildOAProcessURL(t *testing.T) {
 			want:      "https://standalone-oa.corp.com/flow/555",
 		},
 		{
+			name:      "未登记兜底的类型留空模板不套用E9地址",
+			baseURL:   "http://oa.example.com",
+			template:  "",
+			oaType:    "weaver_e10",
+			processID: "613446",
+			want:      "",
+		},
+		{
 			name:      "两处均为空返回空",
 			baseURL:   "",
 			template:  "",

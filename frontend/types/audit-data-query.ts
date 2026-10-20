@@ -9,6 +9,14 @@ export interface QueryAIContext {
   notes: string
   field_notes?: Record<string, string>
 }
+/** 当前 OA 类型的「仅已归档」关联规则。没有该字段时，查询器不生成归档条件。 */
+export interface WorkflowArchiveRule {
+  request_table: string
+  request_id_column: string
+  form_request_id_column: string
+  status_column: string
+  status_value: string
+}
 export interface QuerySource {
   name: string
   dialect: QueryDefinition['dialect']
@@ -16,6 +24,7 @@ export interface QuerySource {
   oa_name: string
   timezone: string
   business_date: string
+  workflow_archive?: WorkflowArchiveRule | null
 }
 export interface QueryAssistPreviewSummary {
   status: string

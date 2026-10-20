@@ -208,3 +208,18 @@ func TestQueryPreviewFingerprintKeepsContentAndConnectionBound(t *testing.T) {
 		t.Fatal("数据源修改后必须使旧预览失效")
 	}
 }
+
+func TestQueryAssistPromptFollowsOAProfile(t *testing.T) {
+	e9 := queryAssistPrompt("weaver_e9")
+	const legacy = "泛微 Ecology 9（weaver_e9/ecology9）的 requestid 只用于关联，不能判断归档；仅在业务明确要求且提供 workflow_requestbase 的真实字段时按 currentnodetype='3' 筛选已归档记录。不得把泛微字段约定套用到其他 OA，也不得臆造流程主表、明细表或建模表关系。"
+	if !strings.Contains(e9, legacy) {
+		t.Fatal("E9 提示词原文被改动")
+	}
+	e10 := queryAssistPrompt("weaver_e10")
+	if strings.Contains(e10, "workflow_requestbase") || strings.Contains(e10, "currentnodetype") {
+		t.Fatal("E10 提示词不应包含 E9 表字段")
+	}
+	if _, ok := oa.WorkflowArchive("weaver_e9"); !ok {
+		t.Fatal("E9 归档规则缺失")
+	}
+}

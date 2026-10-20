@@ -181,8 +181,10 @@ const contextTables = computed(() => {
   const tables = [...definition.value.tables]
   const builder = editorMode.value === 'config' ? definition.value.builder : undefined
   if (builder?.table.trim()) tables.push(builder.table.trim())
-  if (builder?.source_type === 'workflow' && builder.archived_only !== false)
-    tables.push('workflow_requestbase')
+  if (builder?.source_type === 'workflow' && builder.archived_only !== false) {
+    const archiveTable = source.value?.workflow_archive?.request_table
+    if (archiveTable) tables.push(archiveTable)
+  }
   return [...new Map(tables.map((table) => [table.toLowerCase(), table])).values()]
 })
 const lockedTables = computed(() =>
@@ -691,8 +693,10 @@ function updateBuilder(value: QueryBuilder) {
       previous.archived_only !== value.archived_only)
   ) {
     const previousTables = [previous.table]
-    if (previous.source_type === 'workflow' && previous.archived_only !== false)
-      previousTables.push('workflow_requestbase')
+    if (previous.source_type === 'workflow' && previous.archived_only !== false) {
+      const archiveTable = source.value?.workflow_archive?.request_table
+      if (archiveTable) previousTables.push(archiveTable)
+    }
     definition.value.tables = definition.value.tables.filter(
       (table) => !previousTables.includes(table),
     )
@@ -1039,6 +1043,7 @@ defineExpose({ canLeave, editPrompts, busy })
                 v-if="editorMode === 'config'"
                 :key="`query-builder-${builderKey}`"
                 :definition="definition"
+                :archive="source?.workflow_archive"
                 :disabled="!!busy || !source"
                 @apply="applyBuilder"
                 @update:builder="updateBuilder"

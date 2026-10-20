@@ -58,25 +58,25 @@ func (s *OAConnectionService) List() ([]dto.OAConnectionResponse, error) {
 // Create 创建新的 OA 连接。
 func (s *OAConnectionService) Create(req *dto.CreateOAConnectionRequest) (*dto.OAConnectionResponse, error) {
 	conn := &model.OADatabaseConnection{
-		ID:                uuid.New(),
-		Name:              req.Name,
-		OAType:            req.OAType,
-		OATypeLabel:       req.OATypeLabel,
-		Driver:            req.Driver,
-		Host:              req.Host,
-		Port:              req.Port,
-		DatabaseName:      req.DatabaseName,
-		Username:          req.Username,
-		Password:          req.Password,
-		PoolSize:          req.PoolSize,
-		ConnectionTimeout: req.ConnectionTimeout,
-		TestOnBorrow:      req.TestOnBorrow,
-		SyncInterval:      req.SyncInterval,
-		Enabled:           req.Enabled,
-		Description:       req.Description,
-		WeaverAPIURL:      req.WeaverAPIURL,
-		WeaverAppID:       req.WeaverAppID,
-		WeaverDefaultUser: req.WeaverDefaultUser,
+		ID:                 uuid.New(),
+		Name:               req.Name,
+		OAType:             req.OAType,
+		OATypeLabel:        req.OATypeLabel,
+		Driver:             req.Driver,
+		Host:               req.Host,
+		Port:               req.Port,
+		DatabaseName:       req.DatabaseName,
+		Username:           req.Username,
+		Password:           req.Password,
+		PoolSize:           req.PoolSize,
+		ConnectionTimeout:  req.ConnectionTimeout,
+		TestOnBorrow:       req.TestOnBorrow,
+		SyncInterval:       req.SyncInterval,
+		Enabled:            req.Enabled,
+		Description:        req.Description,
+		WeaverAPIURL:       req.WeaverAPIURL,
+		WeaverAppID:        req.WeaverAppID,
+		WeaverDefaultUser:  req.WeaverDefaultUser,
 		OABaseURL:          strings.TrimSpace(req.OABaseURL),
 		ProcessURLTemplate: strings.TrimSpace(req.ProcessURLTemplate),
 	}
@@ -310,57 +310,9 @@ func toOAConnectionResponse(c *model.OADatabaseConnection) dto.OAConnectionRespo
 }
 
 // BuildOAProcessURL 根据 OA Web 基础地址、跳转模板、OA 类型与流程 ID 拼接目标流程详情 URL。
+// 模板留空时使用该 OA 类型档案中的兜底地址。工作台与对话共用这一函数。
 func BuildOAProcessURL(baseURL, template, oaType, processID string) string {
-	processID = strings.TrimSpace(processID)
-	if processID == "" {
-		return ""
-	}
-
-	baseURL = strings.TrimSpace(baseURL)
-	template = strings.TrimSpace(template)
-
-	// 如果配置了模板，先替换占位符
-	if template != "" {
-		replacer := strings.NewReplacer(
-			"{process_id}", processID,
-			"{requestid}", processID,
-			"{processId}", processID,
-			"{requestId}", processID,
-			"{PROCESS_ID}", processID,
-			"{REQUESTID}", processID,
-		)
-		target := replacer.Replace(template)
-
-		// 若已是完整 URL（包含协议），直接返回
-		if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
-			return target
-		}
-
-		// 否则作为相对路径与 baseURL 拼接
-		if baseURL == "" {
-			return target
-		}
-		if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
-			baseURL = "http://" + baseURL
-		}
-		baseURL = strings.TrimRight(baseURL, "/")
-		if !strings.HasPrefix(target, "/") {
-			target = "/" + target
-		}
-		return baseURL + target
-	}
-
-	// 用户未指定模板，需有 baseURL
-	if baseURL == "" {
-		return ""
-	}
-	if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
-		baseURL = "http://" + baseURL
-	}
-	baseURL = strings.TrimRight(baseURL, "/")
-
-	// 泛微 Ecology 9 默认规则（也作为默认缺省）
-	return baseURL + "/workflow/request/ViewRequestForwardSPA.jsp?requestid=" + processID
+	return oa.BuildProcessURL(baseURL, template, oaType, processID)
 }
 
 // TestConnection 根据已保存的 OA 连接 ID 测试数据库连通性，并将结果持久化到数据库。
@@ -452,9 +404,10 @@ func (s *OAConnectionService) testOAConnection(conn *model.OADatabaseConnection)
 	return nil
 }
 
-// validateWeaverAttachmentKeys：填写附件接口 URL 后，appid 与 loginid 必须齐全。
+// validateWeaverAttachmentKeys 在档案要求泛微应用凭证时，填写附件接口 URL 后 appid 与 loginid 必须齐全。
 func validateWeaverAttachmentKeys(oaType, apiURL, appID, loginID string) error {
-	if oaType != "weaver_e9" || strings.TrimSpace(apiURL) == "" {
+	profile, ok := oa.MetadataProfile(oaType)
+	if !ok || profile.AttachmentAuth != oa.AttachmentAuthWeaverApp || strings.TrimSpace(apiURL) == "" {
 		return nil
 	}
 	if strings.TrimSpace(appID) == "" {

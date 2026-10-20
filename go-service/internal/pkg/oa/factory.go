@@ -9,13 +9,10 @@ import (
 	"gorm.io/gorm"
 )
 
-// supportedDrivers 记录每种 OA 类型支持的数据库驱动。
-var supportedDrivers = map[string][]string{
-	"weaver_e9": {"mysql", "oracle", "dm"},
-}
-
 // openOADatabase 根据 OA 类型创建底层数据库连接池。
 // 新增 OA 适配器时必须从此入口接入 ConnectionManager 的统一生命周期。
+// weaver_e10 已在档案中占位，但 Implemented 为 false，校验阶段会拒绝建连。
+// 实现 E10 时在下面增加分支，调用 E10 自己的连接函数，不要复用 openEcology9Database。说明见 ecology10.go。
 func openOADatabase(
 	ctx context.Context,
 	oaType string,
@@ -26,7 +23,7 @@ func openOADatabase(
 		return nil, nil, err
 	}
 	switch oaType {
-	case "weaver_e9":
+	case oaTypeWeaverE9:
 		return openEcology9Database(ctx, conn, transient)
 	default:
 		return nil, nil, fmt.Errorf("不支持的 OA 类型: %s", oaType)
@@ -48,7 +45,7 @@ func newOAAdapterWithDB(
 	}
 
 	switch oaType {
-	case "weaver_e9":
+	case oaTypeWeaverE9:
 		var svc AttachmentRecognitionService
 		if len(attachmentSvc) > 0 {
 			svc = attachmentSvc[0]
@@ -63,12 +60,15 @@ func validateOAAdapterConfig(oaType string, conn *model.OADatabaseConnection) er
 	if conn == nil {
 		return fmt.Errorf("OA 数据库连接配置为空")
 	}
-	drivers, ok := supportedDrivers[oaType]
+	profile, ok := Profile(oaType)
 	if !ok {
 		return fmt.Errorf("不支持的 OA 类型: %s", oaType)
 	}
-	if !contains(drivers, conn.Driver) {
-		return fmt.Errorf("OA 类型 %s 不支持数据库驱动 %s（支持: %v）", oaType, conn.Driver, drivers)
+	if !profile.Implemented {
+		return fmt.Errorf("OA 类型 %s 的适配器尚未实现", oaType)
+	}
+	if !contains(profile.Drivers, conn.Driver) {
+		return fmt.Errorf("OA 类型 %s 不支持数据库驱动 %s（支持: %v）", oaType, conn.Driver, profile.Drivers)
 	}
 	return nil
 }

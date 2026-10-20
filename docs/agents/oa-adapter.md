@@ -66,7 +66,7 @@ CheckProcessVisibility(ctx, username, processID) (visible bool, err error)
 
 ## 5. OA 跳转（非适配器写操作）
 
-`resolve_oa_url` **不写库**。使用已有 [`BuildOAProcessURL`](../../go-service/internal/service/oa_connection_service.go)，读取连接上的 `oa_base_url`、`process_url_template`。未配置则工具失败并提示管理员补全跳转模板。
+`resolve_oa_url` **不写库**。工作台与对话都调用 [`oa.BuildProcessURL`](../../go-service/internal/pkg/oa/process_url.go)。连接上写了 `process_url_template` 时用该模板；留空时只用该 OA 类型档案中的兜底地址。E9 兜底为 `/workflow/request/ViewRequestForwardSPA.jsp?requestid={process_id}`。E10 档案尚未填写兜底，与 E9 无关。没有 Web 地址、也没有可用模板时，工具失败并提示管理员补全。
 
 ## 6. 调用现有审核 / 总结
 
@@ -82,7 +82,7 @@ CheckProcessVisibility(ctx, username, processID) (visible bool, err error)
 
 1. 实现 `OAAdapter` 必选方法 + `CheckProcessVisibility`。
 2. 按需实现可选接口；未实现则对应工具在该租户 `oa_type` 下标记 `capability_unsupported`。
-3. 工厂 `oa_type` 注册；连接页可选该类型。
+3. 在 `profile.go` 登记档案并在工厂注册。适配器未实现前不要写入 `oa_type_options`，连接页先不出现该类型。
 4. **不必**为每个 OA 复制一套 `tool_code`。系统工具保持稳定，差异留在适配器。
 5. 更新 [`docs/oa-integration.md`](../oa-integration.md) 与本文映射表。
 6. 若该 OA 需要原生 HTTP 才能「办」，另开需求；本期仍不允许写操作。

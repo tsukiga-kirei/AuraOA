@@ -30,7 +30,7 @@
 | `draft_comment` | 按意图起草批准/退回意见（纯文本） | 可见流程 + 可选审核结论 | `opinion_draft` | 是 |
 | `run_audit` | 触发现有审核 Job | `AuditExecuteService` | `audit_job` | 是 |
 | `run_summary` | 触发现有总结 Job | 总结 execute | `summary_job` | 是 |
-| `resolve_oa_url` | 生成 OA 打开链接 | `BuildOAProcessURL` | `oa_link` | 否（需连接上的 Web URL） |
+| `resolve_oa_url` | 生成 OA 打开链接 | `oa.BuildProcessURL`（与工作台同一兜底） | `oa_link` | 否（需连接上的 Web URL） |
 
 `run_*` 立即返回 `job_id` 与状态，由前端再订现有 stream；对话 HTTP 不阻塞到审核结束。
 

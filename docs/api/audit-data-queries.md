@@ -9,7 +9,7 @@
 记忆库包含两个页签：**数据记忆**承载本次可复用取数能力；**评审记忆**仅展示占位说明，暂不采纳反馈、不改写提示词，也不自动参与审核。数据记忆每次审核实时查询，不新增每日同步或复制业务数据的任务。
 
 - **配置查询**：输入表或视图名并读取真实字段，选择输出列、中文列名、SUM/COUNT/MIN/MAX/AVG、AND 筛选及排序。含聚合时自动将非聚合字段加入 GROUP BY。COUNT 支持 `*`。
-- 来源选择**流程表**时，单独设置“仅查询已归档流程”开关，新配置默认关闭；开启后要求业务表包含 `requestid`，用它关联 `workflow_requestbase`，并以 `currentnodetype='3'` 判断归档状态。`requestid` 存在不代表已归档。旧配置未指定 `builder.archived_only` 时沿用原有仅归档口径。状态条件完整写入 SQL，配置与自定义 SQL 都可见，执行端不隐式追加。建模表/普通表/视图不自动加状态条件。
+- 来源选择**流程表**时，单独设置“仅查询已归档流程”开关，新配置默认关闭。开启后按当前 OA 类型档案生成关联条件，并写入 SQL。泛微 E9 仍要求业务表包含 `requestid`，用它关联 `workflow_requestbase`，并以 `currentnodetype='3'` 判断归档。`requestid` 存在不代表已归档。档案没有归档规则时不能生成该条件。旧配置未指定 `builder.archived_only` 时沿用原有仅归档口径。已保存的 SQL 不回写。状态条件完整写入 SQL，配置与自定义 SQL 都可见，执行端不隐式追加。建模表/普通表/视图不自动加状态条件。
 - 筛选条件按“字段 → 比较关系 → 固定值/流程字段/系统值”配置；固定值直接填写，流程字段允许暂不选择实际字段，只填写可选中文用途，引用规则时再下拉绑定；系统值下拉选择。英文参数名自动生成并隐藏于配置模式，SQL 模式从占位符自动识别变量，不再手工新增英文参数名。值仍通过驱动参数绑定，支持 LIKE、IN、空值条件；日期参数在 Oracle/达梦生成 TO_DATE 转换。LIKE 通配符通过参数值提供。
 - **自定义 SQL**：支持复杂关联、多个流程表的字段映射与合并、嵌套查询等，以服务端 SQL 子集检查为准；不尝试将任意 SQL 反推为配置。编辑 SQL 时自动识别 `:name` 值占位符，忽略字符串、带引号标识符、注释及双冒号转换；变量区只配置中文用途、类型和取值来源，没有占位符时不显示。相同变量保留已有设置；SQL 删除变量后从当前参数数组移除，仍保留服务端参数一致性检查。
 - 执行 SQL 预览默认展开。`definition.mode` 区分 `config` / `sql`，两种编辑方式互斥：切到自定义 SQL 保留已生成 SQL 并清除 builder，切回配置会清空 SQL 和变量设置；有编辑内容时先确认。修改配置后清空旧 SQL 和参数，必须重新生成。旧条目根据 builder 与旧 sql_mode 标记推断模式，不反向解析 SQL。
@@ -55,7 +55,7 @@
 | DELETE | `/:id/references` | `{module,process_type}`：取消对应模块及流程全部当前规则的引用；需额外规则配置页面权限；返回 `{removed_count}`（受影响规则数） |
 | POST | `/check` | 请求体为 `definition`；返回结构检查报告 |
 | POST | `/preview` | 手工参数或流程绑定预览，返回证据对象 |
-| GET | `/source` | 返回 `{name,dialect,oa_type,oa_name,timezone,business_date}`：管理员已配置的租户 OA 数据源与应用业务日期，无连接凭据；未配置/已停用返回明确错误 |
+| GET | `/source` | 返回 `{name,dialect,oa_type,oa_name,timezone,business_date,workflow_archive}`。`workflow_archive` 为当前 OA 类型的归档关联规则，没有规则时为 `null`。无连接凭据；未配置/已停用返回明确错误 |
 | GET | `/schema` | `table`：固定表名；返回 `{table,dialect,columns:[{key,label,data_type}]}`，通过零行查询读取物理结构，key 为物理字段名；label 优先取流程/建模表所属主表或明细表的中文标签，兼容 MySQL、Oracle、达梦列名大小写与明细表序号；无标签时回退物理字段名 |
 | POST | `/assist` | AI 生成/解释/修复，返回可编辑建议 |
 | GET | `/prompts` | 返回租户提示词；未配置时返回系统默认值 |

@@ -41,7 +41,13 @@ const loading = ref(false)
 const activeTab = ref('oa')
 
 // ===== 后端选项数据 =====
-const oaTypeOptions = ref<{value: string; label: string}[]>([])
+const oaTypeOptions = ref<{
+  value: string
+  label: string
+  attachment_auth?: string
+  default_process_url_template?: string
+  implemented?: boolean
+}[]>([])
 const driverOptions = ref<{value: string; label: string; default_port?: number}[]>([])
 const aiDeployTypeOptions = ref<{value: string; label: string}[]>([])
 const aiProviderOptions = ref<{value: string; label: string; deploy_type?: string}[]>([])
@@ -287,7 +293,13 @@ onMounted(async () => {
       generalConfig.value.attachment_supported_types = DEFAULT_ATTACHMENT_TYPES.join(',')
     }
     // 选项数据
-    oaTypeOptions.value = (oaTypes || []).map((o: any) => ({ value: o.code, label: o.label }))
+    oaTypeOptions.value = (oaTypes || []).map((o: any) => ({
+      value: o.code,
+      label: o.label,
+      attachment_auth: o.attachment_auth || '',
+      default_process_url_template: o.default_process_url_template || '',
+      implemented: o.implemented === true,
+    }))
     driverOptions.value = (drivers || []).map((o: any) => ({ value: o.code, label: o.label, default_port: o.default_port }))
     aiDeployTypeOptions.value = (deployTypes || []).map((o: any) => ({ value: o.code, label: o.label }))
     aiProviderOptions.value = (providers || []).map((o: any) => ({ value: o.code, label: o.label, deploy_type: o.deploy_type }))
@@ -358,8 +370,9 @@ const openEditOADb = (conn: OADbConnection) => {
   showAddOADb.value = true
 }
 
-const fillWeaverE9Template = () => {
-  newOADb.value.process_url_template = '/workflow/request/ViewRequestForwardSPA.jsp?requestid={process_id}'
+const fillDefaultProcessTemplate = () => {
+  const template = selectedOAType.value?.default_process_url_template
+  if (template) newOADb.value.process_url_template = template
 }
 
 /** 点击 appid 输入框时清除掩码，便于输入新值 */
@@ -383,6 +396,8 @@ const buildOADbPayload = () => {
   }
   return payload
 }
+
+const selectedOAType = computed(() => oaTypeOptions.value.find(o => o.value === newOADb.value.oa_type))
 
 const onOATypeChange = (val: any) => {
   const opt = oaTypeOptions.value.find(o => o.value === val)
@@ -418,7 +433,7 @@ const saveOADb = async () => {
     message.warning(t('admin.settings.oaDbPasswordRequired', '请填写密码'))
     return
   }
-  if (newOADb.value.oa_type === 'weaver_e9' && String(newOADb.value.weaver_api_url ?? '').trim()) {
+  if (selectedOAType.value?.attachment_auth === 'weaver_app' && String(newOADb.value.weaver_api_url ?? '').trim()) {
     const appid = String(newOADb.value.weaver_appid ?? '').trim()
     const hasAppid = (appid && appid !== WEAVER_APPID_MASK) || weaverAppidConfigured.value
     const loginid = String(newOADb.value.weaver_default_user ?? '').trim()
@@ -1763,12 +1778,13 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
             <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
               <span>{{ t('admin.settings.processUrlTemplate') }}</span>
               <a-button
+                v-if="selectedOAType?.default_process_url_template"
                 type="link"
                 size="small"
                 style="padding: 0; height: auto;"
-                @click="fillWeaverE9Template"
+                @click="fillDefaultProcessTemplate"
               >
-                {{ t('admin.settings.useWeaverE9DefaultTemplate') }}
+                {{ t('admin.settings.useDefaultProcessTemplate') }}
               </a-button>
             </div>
           </template>
@@ -1782,8 +1798,8 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
           </div>
         </a-form-item>
 
-        <!-- 泛微 E9 原生 API 密钥（仅 oa_type=weaver_e9 显示） -->
-        <template v-if="newOADb.oa_type === 'weaver_e9'">
+        <!-- 附件 HTTP 凭证。是否展示由 OA 类型档案的 attachment_auth 决定，目前仅泛微 E9 为 weaver_app。 -->
+        <template v-if="selectedOAType?.attachment_auth === 'weaver_app'">
           <a-divider style="margin: 8px 0 16px;" />
           <div class="config-subsection-title">{{ t('admin.settings.weaverE9Keys', '泛微 E9 接口密钥') }}</div>
           <a-alert

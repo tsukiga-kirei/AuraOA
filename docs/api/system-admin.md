@@ -84,7 +84,16 @@ GET /api/admin/tenants/:id/members
 GET /api/admin/system/options/oa-types
 ```
 
-返回支持的 OA 系统类型（泛微 E9、致远 A8+ 等）。
+返回已启用的 OA 系统类型（泛微 E9、致远 A8+ 等）。每一项包含：
+
+| 字段 | 说明 |
+|------|------|
+| `code` / `label` | 类型编码与显示名 |
+| `implemented` | 厂商档案是否已有可建连的适配器 |
+| `attachment_auth` | 附件凭证形态。`weaver_app` 时连接页展示 `weaver_api_url`、`weaver_appid`、`weaver_default_user`。空则不展示 |
+| `default_process_url_template` | 跳转模板留空时的兜底。按 OA 类型区分。E9 为 `/workflow/request/ViewRequestForwardSPA.jsp?requestid={process_id}`。没有兜底时省略该字段 |
+
+`weaver_e10` 只在代码档案中占位，本接口不会返回它，直到适配器实现并写入 `oa_type_options`。
 
 ---
 
@@ -155,7 +164,7 @@ POST /api/admin/system/oa-connections
 | `weaver_appid` | string | 条件 | 泛微应用 appid |
 | `weaver_default_user` | string | 条件 | 默认调用用户 loginid（ecology9 中通常为数字用户 ID） |
 | `oa_base_url` | string | — | OA 系统的 Web 访问基准域名或 URL（如 `http://oa.example.com:8088`），配置后工作台可直达原流程 |
-| `process_url_template` | string | — | 流程跳转 URL 模板，支持 `{process_id}` 或 `{requestid}` 占位符；留空且为 `weaver_e9` 时默认 `/workflow/request/ViewRequestForwardSPA.jsp?requestid={process_id}` |
+| `process_url_template` | string | — | 流程跳转 URL 模板，支持 `{process_id}` 或 `{requestid}` 占位符。留空时使用该 OA 类型档案中的兜底；E9 为 `/workflow/request/ViewRequestForwardSPA.jsp?requestid={process_id}`。没有兜底的类型必须自行填写 |
 
 这里的 `driver` 是租户所连接 OA 数据库的驱动，不是 AuraOA 自身主数据库类型。
 达梦运行时驱动支持 Linux/Windows（正式 Docker 部署为 Linux），macOS 本地进程不直接连接达梦；

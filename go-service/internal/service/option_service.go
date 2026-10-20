@@ -3,6 +3,7 @@ package service
 import (
 	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/pkg/errcode"
+	"auraoa/go-service/internal/pkg/oa"
 	"auraoa/go-service/internal/repository"
 )
 
@@ -15,15 +16,21 @@ func NewOptionService(repo *repository.OptionRepo) *OptionService {
 	return &OptionService{repo: repo}
 }
 
-// ListOATypes 返回OA系统类型选项列表。
-func (s *OptionService) ListOATypes() ([]dto.OptionItem, error) {
+// ListOATypes 返回 OA 系统类型选项，并附上厂商档案中的附件凭证形态和默认跳转模板。
+func (s *OptionService) ListOATypes() ([]dto.OATypeOptionItem, error) {
 	items, err := s.repo.ListOATypes()
 	if err != nil {
 		return nil, newServiceError(errcode.ErrDatabase, "数据库错误")
 	}
-	result := make([]dto.OptionItem, len(items))
+	result := make([]dto.OATypeOptionItem, len(items))
 	for i, item := range items {
-		result[i] = dto.OptionItem{Code: item.Code, Label: item.Label}
+		option := dto.OATypeOptionItem{Code: item.Code, Label: item.Label}
+		if profile, ok := oa.Profile(item.Code); ok {
+			option.Implemented = profile.Implemented
+			option.AttachmentAuth = profile.AttachmentAuth
+			option.DefaultProcessURLTemplate = profile.DefaultProcessURLTemplate
+		}
+		result[i] = option
 	}
 	return result, nil
 }

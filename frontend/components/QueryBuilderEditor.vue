@@ -10,10 +10,12 @@ import type {
   QueryColumn,
   QueryDefinition,
   QueryBinding,
+  WorkflowArchiveRule,
 } from '~/types/audit-data-query'
 const props = defineProps<{
   definition: QueryDefinition
   disabled?: boolean
+  archive?: WorkflowArchiveRule | null
 }>()
 const emit = defineEmits<{
   apply: [value: QueryDefinition]
@@ -173,7 +175,12 @@ function addFilter() {
 function apply() {
   try {
     prepareFilterLabels()
-    const compiled = compileQueryBuilder(builder.value, props.definition.dialect, columns.value)
+    const compiled = compileQueryBuilder(
+      builder.value,
+      props.definition.dialect,
+      columns.value,
+      props.archive,
+    )
     emit('apply', {
       ...clone(props.definition),
       ...compiled,

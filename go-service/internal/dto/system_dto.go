@@ -10,6 +10,16 @@ type OptionItem struct {
 	Label string `json:"label"`
 }
 
+// OATypeOptionItem 是 OA 类型下拉项，并带上厂商档案里可以公开的配置。
+// 档案未登记的类型只返回编码和名称。
+type OATypeOptionItem struct {
+	Code                      string `json:"code"`
+	Label                     string `json:"label"`
+	Implemented               bool   `json:"implemented"`
+	AttachmentAuth            string `json:"attachment_auth,omitempty"`
+	DefaultProcessURLTemplate string `json:"default_process_url_template,omitempty"`
+}
+
 // DBDriverOptionItem 数据库驱动选项响应，含默认端口。
 type DBDriverOptionItem struct {
 	Code        string `json:"code"`

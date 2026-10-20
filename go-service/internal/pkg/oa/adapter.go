@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// TodoListFilter 控制待办列表在 OA 侧的查询条件（由 SQL 直接过滤 workflow_requestbase.createdate）。
+// TodoListFilter 控制待办列表在 OA 侧的查询条件。适配器按提交时间在各自数据源中过滤。
 type TodoListFilter struct {
 	SubmitDateStart *time.Time
 	// SubmitDateEndExclusive 上界（不含）
@@ -17,7 +17,7 @@ type TodoListPagedFilter struct {
 	TodoListFilter
 	// Keyword 模糊匹配流程标题（requestname）
 	Keyword string
-	// Applicant 模糊匹配申请人姓名（hrmresource.lastname）
+	// Applicant 模糊匹配申请人姓名
 	Applicant string
 	// Department 精确匹配部门名称（hrmdepartment.departmentname）
 	Department string
@@ -120,10 +120,10 @@ type OAAdapter interface {
 	// limit <= 0 表示不限制条数
 	FetchAllTodoItems(ctx context.Context, limit int) ([]TodoItem, error)
 
-	// ResolveUsernameByOAUserID 根据 OA 人员标识（如泛微 Ecology 的 hrmresource.id 数字主键）反查登录账号（loginid）。
+	// ResolveUsernameByOAUserID 根据 OA 人员标识反查登录账号。
 	ResolveUsernameByOAUserID(ctx context.Context, oaUserID string) (string, error)
 
-	// ResolveUserDisplayNameByOAUserID 根据 OA 人员标识反查用户显示姓名，优先返回真实姓名（如泛微 hrmresource.lastname），若为空则回退到登录账号（loginid）。
+	// ResolveUserDisplayNameByOAUserID 根据 OA 人员标识反查用户显示姓名。真实姓名为空时回退到登录账号。
 	ResolveUserDisplayNameByOAUserID(ctx context.Context, oaUserID string) (string, error)
 
 	// CheckProcessVisibility 检查指定用户对流程实例是否具有可见性（待办人、申请人或历史审批人）。
@@ -254,19 +254,19 @@ type ProcessFields struct {
 
 // AttachmentInfo 附件信息
 type AttachmentInfo struct {
-	DocID            string `json:"doc_id"`             // OA 系统中的附件 ID
-	FileName         string `json:"file_name"`          // 文件名
-	FileType         string `json:"file_type"`          // 文件类型（扩展名）
-	FileSize         int64  `json:"file_size"`          // 文件大小（字节）
-	FieldKey         string `json:"field_key"`          // 所属字段标识
-	FieldName        string `json:"field_name"`         // 所属字段名称
+	DocID            string `json:"doc_id"`                 // OA 系统中的附件 ID
+	FileName         string `json:"file_name"`              // 文件名
+	FileType         string `json:"file_type"`              // 文件类型（扩展名）
+	FileSize         int64  `json:"file_size"`              // 文件大小（字节）
+	FieldKey         string `json:"field_key"`              // 所属字段标识
+	FieldName        string `json:"field_name"`             // 所属字段名称
 	DetailTable      string `json:"detail_table,omitempty"` // 所属明细表（主表为空）
 	RowIndex         int    `json:"row_index,omitempty"`    // 明细表行索引（1-based，主表为 0）
-	Content          string `json:"content"`            // 提取的文本内容（可选）
-	ContentLimitMode string `json:"content_limit_mode"` // AI 正文策略：bytes / unlimited
-	ContentMaxBytes  int    `json:"content_max_bytes"`  // bytes 模式下单附件正文上限
-	ExtractedAt      string `json:"extracted_at"`       // 提取时间
-	Error            string `json:"error"`              // 提取错误信息（如有）
+	Content          string `json:"content"`                // 提取的文本内容（可选）
+	ContentLimitMode string `json:"content_limit_mode"`     // AI 正文策略：bytes / unlimited
+	ContentMaxBytes  int    `json:"content_max_bytes"`      // bytes 模式下单附件正文上限
+	ExtractedAt      string `json:"extracted_at"`           // 提取时间
+	Error            string `json:"error"`                  // 提取错误信息（如有）
 }
 
 // AttachmentFilePayload OA 适配器返回给识别服务的附件原始载荷。
@@ -343,7 +343,7 @@ type ProcessFlowNode struct {
 type ProcessFlowSnapshot struct {
 	IsComplete      bool              `json:"is_complete"`
 	MissingNodes    []string          `json:"missing_nodes"`
-	CurrentNodeName string            `json:"current_node_name"` // 来自 workflow_requestbase.currentnodeid，OA 系统的真实当前节点
+	CurrentNodeName string            `json:"current_node_name"` // OA 系统中的当前节点名称
 	Nodes           []ProcessFlowNode `json:"nodes"`
 	HistoryText     string            `json:"history_text"`
 	GraphText       string            `json:"graph_text"`

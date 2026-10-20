@@ -521,6 +521,16 @@ paths:
                       oa_name: {type: string}
                       timezone: {type: string, description: 应用配置的业务时区}
                       business_date: {type: string, format: date}
+                      workflow_archive:
+                        nullable: true
+                        description: 当前 OA 类型的归档关联规则。没有规则时为 null。E9 为 workflow_requestbase.requestid 与 currentnodetype=3。E10 尚未定义。
+                        type: object
+                        properties:
+                          request_table: {type: string}
+                          request_id_column: {type: string}
+                          form_request_id_column: {type: string}
+                          status_column: {type: string}
+                          status_value: {type: string}
   /api/tenant/audit-data-queries/schema:
     get:
       summary: 读取指定 OA 表的零行物理元数据
@@ -1764,6 +1774,7 @@ paths:
   /api/admin/system/options/oa-types:
     get:
       summary: 获取 OA 类型选项
+      description: 返回已启用的 OA 类型。implemented 表示档案中的适配器是否可建连；attachment_auth 为 weaver_app 时连接页展示泛微附件凭证；default_process_url_template 是模板留空时该类型自己的兜底地址。weaver_e10 仅在代码中占位，未写入选项表，本接口不返回。
       tags:
       - SystemAdmin
       security:

@@ -203,7 +203,7 @@ AuraOA 从 OA 物理表读取到的值通常是数据库存储值，例如人员
 
 ## 未完成的 OA 适配
 
-以下 OA 系统已在数据库选项表中注册，但尚未实现适配器代码：
+以下 OA 系统尚未实现适配器。除 E10 外，其余类型已在数据库选项表中注册，连接页可以选到，但工厂会拒绝建连。E10 只在代码档案中占位，选项表里没有这条。
 
 | OA 类型 | 编码 | 状态 | 说明 |
 |---------|------|------|------|
@@ -211,13 +211,18 @@ AuraOA 从 OA 物理表读取到的值通常是数据库存储值，例如人员
 | 致远 A8+ | `zhiyuan_a8` | ❌ 未实现 | 致远协同 OA，需适配其流程引擎表结构 |
 | 蓝凌 EKP | `landray_ekp` | ❌ 未实现 | 蓝凌知识管理平台，需适配 EKP 流程表 |
 | 自定义 OA | `custom` | ❌ 未实现 | 通用适配器，需用户自行配置表映射关系 |
+| 泛微 Ecology E10 | `weaver_e10` | ❌ 仅档案占位 | 见 `ecology10.go`。未写入类型下拉。跳转、附件和归档规则都留空，确认表结构后再填，不复用 E9 |
+
+公共层通过 `go-service/internal/pkg/oa/profile.go` 的厂商档案区分类型，不在业务代码里写 `weaver_e9` 分支。档案目前只放驱动、默认跳转模板、附件凭证形态、数据记忆归档规则和 SQL 助手说明。取数 SQL 仍在各自适配器内。
+
+模板留空时，工作台和对话都读档案里的 `DefaultProcessURLTemplate`。E9 是 `/workflow/request/ViewRequestForwardSPA.jsp?requestid={process_id}`。E10 的模板留空，上线后只写在 `weaver_e10` 档案上，与 E9 这条无关。连接里已经填写的模板优先，不会被档案覆盖。
 
 ### 新增 OA 适配器开发指南
 
 1. 在 `go-service/internal/pkg/oa/` 下创建新适配器文件（如 `zhiyuan_a8.go`）
 2. 实现 `OAAdapter` 接口的所有方法
-3. 在 `factory.go` 的 `supportedDrivers` 中注册支持的数据库驱动
-4. 在 `newOAAdapterWithDB` 的分支中添加轻量适配器创建逻辑
+3. 在 `profile.go` 登记档案：驱动、是否已实现、默认跳转模板、附件凭证形态、归档规则
+4. 在 `newOAAdapterWithDB` 与 `openOADatabase` 的分支中添加轻量适配器创建逻辑
 5. 如需新的数据库驱动，在 `go-service/internal/pkg/oa/` 下创建驱动子目录
 6. 将底层连接创建接入 `ConnectionManager`，禁止在业务 Service 中直接新建连接池
 7. 如需支持流程级定时检查，实现可选接口 `RecentProcessScanner`

@@ -3,6 +3,7 @@ import type {
   QueryColumn,
   QueryDefinition,
   QueryParameter,
+  WorkflowArchiveRule,
 } from '../types/audit-data-query'
 
 /** 简单查询配置编译为统一 SQL；标识符、操作符和聚合函数均限制为固定集合。 */
@@ -10,6 +11,7 @@ export function compileQueryBuilder(
   builder: QueryBuilder,
   dialect: QueryDefinition['dialect'],
   schema: QueryColumn[],
+  archive?: WorkflowArchiveRule | null,
 ) {
   const fail = (code: string): never => {
     throw new Error(code)
@@ -81,12 +83,20 @@ export function compileQueryBuilder(
     return `${expression} ${filter.operator} ${placeholder}`
   })
   const tables = [builder.table.trim()]
-  // 按开关用流程状态判定归档，requestid 只用于关联；EXISTS 避免重复计数。
+  // 归档条件来自当前 OA 类型档案。已保存的 SQL 不在这里改写。
   if (builder.source_type === 'workflow' && builder.archived_only !== false) {
-    const request = field('requestid')
-    tables.push('workflow_requestbase')
+    if (
+      !archive?.request_table ||
+      !archive.request_id_column ||
+      !archive.form_request_id_column ||
+      !archive.status_column ||
+      !/^[0-9A-Za-z_]+$/.test(archive.status_value)
+    )
+      fail('archive')
+    const request = field(archive.form_request_id_column)
+    tables.push(archive.request_table)
     conditions.push(
-      `EXISTS (SELECT 1 FROM ${identifier('workflow_requestbase')} r WHERE r.${identifier('requestid')} = ${request} AND r.${identifier('currentnodetype')} = '3')`,
+      `EXISTS (SELECT 1 FROM ${identifier(archive.request_table)} r WHERE r.${identifier(archive.request_id_column)} = ${request} AND r.${identifier(archive.status_column)} = '${archive.status_value}')`,
     )
   }
   let sql = `SELECT\n  ${expressions.join(',\n  ')}\nFROM ${table} d`

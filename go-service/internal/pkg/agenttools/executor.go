@@ -193,7 +193,7 @@ func (e *SystemToolExecutor) executeListMyTodos(
 	for _, item := range pagedResult.Items {
 		oaURL := ""
 		if oaConn != nil {
-			oaURL = buildProcessURL(oaConn.OABaseURL, oaConn.ProcessURLTemplate, oaConn.OAType, item.ProcessID)
+			oaURL = oa.BuildProcessURL(oaConn.OABaseURL, oaConn.ProcessURLTemplate, oaConn.OAType, item.ProcessID)
 		}
 		var code string
 		if codes != nil {
@@ -284,7 +284,7 @@ func (e *SystemToolExecutor) executeListMyRequests(
 	for _, item := range pagedResult.Items {
 		oaURL := ""
 		if oaConn != nil {
-			oaURL = buildProcessURL(oaConn.OABaseURL, oaConn.ProcessURLTemplate, oaConn.OAType, item.ProcessID)
+			oaURL = oa.BuildProcessURL(oaConn.OABaseURL, oaConn.ProcessURLTemplate, oaConn.OAType, item.ProcessID)
 		}
 		var code string
 		if codes != nil {
@@ -650,7 +650,7 @@ func (e *SystemToolExecutor) executeDraftComment(
 
 	oaURL := ""
 	if oaConn != nil {
-		oaURL = buildProcessURL(oaConn.OABaseURL, oaConn.ProcessURLTemplate, oaConn.OAType, args.ProcessID)
+		oaURL = oa.BuildProcessURL(oaConn.OABaseURL, oaConn.ProcessURLTemplate, oaConn.OAType, args.ProcessID)
 	}
 
 	flowTitle := args.ProcessID
@@ -741,7 +741,7 @@ func (e *SystemToolExecutor) executeResolveOAURL(
 		return nil, "oa_link", fmt.Errorf("当前租户尚未配置 OA 连接，无法生成跳转链接")
 	}
 
-	oaURL := buildProcessURL(oaConn.OABaseURL, oaConn.ProcessURLTemplate, oaConn.OAType, args.ProcessID)
+	oaURL := oa.BuildProcessURL(oaConn.OABaseURL, oaConn.ProcessURLTemplate, oaConn.OAType, args.ProcessID)
 	if oaURL == "" {
 		return nil, "oa_link", fmt.Errorf("未配置有效的 OA Web 地址或跳转模板")
 	}
@@ -751,22 +751,4 @@ func (e *SystemToolExecutor) executeResolveOAURL(
 		"oa_url":     oaURL,
 		"label":      "去 OA 办理",
 	}, "oa_link", nil
-}
-
-func buildProcessURL(baseURL, template, oaType, processID string) string {
-	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	template = strings.TrimSpace(template)
-	if template == "" {
-		switch oaType {
-		case "weaver_e9":
-			template = "/spa/workflow/static4form/index.html#/req?requestid={process_id}"
-		default:
-			template = "/req?requestid={process_id}"
-		}
-	}
-	path := strings.ReplaceAll(template, "{process_id}", processID)
-	if !strings.HasPrefix(path, "/") && baseURL != "" {
-		path = "/" + path
-	}
-	return baseURL + path
 }
