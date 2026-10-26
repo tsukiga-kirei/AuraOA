@@ -52,6 +52,16 @@ const streamJobId = ref('')
 const activePerspective = ref<'standard' | 'personal'>('standard')
 const userManuallySwitchedPerspective = ref(false)
 
+// 按视角保留用户选择，让执行态切换到完成态后仍保持手动展开或收起。
+const perspectivePanelExpansion = ref<Record<string, Record<string, boolean>>>({})
+const activePanelExpansion = computed({
+  get: () => perspectivePanelExpansion.value[activePerspective.value] ?? {},
+  set: (value: Record<string, boolean>) => { perspectivePanelExpansion.value[activePerspective.value] = value },
+})
+function setPanelExpansion(stage: string, expanded: boolean) {
+  activePanelExpansion.value = { ...activePanelExpansion.value, [stage]: expanded }
+}
+
 const processInfo = computed<EmbedProcessSummary | null>(() => context.value?.process ?? null)
 
 const currentRuleDetails = computed(() => (currentResult.value?.rule_results || []).map((rule, index) => ({
@@ -327,6 +337,7 @@ function publishStatusToParent() {
 
 async function runAudit(trigger: 'embed_auto' | 'embed_manual', useLatestConfig = false) {
   if (!processId.value || auditing.value) return
+  activePanelExpansion.value = {}
   disconnectStream()
   auditing.value = true
   currentResult.value = createPendingResult()
@@ -508,7 +519,6 @@ onBeforeUnmount(() => {
         class="embed-last-audit"
       >
         <span>{{ t('embed.lastAuditAt') }}：{{ formatLastAuditAt(activeViewLastAuditAt) }}</span>
-        <a-tag v-if="context?.config_version_no" color="blue" class="embed-config-version">{{ t('executionConfig.version', [context.config_version_no]) }}</a-tag>
         <a-tooltip v-if="auditUpdateNotice" :title="auditUpdateNotice.hint" :trigger="['hover', 'focus']">
           <span class="embed-update-notice" tabindex="0"><ThunderboltOutlined aria-hidden="true" />{{ auditUpdateNotice.label }}</span>
         </a-tooltip>
@@ -633,7 +643,7 @@ onBeforeUnmount(() => {
                           <div class="embed-menu-simple-item">
                             <ReloadOutlined class="embed-menu-simple-icon" />
                             <span class="embed-menu-simple-text">
-                              {{ context?.config_version_no ? t('executionConfig.ruleCurrentAuditWithVer', ['v' + context.config_version_no]) : t('executionConfig.ruleCurrentAudit') }}
+                              {{ t('executionConfig.ruleCurrentAudit') }}
                             </span>
                           </div>
                         </a-menu-item>
@@ -675,7 +685,7 @@ onBeforeUnmount(() => {
               <span class="async-step-label">{{ s.key === 'rechecking' ? t('recheck.title') : s.label }}</span>
             </div>
           </div>
-          <ReviewStageStreams v-if="currentResult" :key="currentResult.id" :result="currentResult" page-flow />
+          <ReviewStageStreams v-if="currentResult" :key="currentResult.id" v-model:expansion="activePanelExpansion" :result="currentResult" page-flow />
         </div>
 
         <template v-else-if="currentResult">
@@ -759,15 +769,14 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <ResultRecheckPanel v-if="preview && currentResult.ai_recheck" :record="currentResult.ai_recheck" :output="currentResult.recheck_output" :retrying="retryingRecheck" @retry="runRecheckPreview" />
-            <AIRecheckResult v-else :record="currentResult.ai_recheck" :task-status="currentResult.status" />
-
             <ResultReasoningPanel
               page-flow
               v-if="currentResult.deep_thinking"
               :key="`thinking-${currentResult.id || currentResult.process_id}-${activePerspective}`"
               :title="t('dashboard.deepThinking', '深度思考过程')"
               :text="currentResult.deep_thinking || ''"
+              :expanded="activePanelExpansion.thinking ?? false"
+              @update:expanded="value => setPanelExpansion('thinking', value)"
               max-height="320px"
             ><template #icon><BulbOutlined /></template></ResultReasoningPanel>
 
@@ -777,8 +786,13 @@ onBeforeUnmount(() => {
               :key="`reasoning-${currentResult.id || currentResult.process_id}-${activePerspective}`"
               :title="t('dashboard.aiReasoning')"
               :text="currentResult.ai_reasoning || ''"
+              :expanded="activePanelExpansion.reasoning ?? false"
+              @update:expanded="value => setPanelExpansion('reasoning', value)"
               max-height="320px"
             ><template #icon><ExperimentOutlined /></template></ResultReasoningPanel>
+
+            <ResultRecheckPanel v-if="preview && currentResult.ai_recheck" :record="currentResult.ai_recheck" :output="currentResult.recheck_output" :retrying="retryingRecheck" :expanded="activePanelExpansion.recheck ?? false" @update:expanded="value => setPanelExpansion('recheck', value)" @retry="runRecheckPreview" />
+            <AIRecheckResult v-else :record="currentResult.ai_recheck" :task-status="currentResult.status" />
           </div>
         </template>
 
@@ -824,7 +838,6 @@ onBeforeUnmount(() => {
   font-size: 12px; color: var(--color-text-secondary); margin: 0; line-height: 1.4;
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
 }
-.embed-config-version { margin: 0; white-space: nowrap; }
 .embed-update-notice { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 1px solid color-mix(in srgb, var(--color-primary) 12%, transparent); border-radius: 6px; background: var(--color-primary-bg); color: var(--color-primary); font-size: 11px; line-height: 1.5; }
 .embed-update-notice:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .embed-last-audit--active { color: var(--color-primary); font-size: 12px; }

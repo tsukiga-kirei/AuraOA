@@ -3,7 +3,9 @@ import { BulbOutlined, ExperimentOutlined, CodeOutlined, SafetyCertificateOutlin
 const props = withDefaults(defineProps<{
   result: { id?: string; status?: string; deep_thinking?: string; ai_reasoning?: string; structured_output?: string; recheck_output?: string }
   pageFlow?: boolean
+  expansion?: Record<string, boolean>
 }>(), { pageFlow: false })
+const emit = defineEmits<{ 'update:expansion': [value: Record<string, boolean>] }>()
 const { t } = useI18n()
 const definitions = computed(() => [
   { key: 'thinking', text: props.result.deep_thinking || '', title: t('dashboard.deepThinking'), icon: BulbOutlined, format: 'markdown' as const },
@@ -12,20 +14,34 @@ const definitions = computed(() => [
   { key: 'recheck', text: props.result.recheck_output || '', title: t('recheck.title'), icon: SafetyCertificateOutlined, format: 'json' as const },
 ])
 const latest = computed(() => props.result.status === 'rechecking' ? 'recheck' : props.result.status === 'extracting' ? 'structured' : [...definitions.value].reverse().find(item => item.text)?.key || 'reasoning')
-const expanded = ref('reasoning')
-watch(latest, stage => { expanded.value = stage }, { immediate: true })
-watch(() => props.result.id, () => { expanded.value = latest.value })
+const localExpansion = ref<Record<string, boolean>>({})
+const manualExpansion = computed(() => props.expansion ?? localExpansion.value)
+// 仅未操作的面板跟随当前阶段；手动展开和收起均持续保留。
+function isExpanded(stage: string) {
+  return manualExpansion.value[stage] ?? latest.value === stage
+}
+function toggle(stage: string) {
+  const next = { ...manualExpansion.value, [stage]: !isExpanded(stage) }
+  localExpansion.value = next
+  emit('update:expansion', next)
+}
+watch(() => props.result.id, (id, previous) => {
+  if (id && previous && id !== previous) {
+    localExpansion.value = {}
+    emit('update:expansion', {})
+  }
+})
 const visibleStages = computed(() => definitions.value.filter(item => item.text || (item.key === 'reasoning' && ['reasoning', 'assembling'].includes(props.result.status || '')) || (item.key === 'structured' && props.result.status === 'extracting') || (item.key === 'recheck' && props.result.status === 'rechecking')))
 </script>
 
 <template>
   <div class="review-stage-streams">
     <section v-for="stage in visibleStages" :key="stage.key" class="review-stage">
-      <button type="button" class="review-stage__toggle" :aria-expanded="expanded === stage.key" @click="expanded = expanded === stage.key ? '' : stage.key">
+      <button type="button" class="review-stage__toggle" :aria-expanded="isExpanded(stage.key)" @click="toggle(stage.key)">
         <span class="review-stage__title"><component :is="stage.icon" />{{ stage.title }}</span>
-        <span class="review-stage__action"><LoadingOutlined v-if="latest === stage.key" spin /><DownOutlined :class="{ 'review-stage__arrow--open': expanded === stage.key }" /></span>
+        <span class="review-stage__action"><LoadingOutlined v-if="latest === stage.key" spin /><DownOutlined :class="{ 'review-stage__arrow--open': isExpanded(stage.key) }" /></span>
       </button>
-      <div v-if="expanded === stage.key" class="review-stage__body">
+      <div v-if="isExpanded(stage.key)" class="review-stage__body">
         <AiMarkdownStream :text="stage.text" :format="stage.format" :page-flow="pageFlow" :max-height="'320px'" />
       </div>
     </section>

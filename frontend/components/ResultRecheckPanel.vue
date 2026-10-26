@@ -2,17 +2,21 @@
 import { SafetyCertificateOutlined, DownOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import type { AIRecheckRecord } from '~/types/ai-recheck'
 
-const props = defineProps<{ record: AIRecheckRecord; output?: string; retrying?: boolean }>()
-const emit = defineEmits<{ retry: [] }>()
+const props = withDefaults(defineProps<{ record: AIRecheckRecord; output?: string; retrying?: boolean; expanded?: boolean }>(), { expanded: undefined })
+const emit = defineEmits<{ retry: []; 'update:expanded': [value: boolean] }>()
 const { t } = useI18n()
-const expanded = ref(false)
+const localExpanded = ref(false)
+const expanded = computed({
+  get: () => props.expanded ?? localExpanded.value,
+  set: (value: boolean) => { localExpanded.value = value; emit('update:expanded', value) },
+})
 const panelId = useId()
 const incomplete = computed(() => props.record.status === 'failed' || props.record.status === 'cancelled')
 const badge = computed(() => t(props.retrying ? 'recheck.status.running' : incomplete.value ? 'recheck.status.failed' : props.record.changed ? 'recheck.panel.adjusted' : 'recheck.panel.reused'))
 </script>
 
 <template>
-  <section class="result-recheck-panel" :class="{ 'result-recheck-panel--incomplete': incomplete }">
+  <section class="result-recheck-panel" :class="{ 'result-recheck-panel--adjusted': record.status === 'completed' && record.changed && !record.reuse_original, 'result-recheck-panel--incomplete': incomplete }">
     <button type="button" class="result-recheck-panel__toggle" :aria-expanded="expanded" :aria-controls="panelId" @click="expanded = !expanded">
       <span class="result-recheck-panel__title"><SafetyCertificateOutlined aria-hidden="true" />{{ t('recheck.title') }}<span class="result-recheck-panel__badge">{{ badge }}</span></span>
       <span class="result-recheck-panel__action">{{ t(expanded ? 'resultDetails.collapse' : 'resultDetails.expand') }}<DownOutlined aria-hidden="true" :class="{ 'result-recheck-panel__arrow--open': expanded }" /></span>
@@ -42,6 +46,7 @@ const badge = computed(() => t(props.retrying ? 'recheck.status.running' : incom
 .result-recheck-panel__title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; }
 .result-recheck-panel__title > .anticon { color: var(--color-primary); font-size: 16px; }
 .result-recheck-panel__badge { padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 500; color: var(--color-primary); background: var(--color-primary-bg); }
+.result-recheck-panel--adjusted .result-recheck-panel__badge { color: #fff; background: color-mix(in srgb, var(--color-info) 80%, #000); font-weight: 600; }
 .result-recheck-panel--incomplete .result-recheck-panel__badge { color: var(--color-warning); background: var(--color-warning-bg); }
 .result-recheck-panel__action { display: flex; flex-shrink: 0; align-items: center; gap: 6px; color: var(--color-text-tertiary); font-size: 12px; }
 .result-recheck-panel__arrow--open { transform: rotate(180deg); }

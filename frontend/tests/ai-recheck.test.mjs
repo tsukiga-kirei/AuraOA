@@ -12,7 +12,7 @@ function compileComponent(name, globals = {}) {
   }).outputText
   const module = { exports: {} }
   new Function('require', 'module', 'exports', 'computed', 'ref', 'watch', 'useI18n', ...Object.keys(globals), compiled)(
-    id => id === 'vue' ? vue : id.includes('markdown') ? { renderSafeMarkdown: text => text } : new Proxy({}, { get: (_, name) => () => vue.h('icon', { name }) }), module, module.exports, vue.computed, vue.ref, vue.watch, () => ({ t: key => key }), ...Object.values(globals),
+    id => id === 'vue' ? { ...vue, Transition: vue.BaseTransition } : id.includes('useI18n') ? { useI18n: () => ({ t: key => key }) } : id.includes('markdown') ? { renderSafeMarkdown: text => text } : new Proxy({}, { get: (_, name) => () => vue.h('icon', { name }) }), module, module.exports, vue.computed, vue.ref, vue.watch, () => ({ t: key => key }), ...Object.values(globals),
   )
   return module.exports.default
 }
@@ -122,7 +122,7 @@ function mountReadOnlyComponent(name, initial) {
     insert: (node, parent) => { node.parent = parent; parent.children.push(node) }, remove: node => { node.parent.children = node.parent.children.filter(child => child !== node) },
     patchProp: (node, key, _old, value) => { node.props[key] = value },
   })
-  const component = compileComponent(name)
+  const component = compileComponent(name, { useId: vue.useId })
   const app = renderer.createApp({ setup: () => () => vue.h(component, props) })
   app.config.warnHandler = () => {}
   app.component('AiMarkdownStream', vue.defineComponent({ props: ['text', 'format'], setup: props => () => vue.h('stream', { format: props.format }, props.text) }))
@@ -171,4 +171,49 @@ test('recheck retry opens the last stage immediately, before the first response 
     assert.equal(view.find('button')[1].props['aria-expanded'], false)
     assert.equal(view.find('button')[2].props['aria-expanded'], true)
   } finally { view.app.unmount() }
+})
+
+test('manual expansion and collapse override stage following, and a new run restores defaults', async () => {
+  const view = mountReadOnlyComponent('ReviewStageStreams', { result: { id: 'first', status: 'reasoning', deep_thinking: '思考正文', ai_reasoning: '分析正文' } })
+  const expanded = () => view.find('button').map(button => button.props['aria-expanded'])
+  try {
+    assert.deepEqual(expanded(), [false, true])
+    view.find('button')[0].props.onClick(); await vue.nextTick()
+    assert.deepEqual(expanded(), [true, true])
+    view.props.result.status = 'extracting'; view.props.result.structured_output = '{'
+    await vue.nextTick()
+    assert.deepEqual(expanded(), [true, false, true])
+    view.find('button')[2].props.onClick(); await vue.nextTick()
+    view.props.result.structured_output = '{"overall_score":96}'
+    await vue.nextTick()
+    assert.deepEqual(expanded(), [true, false, false])
+    view.props.result.status = 'rechecking'; await vue.nextTick()
+    assert.deepEqual(expanded(), [true, false, false, true])
+    view.props.result.recheck_output = '{"reuse_original":true}'
+    await vue.nextTick()
+    assert.deepEqual(expanded(), [true, false, false, true])
+    view.props.result = { id: 'second', status: 'reasoning', deep_thinking: '新思考', ai_reasoning: '新分析' }
+    await vue.nextTick()
+    assert.deepEqual(expanded(), [false, true])
+  } finally { view.app.unmount() }
+})
+
+test('uncontrolled result panels still toggle, while controlled panels follow saved choices', async () => {
+  for (const [name, props] of [
+    ['ResultReasoningPanel', { title: '推理分析', text: '正文' }],
+    ['ResultRecheckPanel', { record: { status: 'completed', reuse_original: true } }],
+  ]) {
+    const view = mountReadOnlyComponent(name, props)
+    try {
+      assert.equal(view.find('button')[0].props['aria-expanded'], false)
+      view.find('button')[0].props.onClick(); await vue.nextTick()
+      assert.equal(view.find('button')[0].props['aria-expanded'], true)
+      view.find('button')[0].props.onClick(); await vue.nextTick()
+      assert.equal(view.find('button')[0].props['aria-expanded'], false)
+      view.props.expanded = true; await vue.nextTick()
+      assert.equal(view.find('button')[0].props['aria-expanded'], true)
+      view.props.expanded = false; await vue.nextTick()
+      assert.equal(view.find('button')[0].props['aria-expanded'], false)
+    } finally { view.app.unmount() }
+  }
 })

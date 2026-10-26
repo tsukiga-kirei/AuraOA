@@ -9,14 +9,21 @@ const props = withDefaults(defineProps<{
   defaultExpanded?: boolean
   maxHeight?: string
   pageFlow?: boolean
+  expanded?: boolean
 }>(), {
   defaultExpanded: false,
   maxHeight: '360px',
   pageFlow: false,
+  expanded: undefined,
 })
 
 const { t } = useI18n()
-const expanded = ref(props.defaultExpanded)
+const emit = defineEmits<{ 'update:expanded': [value: boolean] }>()
+const localExpanded = ref(props.defaultExpanded)
+const expanded = computed({
+  get: () => props.expanded ?? localExpanded.value,
+  set: (value: boolean) => { localExpanded.value = value; emit('update:expanded', value) },
+})
 const panelId = useId()
 const panelRef = ref<HTMLElement | null>(null)
 
