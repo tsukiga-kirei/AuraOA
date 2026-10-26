@@ -730,6 +730,7 @@ func (s *AuditExecuteService) processAuditJob(
 
 	extractionReq.StreamChunkFunc, extractionReq.StreamResetFunc = newReviewStageStream(s.rdb, "audit", auditLogID, "structured", s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled())
 	extractionResp, err := s.aiCaller.ChatWithFallback(c, tenantID, userID, modelCfg, fallbackCfg, extractionReq)
+	if err == nil && extractionReq.StreamChunkFunc != nil { extractionReq.StreamChunkFunc("") }
 	if err != nil {
 		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, err)
 		tlog.Warn("审核任务执行失败",

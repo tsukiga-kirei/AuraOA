@@ -3267,6 +3267,10 @@ paths:
                   message:
                     type: string
                     example: success
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SystemPromptTemplate'
   /api/tenant/archive/configs:
     get:
       summary: 获取归档配置列表
@@ -3730,6 +3734,10 @@ paths:
                   message:
                     type: string
                     example: success
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SystemPromptTemplate'
   /api/tenant/summary/configs:
     get:
       summary: 获取流程总结配置列表
@@ -8875,6 +8883,16 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    SystemPromptTemplate:
+      type: object
+      properties:
+        prompt_key: {type: string}
+        prompt_type: {type: string, enum: [system, user]}
+        phase: {type: string, enum: [reasoning, extraction, recheck]}
+        strictness: {type: string, nullable: true}
+        content: {type: string}
+        description: {type: string}
+        output_instructions: {type: string, readOnly: true, description: 仅复核系统模板返回，与实际追加内容一致的完整JSON输出约定}
     FeedbackMemoryScope: {"type":"object","properties":{"module":{"type":"string","enum":["audit","archive"]},"process_type":{"type":"string","maxLength":200}},"required":["module","process_type"]}
     FeedbackMemoryEntryInput: {"type":"object","properties":{"module":{"type":"string","enum":["audit","archive"]},"process_type":{"type":"string","maxLength":200},"condition":{"type":"string","maxLength":1000},"content":{"type":"string","minLength":1,"maxLength":2000},"enabled":{"type":"boolean"}},"required":["module","process_type","content"]}
     FeedbackMemoryImport: {"type":"object","properties":{"module":{"type":"string","enum":["audit","archive"]},"process_type":{"type":"string","maxLength":200},"comment_ids":{"type":"array","minItems":1,"maxItems":100,"items":{"type":"string","format":"uuid"}}},"required":["module","process_type","comment_ids"]}
@@ -9984,6 +10002,12 @@ components:
       type: object
       description: 无效 AI 结果记为 failed，error_message 返回失败原因；失败的审核/归档结果不生成业务分数、结论或置信度，既有有效历史快照保留。取消请求仅更新活跃状态，已结束任务保持原终态。
       properties:
+        structured_output:
+          type: string
+          description: 结构化阶段累计文本，仅用于展示
+        recheck_output:
+          type: string
+          description: 复核阶段累计文本，仅用于展示
         ai_recheck:
           $ref: '#/components/schemas/AIRecheckRecord'
         query_evidence:
@@ -10656,5 +10680,5 @@ components:
     FeedbackMemoryCommentStateInput: {"allOf":[{"$ref":"#/components/schemas/FeedbackMemoryScope"},{"type":"object","properties":{"deprecated":{"type":"boolean"}},"required":["deprecated"]}]}
     FeedbackMemoryInputPreview: {"type":"object","properties":{"system_prompt":{"type":"string"},"user_prompt":{"type":"string"},"base_version_id":{"type":"string","format":"uuid","nullable":true}}}
 
-    AIRecheckConfig: {"type": "object", "description": "随配置版本保存；缺省关闭，不影响旧版本；不按审核尺度分组。默认只传initial_result核对结构化结果；系统和用户模板均支持initial_result、audit_context、original_system_prompt、reasoning_result及日期变量，可选材料仅在显式引用时传入。两段均未引用initial_result时仅补入这一必需结果，不重复发送结果正文。", "properties": {"enabled": {"type": "boolean", "default": false}, "system_prompt": {"type": "string", "maxLength": 100000}, "user_prompt": {"type": "string", "maxLength": 100000}}}
-    AIRecheckRecord: {"type": "object", "description": "任务、审核/归档结果及历史行的ai_recheck字段；未启用时为空对象。归档复核保留原有节点、字段核验对象，仅允许调整判断与说明；缺失或null明细不能发布。", "properties": {"status": {"type": "string", "enum": ["running", "completed", "failed", "cancelled"]}, "changed": {"type": "boolean"}, "reason": {"type": "string"}, "error": {"type": "string"}, "duration_ms": {"type": "integer", "format": "int64"}, "original_result": {"type": "object", "additionalProperties": true}, "final_result": {"type": "object", "additionalProperties": true}}}
+    AIRecheckConfig: {"type": "object", "description": "随配置版本保存，缺省关闭；默认要求按当前审核尺度选择，用户可编辑。默认输入rules及initial_result；其他变量仅显式引用时传入。", "properties": {"enabled": {"type": "boolean", "default": false}, "system_prompt": {"type": "string", "maxLength": 100000}, "user_prompt": {"type": "string", "maxLength": 100000}}}
+    AIRecheckRecord: {"type": "object", "description": "复核留痕；只有成功且业务内容实际变化时显示最终调整模块。沿用或无变化直接采用初审，格式失败仍使任务失败。", "properties": {"status": {"type": "string", "enum": ["running", "completed", "failed", "cancelled"]}, "changed": {"type": "boolean"}, "reason": {"type": "string"}, "error": {"type": "string"}, "duration_ms": {"type": "integer", "format": "int64"}, "original_result": {"type": "object", "additionalProperties": true}, "final_result": {"type": "object", "additionalProperties": true}, "reuse_original": {"type": "boolean", "description": "采用初审结果；为true时不重存最终副本，不显示最终复核卡片"}, "enabled": {"type": "boolean", "description": "入队时记录的复核计划标记"}}}

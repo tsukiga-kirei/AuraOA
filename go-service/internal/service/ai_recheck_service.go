@@ -148,7 +148,9 @@ func runAIRecheck(c *gin.Context, caller recheckModelCaller, tenantID, userID uu
 		return nil, record, err
 	}
 	started := time.Now()
-	resp, err := caller.ChatWithFallback(c, tenantID, userID, primary, fallback, buildAIRecheckRequest(cfg, original, reasoning, initial, inputs...))
+	recheckReq := buildAIRecheckRequest(cfg, original, reasoning, initial, inputs...)
+	resp, err := caller.ChatWithFallback(c, tenantID, userID, primary, fallback, recheckReq)
+	if err == nil && recheckReq.StreamChunkFunc != nil { recheckReq.StreamChunkFunc("") }
 	record.DurationMs = time.Since(started).Milliseconds()
 	if err == nil {
 		err = c.Request.Context().Err()

@@ -273,7 +273,7 @@ POST /api/tenant/rules/audit-rules/import-confirm
 GET /api/tenant/rules/prompt-templates
 ```
 
-返回系统预置的提示词模板（只读），用于配置流程审核时选择提示词模板。
+返回系统预置的提示词模板（只读），用于配置流程审核时选择提示词模板；复核系统模板还返回 `output_instructions`，即实际追加的完整输出约定原文。
 
 ---
 
@@ -320,8 +320,10 @@ POST /api/tenant/rules/context/test
 
 ## 可选 AI 复核（第三阶段）
 
-`ai_config.recheck` 为可选对象：`enabled`（默认 `false`）、`system_prompt`、`user_prompt`。两段提示词均可编辑，复核不另设审核尺度；`enabled=false` 保留提示词草稿。保存时缺省提示词补齐默认内容，单段最多100000字符。
+`ai_config.recheck` 为可选对象：`enabled`（默认 `false`）、`system_prompt`、`user_prompt`。两段提示词均可编辑，复核沿用本次审核尺度，不设独立尺度开关；`enabled=false` 保留提示词草稿。保存时缺省提示词补齐默认内容，单段最多100000字符。
 
 复核设置参与保存草稿、发布、个人配置、导入导出与最终执行快照。切换原审核尺度保留复核设置。旧配置未包含该对象时不注入、不自动开启、不改变旧版本指纹；旧流程沿用绑定版本，只有明确选择已发布新版才变更。
 
-独立默认模板为 `audit_system_recheck`、`audit_user_recheck`，`phase=recheck`、`strictness=null`。默认仅传 `{{initial_result}}`，检查结构化结果中的判断、风险、分数与结论是否一致。系统、用户提示词均可引用 `{{audit_context}}`（初审实际发送的完整用户内容，含已过滤材料、规则及查询证据等）、`{{original_system_prompt}}`（初审实际发送的系统提示词）、`{{reasoning_result}}`（初审分析）与系统日期变量；这些扩展数据仅在对应变量被引用时传入，不自动补齐。`initial_result` 为必需输入，两段模板都未引用时只补入这一项；固定 JSON 输出约定不再重复携带初审结果。前端两段编辑器均提供变量按钮，在各自光标位置插入，变量说明提示是否可选；固定返回格式及自动补入行为直接展示。
+复核系统默认模板为 `audit_system_recheck_strict`、`audit_system_recheck_standard`、`audit_system_recheck_loose`，按本次审核尺度选取；通用系统模板 `audit_system_recheck` 对应标准要求，用户模板为 `audit_user_recheck`。默认引用 `{{rules}}`（本次绑定版本实际合并后的规则）和 `{{initial_result}}`。`{{audit_context}}`、`{{original_system_prompt}}`、`{{reasoning_result}}` 保留为可选变量，仅引用时传入；两段模板都未引用初审结果时，只补入该必需输入。切换尺度仅调整未自定义的默认复核系统提示词，个人尺度采用同样规则，自定义内容和历史版本不被覆盖。
+
+模板列表接口对复核系统模板增加只读 `output_instructions`，由后端生成，与实际追加给模型的完整格式约定一致，包含审核/归档各自的JSON Schema。前端把这份原文和“页面说明，不发送给AI”分开展示。模型无需修改时仅返回 `{"reuse_original":true}`；修改时返回 `reuse_original=false`、`reason`、完整 `final_result`。两种返回分支互斥，缺字段、未知字段、重复键、null、错误类型或非JSON前后缀均拒绝。结构、规则覆盖、标识及数值校验通过后才采纳；程序不按关键词裁决文字风险。

@@ -18,6 +18,7 @@ import (
 func newReviewStageStream(rdb *redis.Client, module string, id uuid.UUID, stage string, scrub bool) (func(string), func()) {
 	var mu sync.Mutex
 	var text strings.Builder
+	var lastPublished time.Time
 	publish := func() {
 		value := text.String()
 		if scrub {
@@ -29,9 +30,10 @@ func newReviewStageStream(rdb *redis.Client, module string, id uuid.UUID, stage 
 			payload, _ := json.Marshal(JobStreamEvent{Event: stage, Data: value})
 			rdb.Publish(ctx, module+":stream:"+id.String(), string(payload))
 		}
+		lastPublished = time.Now()
 	}
-	chunk := func(value string) { mu.Lock(); defer mu.Unlock(); text.WriteString(value); publish() }
-	reset := func() { mu.Lock(); defer mu.Unlock(); text.Reset(); publish() }
+	chunk := func(value string) { mu.Lock(); defer mu.Unlock(); text.WriteString(value); if value == "" || lastPublished.IsZero() || time.Since(lastPublished) >= 80*time.Millisecond { publish() } }
+	reset := func() { mu.Lock(); defer mu.Unlock(); text.Reset(); publish(); lastPublished = time.Time{} }
 	reset()
 	return chunk, reset
 }
