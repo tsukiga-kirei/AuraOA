@@ -3,6 +3,7 @@ package cn.auraoa.documentparser.service;
 import cn.auraoa.documentparser.config.ParserProperties;
 import cn.auraoa.documentparser.dto.ParseResponse;
 import cn.auraoa.documentparser.exception.DocumentLimitExceededException;
+import cn.auraoa.documentparser.exception.DocumentParserException;
 import cn.auraoa.documentparser.exception.InvalidDocumentRequestException;
 import cn.auraoa.documentparser.exception.UnsupportedDocumentTypeException;
 import cn.auraoa.documentparser.parser.DocumentFormatParser;
@@ -13,6 +14,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -48,7 +50,7 @@ public class DocumentParseService {
         try (TempWorkspace workspace = TempWorkspace.create()) {
             Path input = workspace.resolve("input." + fileType);
             file.transferTo(input);
-            ParseResult result = parser.parse(input);
+            ParseResult result = parseWithLegacyFallback(parser, input, fileType);
             return new ParseResponse(
                     result.parser(),
                     result.fileType(),
@@ -60,6 +62,35 @@ public class DocumentParseService {
             );
         } catch (IOException exception) {
             throw new InvalidDocumentRequestException("读取上传文件失败");
+        }
+    }
+
+    // 新版 Office 解析失败时尝试对应旧版解析器，兼容仅改了扩展名的附件。
+    private ParseResult parseWithLegacyFallback(DocumentFormatParser parser, Path input, String fileType) {
+        try {
+            return parser.parse(input);
+        } catch (DocumentParserException primaryFailure) {
+            String legacyType = switch (fileType) {
+                case "docx" -> "doc";
+                case "xlsx" -> "xls";
+                case "pptx" -> "ppt";
+                default -> null;
+            };
+            DocumentFormatParser legacyParser = legacyType == null ? null : parsers.get(legacyType);
+            if (legacyParser == null) {
+                throw primaryFailure;
+            }
+            try {
+                ParseResult result = legacyParser.parse(input);
+                List<String> warnings = new ArrayList<>(result.warnings());
+                warnings.add(fileType.toUpperCase(Locale.ROOT) + " 解析失败，已使用 "
+                        + legacyType.toUpperCase(Locale.ROOT) + " 兼容解析");
+                return new ParseResult(result.parser(), result.fileType(), result.content(), result.hasTextLayer(),
+                        result.fallbackRequired(), result.fallbackFormat(), List.copyOf(warnings));
+            } catch (DocumentParserException fallbackFailure) {
+                primaryFailure.addSuppressed(fallbackFailure);
+                throw primaryFailure;
+            }
         }
     }
 

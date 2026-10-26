@@ -125,6 +125,14 @@ class DocumentParserApiTest {
                 .andExpect(jsonPath("$.fallback_required").value(false))
                 .andExpect(jsonPath("$.content", containsString("费用明细")))
                 .andExpect(jsonPath("$.content", containsString("张三")));
+
+        mockMvc.perform(multipart("/parse").file(new MockMultipartFile(
+                                "file", "费用.xlsx", "application/octet-stream", workbookBytes))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer test-secret"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.file_type").value("xls"))
+                .andExpect(jsonPath("$.content", containsString("张三")))
+                .andExpect(jsonPath("$.warnings[0]", containsString("已使用 XLS 兼容解析")));
     }
 
     @Test
@@ -150,6 +158,14 @@ class DocumentParserApiTest {
                 .andExpect(jsonPath("$.file_type").value("ppt"))
                 .andExpect(jsonPath("$.has_text_layer").value(true))
                 .andExpect(jsonPath("$.content", containsString("季度工作总结")));
+
+        mockMvc.perform(multipart("/parse").file(new MockMultipartFile(
+                                "file", "summary.pptx", "application/octet-stream", slideshowBytes))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer test-secret"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.file_type").value("ppt"))
+                .andExpect(jsonPath("$.content", containsString("季度工作总结")))
+                .andExpect(jsonPath("$.warnings[0]", containsString("已使用 PPT 兼容解析")));
     }
 
     @Test

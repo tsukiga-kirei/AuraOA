@@ -102,7 +102,9 @@ func TestDefaultReviewPromptsMatchReviewedText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows := regexp.MustCompile(`(?s)\('([a-z_]+)', \$prompt\$(.*?)\$prompt\$\)`).FindAllStringSubmatch(string(sql), -1)
+	// Windows 检出可能使用 CRLF，模板内容比较统一换行后再验证。
+	reviewText := strings.ReplaceAll(string(review), "\r\n", "\n")
+	rows := regexp.MustCompile(`(?s)\('([a-z_]+)', \$prompt\$(.*?)\$prompt\$\)`).FindAllStringSubmatch(strings.ReplaceAll(string(sql), "\r\n", "\n"), -1)
 	filtered := rows[:0]
 	for _, row := range rows {
 		if !strings.HasSuffix(row[1], "_recheck") {
@@ -113,14 +115,35 @@ func TestDefaultReviewPromptsMatchReviewedText(t *testing.T) {
 	if readErr != nil {
 		t.Fatal(readErr)
 	}
-	rows = append(filtered, regexp.MustCompile(`(?s)\('([a-z_]+)'[^$]*\$prompt\$(.*?)\$prompt\$`).FindAllStringSubmatch(string(newer), -1)...)
+	rows = append(filtered, regexp.MustCompile(`(?s)\('([a-z_]+)'[^$]*\$prompt\$(.*?)\$prompt\$`).FindAllStringSubmatch(strings.ReplaceAll(string(newer), "\r\n", "\n"), -1)...)
+	attachmentPolicySQL, err := os.ReadFile("../../../db/migrations/000095_unparsed_attachment_prompt_policy.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := regexp.MustCompile(`(?s)\$policy\$(.*?)\$policy\$`).FindStringSubmatch(strings.ReplaceAll(string(attachmentPolicySQL), "\r\n", "\n"))
+	policyKeys := regexp.MustCompile(`'((?:audit|archive)_system_(?:reasoning|extraction)_(?:standard|loose))'`).FindAllStringSubmatch(string(attachmentPolicySQL), -1)
+	if len(policy) != 2 || len(policyKeys) != 8 {
+		t.Fatal("附件解析失败政策应仅更新审核和归档标准、宽松尺度的八条系统模板")
+	}
+	updated := 0
+	for _, row := range rows {
+		for _, key := range policyKeys {
+			if row[1] == key[1] {
+				row[2] = strings.Replace(row[2], "【规则适用前提】", policy[1]+"\n\n【规则适用前提】", 1)
+				updated++
+			}
+		}
+	}
+	if updated != 8 {
+		t.Fatal("附件解析失败政策必须匹配八条现有模板，严格尺度不变")
+	}
 	if len(rows) != 22 {
 		t.Fatalf("预期十二条系统模板和十条复核默认模板，实际%d条", len(rows))
 	}
 	for _, row := range rows {
 		key, prompt := row[1], row[2]
 		t.Run(key, func(t *testing.T) {
-			if !strings.Contains(string(review), "模板键：`"+key+"`\n\n~~~~text\n"+prompt+"\n~~~~") {
+			if !strings.Contains(reviewText, "模板键：`"+key+"`\n\n~~~~text\n"+prompt+"\n~~~~") {
 				t.Fatal("审核稿与迁移中的完整模板不一致")
 			}
 			if strings.Contains(key, "_recheck") {
