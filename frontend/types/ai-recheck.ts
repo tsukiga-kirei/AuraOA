@@ -7,6 +7,7 @@ export interface AIRecheckConfig {
 export interface AIRecheckRecord {
   status?: 'running' | 'completed' | 'failed' | 'cancelled'
   changed?: boolean
+  reuse_original?: boolean
   reason?: string
   error?: string
   duration_ms?: number

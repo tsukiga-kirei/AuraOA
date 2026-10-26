@@ -199,7 +199,7 @@ func (s *ProcessAuditConfigService) lockExtractionPrompts(raw datatypes.JSON) da
 	if err := json.Unmarshal(raw, &data); err != nil {
 		return raw
 	}
-	normalizeAIRecheckConfig(data.Recheck)
+	normalizeAIRecheckConfig(data.Recheck, data.AuditStrictness)
 	strictness := defaultStr(data.AuditStrictness, "standard")
 	data.AuditStrictness = strictness
 	templates, err := s.templateRepo.GetByStrictnessAuditWorkbench(strictness)
@@ -234,7 +234,7 @@ func (s *ProcessAuditConfigService) ListPromptTemplates() ([]model.SystemPromptT
 	out := templates[:0]
 	for _, t := range templates {
 		if strings.HasPrefix(t.PromptKey, "audit_") {
-			out = append(out, t)
+			out = append(out, withAIRecheckOutputInstructions(t, "audit"))
 		}
 	}
 	return out, nil

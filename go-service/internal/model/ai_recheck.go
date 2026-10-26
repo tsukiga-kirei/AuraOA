@@ -2,7 +2,7 @@ package model
 
 import "encoding/json"
 
-// AIRecheckConfig 是独立于审核尺度、随执行配置版本保存的可选第三阶段设置。
+// AIRecheckConfig 随执行配置版本保存，默认提示词沿用本次审核尺度。
 type AIRecheckConfig struct {
 	Enabled      bool   `json:"enabled"`
 	SystemPrompt string `json:"system_prompt"`
@@ -13,6 +13,7 @@ type AIRecheckConfig struct {
 type AIRecheckRecord struct {
 	Status         string          `json:"status"`
 	Changed        bool            `json:"changed"`
+	ReuseOriginal  bool            `json:"reuse_original,omitempty"`
 	Reason         string          `json:"reason"`
 	Error          string          `json:"error,omitempty"`
 	DurationMs     int64           `json:"duration_ms"`

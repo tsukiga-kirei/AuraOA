@@ -350,6 +350,16 @@ const startSSE = (auditResultId: string, processId: string) => {
     }
   })
 
+  for (const [eventName, field] of [['structured', 'structured_output'], ['recheck', 'recheck_output']] as const) {
+    eventSourceStream.value.addEventListener(eventName, (event: MessageEvent) => {
+      if (selectedProcess.value !== processId || !currentResult.value) return
+      currentResult.value![field] = event.data || ''
+      if (event.data && ['pending','assembling','reasoning','extracting','rechecking'].includes(currentResult.value!.status || '')) {
+        if (eventName === 'recheck') currentResult.value!.status = 'rechecking'
+        else if (currentResult.value!.status !== 'rechecking') currentResult.value!.status = 'extracting'
+      }
+    })
+  }
   eventSourceStream.value.onmessage = (e) => {
     if (selectedProcess.value === processId && currentResult.value) {
       const chunk = e.data || ''
@@ -534,7 +544,7 @@ const handleSelectProcess = (processId: string) => {
           waitAuditJob(item.audit_result.id, (st: any) => {
              if (selectedProcess.value === processId) {
                  const oldReasoning = currentResult.value?.ai_reasoning || ''
-                 currentResult.value = st as any
+                 currentResult.value = { ...currentResult.value, ...st } as any
                  if (oldReasoning.length > (st.ai_reasoning?.length || 0)) {
                      if (currentResult.value) currentResult.value.ai_reasoning = oldReasoning
                  }
@@ -545,7 +555,7 @@ const handleSelectProcess = (processId: string) => {
              if (pollProcessId.value === processId) pollProcessId.value = null
              if (selectedProcess.value === processId) {
                  const oldReasoning = currentResult.value?.ai_reasoning || ''
-                 currentResult.value = st as any
+                 currentResult.value = { ...currentResult.value, ...st } as any
                  if (oldReasoning.length > (st.ai_reasoning?.length || 0)) {
                      if (currentResult.value) currentResult.value.ai_reasoning = oldReasoning
                  }
@@ -608,7 +618,7 @@ const handleAudit = async (processId: string, useLatestConfig = false) => {
       }
       if (selectedProcess.value === processId) {
          const oldReasoning = currentResult.value?.ai_reasoning || ''
-         currentResult.value = { ...st } as any
+         currentResult.value = { ...currentResult.value, ...st } as any
          if (oldReasoning.length > (st.ai_reasoning?.length || 0)) {
              if (currentResult.value) currentResult.value.ai_reasoning = oldReasoning
          }
@@ -746,7 +756,7 @@ async function runDashboardBatchLoop(ids: string[], queueMeta: DashboardBatchMet
         }
         if (selectedProcess.value === id) {
           const oldReasoning = currentResult.value?.ai_reasoning || ''
-          currentResult.value = { ...st } as any
+          currentResult.value = { ...currentResult.value, ...st } as any
           if (oldReasoning.length > (st.ai_reasoning?.length || 0)) {
             if (currentResult.value) currentResult.value.ai_reasoning = oldReasoning
           }
@@ -1318,7 +1328,6 @@ onMounted(async () => {
 
           <!--结果展示-->
           <template v-else-if="currentResult">
-            <AIRecheckResult :record="currentResult.ai_recheck" :task-status="currentResult.status" />
             <div v-if="isResultAsyncRunning(currentResult)" class="result-async-panel">
               <a-spin size="large">
                 <div class="async-progress-steps">
@@ -1335,18 +1344,7 @@ onMounted(async () => {
                   </div>
                 </div>
               </a-spin>
-              <div v-if="currentResult.deep_thinking" class="result-section" style="margin-top: 16px;">
-                <h4 class="result-section-title">{{ t('dashboard.deepThinking', '深度思考过程') }}</h4>
-                <div class="ai-reasoning">
-                  <div class="markdown-body" v-html="renderMarkdown(currentResult.deep_thinking || '')"></div>
-                </div>
-              </div>
-              <div v-if="currentResult.ai_reasoning || (!currentResult.deep_thinking && isResultAsyncRunning(currentResult))" class="result-section" style="margin-top: 16px;">
-                <h4 class="result-section-title">{{ t('dashboard.aiReasoning') }}</h4>
-                <div class="ai-reasoning">
-                  <div class="markdown-body" v-html="renderMarkdown(currentResult.ai_reasoning || '')"></div>
-                </div>
-              </div>
+              <ReviewStageStreams :key="currentResult.id" :result="currentResult" />
             </div>
 
             <template v-else>
@@ -1484,6 +1482,8 @@ onMounted(async () => {
                 </div>
               </div>
 
+            <AIRecheckResult :record="currentResult.ai_recheck" :task-status="currentResult.status" />
+
               <!--深度思考过程-->
               <ResultReasoningPanel
                 v-if="currentResult.deep_thinking"
@@ -1602,6 +1602,7 @@ onMounted(async () => {
                               </ul>
                             </div>
                           </div>
+                          <AIRecheckResult :record="item.ai_recheck" />
                           <!-- 深度思考过程 -->
                           <div v-if="chainItemDeepThinking(item)" class="chain-section-title" style="margin-top: 10px;">
                             {{ t('dashboard.deepThinking', '深度思考过程') }}
@@ -1610,7 +1611,6 @@ onMounted(async () => {
                             <div class="markdown-body" v-html="renderMarkdown(chainItemDeepThinking(item) || '')"></div>
                           </div>
 
-                          <AIRecheckResult :record="item.ai_recheck" />
                           <!--AI 推理：后端链数据里推理在行字段 ai_reasoning，不在 audit_result JSONB 内 -->
                           <div v-if="chainItemAiReasoning(item)" class="chain-section-title" style="margin-top: 10px;">{{ t('dashboard.aiReasoning') }}</div>
                           <div v-if="chainItemAiReasoning(item)" class="chain-reasoning">

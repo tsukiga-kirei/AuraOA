@@ -388,6 +388,8 @@ const normalizeArchiveResult = (input?: Partial<ArchiveReviewResult> | null): Ar
     duration_ms: input.duration_ms ?? 0,
     deep_thinking: input.deep_thinking || '',
     ai_recheck: input.ai_recheck,
+    structured_output: input.structured_output,
+    recheck_output: input.recheck_output,
     ai_reasoning: input.ai_reasoning || '',
     ai_summary: input.ai_summary || '',
     query_evidence: input.query_evidence ?? [],
@@ -428,7 +430,7 @@ const updateLiveResult = (processId: string, result: Partial<ArchiveReviewResult
   syncResultToList(processId, normalized)
   if (selectedProcess.value?.process_id === processId) {
     const oldReasoning = currentResult.value?.ai_reasoning || ''
-    currentResult.value = normalized
+    currentResult.value = { ...currentResult.value, ...normalized, structured_output: normalized.structured_output ?? currentResult.value?.structured_output, recheck_output: normalized.recheck_output ?? currentResult.value?.recheck_output }
     if (oldReasoning.length > (normalized.ai_reasoning?.length || 0) && currentResult.value) {
       currentResult.value.ai_reasoning = oldReasoning
     }
@@ -517,6 +519,16 @@ const startSSE = (archiveLogId: string, processId: string) => {
       currentResult.value.deep_thinking = existing + chunk
     }
   })
+  for (const [eventName, field] of [['structured', 'structured_output'], ['recheck', 'recheck_output']] as const) {
+    eventSourceStream.value.addEventListener(eventName, (event: MessageEvent) => {
+      if (selectedProcess.value?.process_id !== processId || !currentResult.value) return
+      currentResult.value![field] = event.data || ''
+      if (event.data && ['pending','assembling','reasoning','extracting','rechecking'].includes(currentResult.value!.status || '')) {
+        if (eventName === 'recheck') currentResult.value!.status = 'rechecking'
+        else if (currentResult.value!.status !== 'rechecking') currentResult.value!.status = 'extracting'
+      }
+    })
+  }
   eventSourceStream.value.onmessage = (event) => {
     if (selectedProcess.value?.process_id !== processId || !currentResult.value) return
     const chunk = event.data || ''
@@ -1368,8 +1380,7 @@ onUnmounted(() => {
           <template v-else>
             <!--审核进行中（与 dashboard result-async-panel 一致）-->
             <template v-if="loading && currentResult">
-              <AIRecheckResult :record="currentResult.ai_recheck" :task-status="currentResult.status" />
-              <div class="result-async-panel">
+                <div class="result-async-panel">
                 <a-spin size="large">
                   <div class="async-progress-steps">
                     <div
@@ -1385,24 +1396,12 @@ onUnmounted(() => {
                     </div>
                   </div>
                 </a-spin>
-                <div v-if="currentResult.deep_thinking" class="result-section" style="margin-top: 16px;">
-                  <h4 class="result-section-title">{{ t('dashboard.deepThinking', '深度思考过程') }}</h4>
-                  <div class="ai-reasoning">
-                    <div class="markdown-body" v-html="renderMarkdown(currentResult.deep_thinking || '')" />
-                  </div>
-                </div>
-                <div v-if="currentResult.ai_reasoning || (!currentResult.deep_thinking && loading)" class="result-section" style="margin-top: 16px;">
-                  <h4 class="result-section-title">{{ t('dashboard.aiReasoning') }}</h4>
-                  <div class="ai-reasoning">
-                    <div class="markdown-body" v-html="renderMarkdown(currentResult.ai_reasoning || '')" />
-                  </div>
-                </div>
+              <ReviewStageStreams :key="currentResult.id" :result="currentResult" />
               </div>
             </template>
 
             <template v-else-if="currentResult && !loading && currentResult.status === 'failed'">
-              <AIRecheckResult :record="currentResult.ai_recheck" :task-status="currentResult.status" />
-              <div class="result-banner result-banner--error">
+                <div class="result-banner result-banner--error">
                 <WarningOutlined class="result-banner-icon" style="color: var(--color-danger);" />
                 <div class="result-banner-info">
                   <div class="result-banner-title" style="color: var(--color-danger);">{{ t('archive.auditFailed') }}</div>
@@ -1421,8 +1420,7 @@ onUnmounted(() => {
 
             <!--审核结果：仅已形成合规结论时展示完整报告（与审核工作台「已完成」一致）-->
             <template v-else-if="currentResult && !loading && archiveDetailShowsComplianceReport">
-              <AIRecheckResult :record="currentResult.ai_recheck" :task-status="currentResult.status" />
-              <QueryEvidenceList :items="currentResult.query_evidence || []" />
+                <QueryEvidenceList :items="currentResult.query_evidence || []" />
               <!--与 dashboard 一致的操作栏 -->
               <div class="result-action-bar">
                 <a-button @click="openAuditChain(selectedProcess.process_id)">
@@ -1531,6 +1529,8 @@ onUnmounted(() => {
                   </div>
                 </div>
               </div>
+
+            <AIRecheckResult :record="currentResult.ai_recheck" :task-status="currentResult.status" />
 
               <!-- 深度思考过程 -->
               <ResultReasoningPanel
@@ -1659,6 +1659,7 @@ onUnmounted(() => {
                               </ul>
                             </div>
                           </div>
+                          <AIRecheckResult :record="item.ai_recheck" />
                           <!-- 深度思考过程 -->
                           <div v-if="item.archive_result.deep_thinking || item.deep_thinking" class="chain-section-title" style="margin-top: 10px;">
                             {{ t('archive.deepThinking', '深度思考过程') }}
@@ -1667,7 +1668,6 @@ onUnmounted(() => {
                             <div class="markdown-body" v-html="renderMarkdown(item.archive_result.deep_thinking || item.deep_thinking || '')" />
                           </div>
 
-                          <AIRecheckResult :record="item.ai_recheck" />
                           <div v-if="item.archive_result.ai_summary || item.archive_result.ai_reasoning || item.ai_reasoning" class="chain-section-title" style="margin-top: 10px;">{{ t('archive.aiSummary') }}</div>
                           <div v-if="item.archive_result.ai_summary || item.archive_result.ai_reasoning || item.ai_reasoning" class="chain-reasoning">
                             <div class="markdown-body" v-html="renderMarkdown(item.archive_result.ai_summary || item.archive_result.ai_reasoning || item.ai_reasoning || '')" />

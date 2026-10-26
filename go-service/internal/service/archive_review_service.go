@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -1102,6 +1101,7 @@ func (s *ArchiveReviewService) GetArchiveJobStatus(c *gin.Context, id uuid.UUID)
 	out := buildArchiveResultFromLog(logEntry)
 	out["updated_at"] = apptime.FormatRFC3339(logEntry.UpdatedAt)
 	out["progress_steps"] = archiveProgressSteps(logEntry.Status, len(logEntry.AIRecheck) > 2)
+	appendReviewStageSnapshots(c.Request.Context(), s.rdb, "archive", id, out)
 	return out, nil
 }
 
@@ -1152,6 +1152,9 @@ func (s *ArchiveReviewService) SubscribeJobStream(c *gin.Context, id uuid.UUID) 
 
 	thinkingHistory, _ := s.rdb.Get(ctx, "archive:thinking:"+id.String()).Result()
 	reasoningHistory, _ := s.rdb.Get(ctx, "archive:reasoning:"+id.String()).Result()
+	stageHistory := map[string]interface{}{}
+	appendReviewStageSnapshots(ctx, s.rdb, "archive", id, stageHistory)
+
 	go func() {
 		defer close(ch)
 		if thinkingHistory != "" {
@@ -1160,6 +1163,16 @@ func (s *ArchiveReviewService) SubscribeJobStream(c *gin.Context, id uuid.UUID) 
 		if reasoningHistory != "" {
 			ch <- JobStreamEvent{Event: "message", Data: reasoningHistory}
 		}
+		for _, stage := range []string{"structured", "recheck"} {
+			field := stage + "_output"
+			if stage == "structured" {
+				field = "structured_output"
+			}
+			if text, ok := stageHistory[field].(string); ok && text != "" {
+				ch <- JobStreamEvent{Event: stage, Data: text}
+			}
+		}
+
 		for msg := range pubsub.Channel() {
 			var ev JobStreamEvent
 			if err := json.Unmarshal([]byte(msg.Payload), &ev); err == nil && ev.Event != "" {
@@ -1253,6 +1266,7 @@ func (s *ArchiveReviewService) createPendingArchiveLog(c *gin.Context, req *dto.
 		ArchiveResult:   datatypes.JSON([]byte("{}")),
 		ProcessSnapshot: datatypes.JSON([]byte("{}")),
 		ConfigVersionID: executionVersionID(configVersion),
+		AIRecheck:       pendingAIRecheck(configVersion),
 		ConfigVersionNo: executionVersionNumber(configVersion),
 		CreatedAt:       now,
 		UpdatedAt:       now,
@@ -1563,6 +1577,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	extractionReq.SkipQuotaCheck = true
 	bindLLMProcessContext(extractionReq, logEntry.ProcessID, logEntry.Title, archiveLogID)
 
+	extractionReq.StreamChunkFunc, extractionReq.StreamResetFunc = newReviewStageStream(s.rdb, "archive", archiveLogID, "structured", s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled())
 	extractionResp, err := s.aiCaller.ChatWithFallback(c, tenantID, userID, modelCfg, fallbackCfg, extractionReq)
 	if err != nil {
 		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, err)
@@ -1579,6 +1594,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	if parseErr == nil && aiConfig.Recheck != nil && aiConfig.Recheck.Enabled {
 		initial, _ := json.Marshal(parsed)
 		scrub := s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled()
+		recheckChunk, recheckReset := newReviewStageStream(s.rdb, "archive", archiveLogID, "recheck", scrub)
 		finalRaw, record, recheckErr := runAIRecheck(c, s.aiCaller, tenantID, userID, modelCfg, fallbackCfg, aiConfig.Recheck, reasoningReq, aiReasoning, initial, scrub,
 			func(record *model.AIRecheckRecord) error {
 				fields := map[string]interface{}{"status": model.JobStatusRechecking, "ai_recheck": datatypes.JSON(persistRecheckJSON(record)), "duration_ms": int(time.Since(startTime).Milliseconds()), "updated_at": apptime.Now()}
@@ -1590,7 +1606,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 					return context.Canceled
 				}
 				return nil
-			})
+			}, AIRecheckInput{Rules: mergedRulesText, StreamChunkFunc: recheckChunk, StreamResetFunc: recheckReset})
 		recheckRecord = record
 		if recheckErr != nil {
 			s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, recheckErr)
@@ -1601,11 +1617,14 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 			parseErr = validateArchiveRuleCoverage(parsed, rules)
 		}
 		if parseErr == nil {
-			recheckRecord.FinalResult, _ = json.Marshal(parsed)
-			var before, after interface{}
-			_ = json.Unmarshal(initial, &before)
-			_ = json.Unmarshal(recheckRecord.FinalResult, &after)
-			recheckRecord.Changed = !reflect.DeepEqual(before, after)
+			canonical, _ := json.Marshal(parsed)
+			recheckRecord.Changed = !reviewResultsEqual(initial, canonical)
+			recheckRecord.ReuseOriginal = !recheckRecord.Changed
+			if recheckRecord.Changed {
+				recheckRecord.FinalResult = canonical
+			} else {
+				recheckRecord.FinalResult = nil
+			}
 			extractionResp.Content = string(finalRaw)
 		}
 	}

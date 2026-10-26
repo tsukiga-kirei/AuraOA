@@ -30,6 +30,8 @@ export interface SystemPromptTemplate {
   strictness: string | null
   content: string
   description: string
+  /** 复核系统提示词实际追加的输出约定，由后端生成，仅供只读展示。 */
+  output_instructions?: string
   created_at?: string
   updated_at?: string
 }

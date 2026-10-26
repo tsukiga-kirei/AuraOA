@@ -175,7 +175,7 @@ func (s *ProcessArchiveConfigService) lockExtractionPrompts(raw datatypes.JSON) 
 	if err := json.Unmarshal(raw, &data); err != nil {
 		return raw
 	}
-	normalizeAIRecheckConfig(data.Recheck)
+	normalizeAIRecheckConfig(data.Recheck, data.AuditStrictness)
 	strictness := defaultStr(data.AuditStrictness, "standard")
 	data.AuditStrictness = strictness
 	allTemplates, err := s.templateRepo.ListAll()
@@ -214,7 +214,7 @@ func (s *ProcessArchiveConfigService) ListArchivePromptTemplates() ([]model.Syst
 	var filtered []model.SystemPromptTemplate
 	for _, t := range all {
 		if strings.HasPrefix(t.PromptKey, "archive_") {
-			filtered = append(filtered, t)
+			filtered = append(filtered, withAIRecheckOutputInstructions(t, "archive"))
 		}
 	}
 	return filtered, nil

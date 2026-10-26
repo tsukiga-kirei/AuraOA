@@ -216,6 +216,16 @@ const startSSE = (auditResultId?: string) => {
       currentResult.value.deep_thinking = existing + chunk
     }
   })
+  for (const [eventName, field] of [['structured', 'structured_output'], ['recheck', 'recheck_output']] as const) {
+    eventSourceStream.value.addEventListener(eventName, (event: MessageEvent) => {
+      if (!currentResult.value) return
+      currentResult.value![field] = event.data || ''
+      if (event.data && ['pending','assembling','reasoning','extracting','rechecking'].includes(currentResult.value!.status || '')) {
+        if (eventName === 'recheck') currentResult.value!.status = 'rechecking'
+        else if (currentResult.value!.status !== 'rechecking') currentResult.value!.status = 'extracting'
+      }
+    })
+  }
   eventSourceStream.value.onmessage = (event) => {
     if (!currentResult.value) return
     const chunk = event.data || ''
@@ -645,28 +655,10 @@ onBeforeUnmount(() => {
               <span class="async-step-label">{{ s.key === 'rechecking' ? t('recheck.title') : s.label }}</span>
             </div>
           </div>
-          <div v-if="currentResult?.deep_thinking" class="embed-reasoning-live">
-            <AiMarkdownStream
-              page-flow
-              :loading="isAuditingActive"
-              :title="t('dashboard.deepThinking', '深度思考过程')"
-              :text="currentResult.deep_thinking || ''"
-              max-height="260px"
-            ><template #icon><BulbOutlined /></template></AiMarkdownStream>
-          </div>
-          <div v-if="currentResult?.ai_reasoning" class="embed-reasoning-live">
-            <AiMarkdownStream
-              page-flow
-              :loading="isAuditingActive"
-              :title="t('dashboard.aiReasoning')"
-              :text="currentResult.ai_reasoning || ''"
-              max-height="260px"
-            ><template #icon><ExperimentOutlined /></template></AiMarkdownStream>
-          </div>
+          <ReviewStageStreams v-if="currentResult" :key="currentResult.id" :result="currentResult" page-flow />
         </div>
 
         <template v-else-if="currentResult">
-            <AIRecheckResult :record="currentResult.ai_recheck" :task-status="currentResult.status" />
           <template v-if="currentResult.status === 'failed' || currentResult.status === 'cancelled'">
             <div class="result-banner result-banner--error">
               <WarningOutlined class="result-banner-icon" style="color: var(--color-danger);" />
@@ -746,6 +738,8 @@ onBeforeUnmount(() => {
                 </ul>
               </div>
             </div>
+
+            <AIRecheckResult :record="currentResult.ai_recheck" :task-status="currentResult.status" />
 
             <ResultReasoningPanel
               page-flow

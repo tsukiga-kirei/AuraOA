@@ -17,6 +17,8 @@ type SystemPromptTemplate struct {
 	Description string    `gorm:"size:500;default:''" json:"description"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+	// OutputInstructions 为复核实际追加的输出约定，仅用于接口展示，不入库或写入业务提示词。
+	OutputInstructions string `gorm:"-" json:"output_instructions,omitempty"`
 }
 
 func (SystemPromptTemplate) TableName() string { return "system_prompt_templates" }

@@ -10,6 +10,7 @@ const props = withDefaults(defineProps<{
   maxHeight?: string
   pageFlow?: boolean
   loading?: boolean
+  format?: 'markdown' | 'json'
 }>(), {
   title: '',
   text: '',
@@ -17,6 +18,7 @@ const props = withDefaults(defineProps<{
   maxHeight: '260px',
   pageFlow: false,
   loading: false,
+  format: 'markdown',
 })
 
 const { t } = useI18n()
@@ -27,6 +29,12 @@ let scrollTimer: ReturnType<typeof setTimeout> | null = null
 
 const html = computed(() => {
   try {
+    if (props.format === 'json') {
+      let text = props.text || ''
+      try { text = JSON.stringify(JSON.parse(text), null, 2) } catch {}
+      const escaped = text.replace(/[&<>]/g, value => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[value] || value))
+      return `<pre><code>${escaped}</code></pre>`
+    }
     return renderSafeMarkdown(props.text || '')
   } catch {
     return (props.text || '').replace(/[&<>"']/g, char => ({

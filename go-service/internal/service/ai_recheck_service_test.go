@@ -45,7 +45,7 @@ func TestAIRecheckCallAndTrace(t *testing.T) {
 			id := uuid.New()
 			original := &ai.ChatRequest{SystemPrompt: "原版本审核要求", UserPrompt: "已选择字段、附件和规则证据", RequestType: module, ProcessID: "process-1", BusinessLogID: &id, MaxTokens: 2000}
 			cfg := &model.AIRecheckConfig{Enabled: true, SystemPrompt: "复核原结果", UserPrompt: "自定义：{{initial_result}}"}
-			caller := &fakeRecheckCaller{response: `{"reason":"金额冲突尚未核实，调整为人工复核","final_result":` + final + `}`}
+			caller := &fakeRecheckCaller{response: `{"reuse_original":false,"reason":"金额冲突尚未核实，调整为人工复核","final_result":` + final + `}`}
 			var records []model.AIRecheckRecord
 			raw, record, err := runAIRecheck(c, caller, uuid.New(), uuid.New(), nil, nil, cfg, original, "原推理正文", json.RawMessage(initial), false, func(record *model.AIRecheckRecord) error { records = append(records, *record); return nil })
 			if err != nil {
@@ -111,9 +111,9 @@ func TestAIRecheckFailuresKeepInitial(t *testing.T) {
 	for name, caller := range map[string]*fakeRecheckCaller{
 		"调用失败":   {err: errors.New("模型不可用")},
 		"格式错误":   {response: "不是JSON"},
-		"缺少完整结果": {response: `{"reason":"维持","final_result":{}}`},
-		"分数结论矛盾": {response: `{"reason":"调整","final_result":` + strings.Replace(finalAuditRecheck, `"review"`, `"approve"`, 1) + `}`},
-		"丢失规则":   {response: `{"reason":"调整","final_result":` + strings.Replace(finalAuditRecheck, `"检查金额"`, `"其他规则"`, 1) + `}`},
+		"缺少完整结果": {response: `{"reuse_original":false,"reason":"维持","final_result":{}}`},
+		"分数结论矛盾": {response: `{"reuse_original":false,"reason":"调整","final_result":` + strings.Replace(finalAuditRecheck, `"review"`, `"approve"`, 1) + `}`},
+		"丢失规则":   {response: `{"reuse_original":false,"reason":"调整","final_result":` + strings.Replace(finalAuditRecheck, `"检查金额"`, `"其他规则"`, 1) + `}`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			c, _ := gin.CreateTestContext(httptest.NewRecorder())
@@ -176,7 +176,7 @@ func TestAIRecheckQueryEvidenceDoesNotForceDowngrade(t *testing.T) {
 					contextText := formatQueryEvidence(evidence)
 					c, _ := gin.CreateTestContext(httptest.NewRecorder())
 					c.Request = httptest.NewRequest("POST", "/", nil)
-					caller := &fakeRecheckCaller{response: `{"reason":"维持原结论","final_result":` + initial + `}`}
+					caller := &fakeRecheckCaller{response: `{"reuse_original":false,"reason":"维持原结论","final_result":` + initial + `}`}
 					saves := 0
 					out, record, err := runAIRecheck(c, caller, uuid.New(), uuid.New(), nil, nil, &model.AIRecheckConfig{Enabled: mode.enabled, UserPrompt: "{{initial_result}}\n{{audit_context}}"}, &ai.ChatRequest{RequestType: module, UserPrompt: contextText}, "原分析", json.RawMessage(initial), false, func(*model.AIRecheckRecord) error { saves++; return nil })
 					if err != nil || string(out) != initial {

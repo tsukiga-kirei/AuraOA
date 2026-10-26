@@ -23,6 +23,8 @@ export interface OAProcessItem {
 
 /** AI 审核结构化结果（对应提取阶段 JSON Schema） */
 export interface AuditResult {
+  structured_output?: string
+  recheck_output?: string
   ai_recheck?: import('./ai-recheck').AIRecheckRecord
   query_evidence?: QueryEvidence[]
   result_source?: 'personal' | 'embed'
@@ -73,6 +75,8 @@ export interface RuleResultItem {
 
 /** 审核链记录（租户级，所有用户共享） */
 export interface AuditChainItem {
+  structured_output?: string
+  recheck_output?: string
   ai_recheck?: import('./ai-recheck').AIRecheckRecord
   trigger_source?: string
   trigger_detail?: string

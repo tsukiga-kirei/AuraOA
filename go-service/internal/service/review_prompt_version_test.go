@@ -103,8 +103,19 @@ func TestDefaultReviewPromptsMatchReviewedText(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows := regexp.MustCompile(`(?s)\('([a-z_]+)', \$prompt\$(.*?)\$prompt\$\)`).FindAllStringSubmatch(string(sql), -1)
-	if len(rows) != 16 {
-		t.Fatalf("预期十二条系统模板和四条复核模板，实际%d条", len(rows))
+	filtered := rows[:0]
+	for _, row := range rows {
+		if !strings.HasSuffix(row[1], "_recheck") {
+			filtered = append(filtered, row)
+		}
+	}
+	newer, readErr := os.ReadFile("../../../db/migrations/000094_recheck_consistency_and_reuse.up.sql")
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	rows = append(filtered, regexp.MustCompile(`(?s)\('([a-z_]+)'[^$]*\$prompt\$(.*?)\$prompt\$`).FindAllStringSubmatch(string(newer), -1)...)
+	if len(rows) != 22 {
+		t.Fatalf("预期十二条系统模板和十条复核默认模板，实际%d条", len(rows))
 	}
 	for _, row := range rows {
 		key, prompt := row[1], row[2]
@@ -112,8 +123,14 @@ func TestDefaultReviewPromptsMatchReviewedText(t *testing.T) {
 			if !strings.Contains(string(review), "模板键：`"+key+"`\n\n~~~~text\n"+prompt+"\n~~~~") {
 				t.Fatal("审核稿与迁移中的完整模板不一致")
 			}
-			if strings.HasSuffix(key, "_recheck") {
+			if strings.Contains(key, "_recheck") {
 				want := defaultRecheckSystemPrompt
+				if strings.HasSuffix(key, "_strict") {
+					want = strictRecheckSystemPrompt
+				}
+				if strings.HasSuffix(key, "_loose") {
+					want = looseRecheckSystemPrompt
+				}
 				if strings.Contains(key, "_user_") {
 					want = defaultRecheckUserPrompt
 				}

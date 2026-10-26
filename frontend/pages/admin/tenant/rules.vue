@@ -3869,7 +3869,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                 <a-switch v-model:checked="selectedConfig.ai_config.enable_thinking" />
               </div>
             </div>
-            <AIRecheckConfigEditor v-model="selectedConfig.ai_config.recheck" :default-system="getTemplateContent('audit_system_recheck')" :default-user="getTemplateContent('audit_user_recheck')" />
+            <AIRecheckConfigEditor v-model="selectedConfig.ai_config.recheck" :strictness="selectedConfig.ai_config.audit_strictness" :config-identity="selectedConfig.id" :default-system="getTemplateContent(`audit_system_recheck_${selectedConfig.ai_config.audit_strictness || 'standard'}`) || getTemplateContent('audit_system_recheck')" :default-user="getTemplateContent('audit_user_recheck')" :output-instructions="promptTemplates.find(item => item.prompt_key === 'audit_system_recheck')?.output_instructions" />
 
             <!--系统提示词区域-->
             <div class="ai-prompt-section">
@@ -6093,7 +6093,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                 <a-switch v-model:checked="selectedArchiveConfig.ai_config.enable_thinking" />
               </div>
             </div>
-            <AIRecheckConfigEditor v-model="selectedArchiveConfig.ai_config.recheck" :default-system="getArchiveTemplateContent('archive_system_recheck')" :default-user="getArchiveTemplateContent('archive_user_recheck')" />
+            <AIRecheckConfigEditor v-model="selectedArchiveConfig.ai_config.recheck" :strictness="selectedArchiveConfig.ai_config.audit_strictness" :config-identity="selectedArchiveConfig.id" :default-system="getArchiveTemplateContent(`archive_system_recheck_${selectedArchiveConfig.ai_config.audit_strictness || 'standard'}`) || getArchiveTemplateContent('archive_system_recheck')" :default-user="getArchiveTemplateContent('archive_user_recheck')" :output-instructions="archivePromptTemplates.find(item => item.prompt_key === 'archive_system_recheck')?.output_instructions" />
 
             <!--系统提示词区域-->
             <div class="ai-prompt-section">
