@@ -95,7 +95,7 @@ const checkRunningCron = async () => {
   } catch {}
 }
 
-const asyncArchiveStatuses = ['pending', 'assembling', 'reasoning', 'extracting']
+const asyncArchiveStatuses = ['pending', 'assembling', 'reasoning', 'extracting', 'rechecking']
 
 /** 与列表接口返回的 archive_status / archive_result.status 一致；刷新后仍显示「复核中」 */
 function isArchiveJobRunning(proc: ArchiveProcessItem): boolean {
@@ -347,12 +347,14 @@ const defaultProgressSteps = (status?: string): ArchiveProgressStep[] => {
     { key: 'assembling', label: '组装复盘提示词' },
     { key: 'reasoning', label: '推理分析' },
     { key: 'extracting', label: '结构化提取' },
+    ...(status === 'rechecking' ? [{ key: 'rechecking', label: t('recheck.title') }] : []),
   ]
   const phaseIdx: Record<string, number> = {
     pending: 0,
     assembling: 1,
     reasoning: 2,
     extracting: 3,
+    rechecking: 4,
   }
   let current = phaseIdx[status || 'pending'] ?? 0
   if (status === 'completed') current = 3
@@ -385,6 +387,7 @@ const normalizeArchiveResult = (input?: Partial<ArchiveReviewResult> | null): Ar
     confidence: input.confidence ?? 0,
     duration_ms: input.duration_ms ?? 0,
     deep_thinking: input.deep_thinking || '',
+    ai_recheck: input.ai_recheck,
     ai_reasoning: input.ai_reasoning || '',
     ai_summary: input.ai_summary || '',
     query_evidence: input.query_evidence ?? [],
@@ -1365,6 +1368,7 @@ onUnmounted(() => {
           <template v-else>
             <!--审核进行中（与 dashboard result-async-panel 一致）-->
             <template v-if="loading && currentResult">
+              <AIRecheckResult :record="currentResult.ai_recheck" :task-status="currentResult.status" />
               <div class="result-async-panel">
                 <a-spin size="large">
                   <div class="async-progress-steps">
@@ -1377,7 +1381,7 @@ onUnmounted(() => {
                       <LoadingOutlined v-else-if="s.current" spin style="color: var(--color-primary);" />
                       <CloseCircleOutlined v-else-if="s.failed" style="color: var(--color-danger);" />
                       <span v-else class="async-step-pending-dot" />
-                      <span>{{ s.label }}</span>
+                      <span>{{ s.key === 'rechecking' ? t('recheck.title') : s.label }}</span>
                     </div>
                   </div>
                 </a-spin>
@@ -1397,6 +1401,7 @@ onUnmounted(() => {
             </template>
 
             <template v-else-if="currentResult && !loading && currentResult.status === 'failed'">
+              <AIRecheckResult :record="currentResult.ai_recheck" :task-status="currentResult.status" />
               <div class="result-banner result-banner--error">
                 <WarningOutlined class="result-banner-icon" style="color: var(--color-danger);" />
                 <div class="result-banner-info">
@@ -1416,6 +1421,7 @@ onUnmounted(() => {
 
             <!--审核结果：仅已形成合规结论时展示完整报告（与审核工作台「已完成」一致）-->
             <template v-else-if="currentResult && !loading && archiveDetailShowsComplianceReport">
+              <AIRecheckResult :record="currentResult.ai_recheck" :task-status="currentResult.status" />
               <QueryEvidenceList :items="currentResult.query_evidence || []" />
               <!--与 dashboard 一致的操作栏 -->
               <div class="result-action-bar">
@@ -1661,6 +1667,7 @@ onUnmounted(() => {
                             <div class="markdown-body" v-html="renderMarkdown(item.archive_result.deep_thinking || item.deep_thinking || '')" />
                           </div>
 
+                          <AIRecheckResult :record="item.ai_recheck" />
                           <div v-if="item.archive_result.ai_summary || item.archive_result.ai_reasoning || item.ai_reasoning" class="chain-section-title" style="margin-top: 10px;">{{ t('archive.aiSummary') }}</div>
                           <div v-if="item.archive_result.ai_summary || item.archive_result.ai_reasoning || item.ai_reasoning" class="chain-reasoning">
                             <div class="markdown-body" v-html="renderMarkdown(item.archive_result.ai_summary || item.archive_result.ai_reasoning || item.ai_reasoning || '')" />

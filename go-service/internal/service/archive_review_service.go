@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -252,7 +253,7 @@ func (s *ArchiveReviewService) ListProcesses(c *gin.Context, params dto.ArchiveL
 		if hasLatest {
 			st := latest.Status
 			switch st {
-			case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting:
+			case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting, model.JobStatusRechecking:
 				record["archive_status"] = st
 				record["archive_result"] = buildArchiveResultFromLog(latest)
 			case model.JobStatusFailed:
@@ -605,7 +606,7 @@ func (s *ArchiveReviewService) listArchiveBySnapshotPaged(
 		if latest, ok := latestMap[snap.ProcessID]; ok {
 			st := latest.Status
 			switch st {
-			case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting:
+			case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting, model.JobStatusRechecking:
 				record["archive_status"] = st
 				record["archive_result"] = buildArchiveResultFromLog(latest)
 			}
@@ -764,7 +765,7 @@ func (s *ArchiveReviewService) listArchiveUnauditedPaged(
 		if latest, ok := latestMap[item.ProcessID]; ok {
 			st := latest.Status
 			switch st {
-			case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting:
+			case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting, model.JobStatusRechecking:
 				record["archive_status"] = st
 				record["archive_result"] = buildArchiveResultFromLog(latest)
 			}
@@ -878,7 +879,7 @@ func (s *ArchiveReviewService) GetStats(c *gin.Context, params dto.ArchiveListPa
 	var runningCount int64
 	s.db.Model(&model.ArchiveLog{}).
 		Where("tenant_id = ? AND status IN ?", tenantID,
-			[]string{model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting}).
+			[]string{model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting, model.JobStatusRechecking}).
 		Count(&runningCount)
 
 	result := &dto.ArchiveReviewStats{
@@ -1097,7 +1098,7 @@ func (s *ArchiveReviewService) GetArchiveJobStatus(c *gin.Context, id uuid.UUID)
 	}
 	out := buildArchiveResultFromLog(logEntry)
 	out["updated_at"] = apptime.FormatRFC3339(logEntry.UpdatedAt)
-	out["progress_steps"] = archiveProgressSteps(logEntry.Status)
+	out["progress_steps"] = archiveProgressSteps(logEntry.Status, len(logEntry.AIRecheck) > 2)
 	return out, nil
 }
 
@@ -1557,6 +1558,39 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	totalDuration := int(time.Since(startTime).Milliseconds())
 	parsed, parseErr := ParseArchiveReviewResult(extractionResp.Content)
 	GuardArchiveQueryEvidence(parsed, queryEvidence)
+	var recheckRecord *model.AIRecheckRecord
+	if parseErr == nil && aiConfig.Recheck != nil && aiConfig.Recheck.Enabled {
+		initial, _ := json.Marshal(parsed)
+		scrub := s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled()
+		finalRaw, record, recheckErr := runAIRecheck(c, s.aiCaller, tenantID, userID, modelCfg, fallbackCfg, aiConfig.Recheck, reasoningReq, aiReasoning, initial, scrub,
+			func(record *model.AIRecheckRecord) error {
+				fields := map[string]interface{}{"status": model.JobStatusRechecking, "ai_recheck": datatypes.JSON(persistRecheckJSON(record)), "duration_ms": int(time.Since(startTime).Milliseconds()), "updated_at": apptime.Now()}
+				rows, saveErr := s.archiveLogRepo.UpdateActiveFields(c, archiveLogID, fields)
+				if saveErr != nil {
+					return saveErr
+				}
+				if rows == 0 {
+					return context.Canceled
+				}
+				return nil
+			})
+		recheckRecord = record
+		if recheckErr != nil {
+			s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, recheckErr)
+			return recheckErr
+		}
+		parsed, parseErr = ParseArchiveReviewResult(string(finalRaw))
+		GuardArchiveQueryEvidence(parsed, queryEvidence)
+		if parseErr == nil {
+			recheckRecord.FinalResult, _ = json.Marshal(parsed)
+			var before, after interface{}
+			_ = json.Unmarshal(initial, &before)
+			_ = json.Unmarshal(recheckRecord.FinalResult, &after)
+			recheckRecord.Changed = !reflect.DeepEqual(before, after)
+			extractionResp.Content = string(finalRaw)
+		}
+	}
+	totalDuration = int(time.Since(startTime).Milliseconds())
 
 	rawStored := extractionResp.Content
 	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
@@ -1570,6 +1604,9 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		"deep_thinking":    deepThinking,
 		"process_snapshot": datatypes.JSON(snapshotJSON),
 		"updated_at":       time.Now(),
+	}
+	if recheckRecord != nil {
+		updates["ai_recheck"] = datatypes.JSON(persistRecheckJSON(recheckRecord))
 	}
 	if parseErr != nil {
 		updates["status"] = model.JobStatusFailed
@@ -1597,9 +1634,16 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		)
 	}
 
-	if err := s.archiveLogRepo.UpdateFields(c, archiveLogID, updates); err != nil {
+	if err := c.Request.Context().Err(); err != nil {
+		return err
+	}
+	finalRows, finalErr := s.archiveLogRepo.UpdateActiveFields(c, archiveLogID, updates)
+	if err := finalErr; err != nil {
 		_ = s.markArchiveFailedDB(tenantID, archiveLogID, "保存归档复盘结果失败: "+err.Error())
 		return err
+	}
+	if finalRows == 0 {
+		return nil
 	}
 	if parseErr == nil && parsed != nil {
 		if err := s.archiveSnapshotRepo.UpsertAppendValid(c, tenantID, logEntry.ProcessID, archiveLogID, logEntry.Title, logEntry.ProcessType, parsed.OverallCompliance, parsed.OverallScore, parsed.Confidence); err != nil {
@@ -1706,6 +1750,7 @@ func (s *ArchiveReviewService) FailStaleArchiveJobs(ctx context.Context) (int64,
 			model.JobStatusAssembling,
 			model.JobStatusReasoning,
 			model.JobStatusExtracting,
+			model.JobStatusRechecking,
 		}, cutoff).
 		Updates(map[string]interface{}{
 			"status":        model.JobStatusFailed,
@@ -2068,7 +2113,12 @@ func (s *ArchiveReviewService) fetchArchivedItem(ctx context.Context, adapter oa
 	return nil, nil
 }
 
-func buildArchiveResultFromLog(logEntry *model.ArchiveLog) map[string]interface{} {
+func buildArchiveResultFromLog(logEntry *model.ArchiveLog) (result map[string]interface{}) {
+	defer func() {
+		if result != nil {
+			result["ai_recheck"] = logEntry.AIRecheck
+		}
+	}()
 	base := map[string]interface{}{
 		"id":             logEntry.ID.String(),
 		"trace_id":       fmt.Sprintf("AR-%s", logEntry.ID.String()[:8]),
@@ -2094,7 +2144,7 @@ func buildArchiveResultFromLog(logEntry *model.ArchiveLog) map[string]interface{
 	}
 
 	switch logEntry.Status {
-	case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting:
+	case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting, model.JobStatusRechecking:
 		return base
 	case model.JobStatusFailed:
 		// 失败不写入合规结论，与「归档未审核」语义一致；前端按未完成展示，避免与部分合规混淆。
@@ -2154,7 +2204,7 @@ func emptyArchiveFlowAuditMap() map[string]interface{} {
 	}
 }
 
-func archiveProgressSteps(status string) []map[string]interface{} {
+func archiveProgressSteps(status string, recheck ...bool) []map[string]interface{} {
 	defs := []struct {
 		key   string
 		label string
@@ -2164,18 +2214,28 @@ func archiveProgressSteps(status string) []map[string]interface{} {
 		{model.JobStatusReasoning, "推理分析"},
 		{model.JobStatusExtracting, "结构化提取"},
 	}
+	if status == model.JobStatusRechecking || (len(recheck) > 0 && recheck[0]) {
+		defs = append(defs, struct {
+			key   string
+			label string
+		}{model.JobStatusRechecking, "AI复核"})
+	}
 	phaseIdx := map[string]int{
 		model.JobStatusPending:    0,
 		model.JobStatusAssembling: 1,
 		model.JobStatusReasoning:  2,
 		model.JobStatusExtracting: 3,
+		model.JobStatusRechecking: 4,
 	}
 	cur, ok := phaseIdx[status]
 	if !ok {
 		if status == model.JobStatusCompleted {
-			cur = 3
+			cur = len(defs) - 1
 		} else if status == model.JobStatusFailed {
 			cur = 2
+			if len(defs) == 5 {
+				cur = 4
+			}
 		} else {
 			cur = 0
 		}
@@ -2191,7 +2251,7 @@ func archiveProgressSteps(status string) []map[string]interface{} {
 			step["failed"] = true
 		case i < cur:
 			step["done"] = true
-		case i == cur && cur < 4 && status != model.JobStatusFailed:
+		case i == cur && cur < len(defs) && status != model.JobStatusFailed:
 			step["current"] = true
 		}
 		steps = append(steps, step)

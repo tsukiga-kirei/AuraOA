@@ -176,6 +176,17 @@ func (s *ExecutionConfigSourceService) SaveDraft(
 	if err != nil {
 		return nil, newServiceError(errcode.ErrParamValidation, "配置草稿格式无效")
 	}
+	if module == model.ExecutionConfigModuleAudit || module == model.ExecutionConfigModuleArchive {
+		var values map[string]json.RawMessage
+		if json.Unmarshal(raw, &values) == nil {
+			normalized, normalizeErr := normalizeSavedRecheckConfig(values["ai_config"])
+			if normalizeErr != nil {
+				return nil, newServiceError(errcode.ErrParamValidation, normalizeErr.Error())
+			}
+			values["ai_config"] = normalized
+			raw, _ = json.Marshal(values)
+		}
+	}
 	if err := validateSourceSnapshot(module, raw); err != nil {
 		return nil, newServiceError(errcode.ErrParamValidation, err.Error())
 	}

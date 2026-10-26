@@ -1,0 +1,15 @@
+export interface AIRecheckConfig {
+  enabled: boolean
+  system_prompt: string
+  user_prompt: string
+}
+
+export interface AIRecheckRecord {
+  status?: 'running' | 'completed' | 'failed' | 'cancelled'
+  changed?: boolean
+  reason?: string
+  error?: string
+  duration_ms?: number
+  original_result?: Record<string, any>
+  final_result?: Record<string, any>
+}

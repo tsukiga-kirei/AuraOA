@@ -1,3 +1,4 @@
+// 自定义标识和业务数据均为虚拟样例；厂商标准表结构按适配器约定保留。
 package service
 
 import (
@@ -11,8 +12,8 @@ import (
 func TestFormatExternalContextSourceField(t *testing.T) {
 	pd := &oa.ProcessData{
 		FieldLabels: map[string]map[string]string{
-			"main":                   {"supplier_code": "供应商编码"},
-			"formtable_main_151_dt1": {"supplier_code": "明细供应商编码"},
+			"main":                      {"supplier_code": "供应商编码"},
+			"formtable_main_900002_dt1": {"supplier_code": "明细供应商编码"},
 		},
 	}
 
@@ -22,7 +23,7 @@ func TestFormatExternalContextSourceField(t *testing.T) {
 		want string
 	}{
 		{name: "主表字段显示中文名", ref: "main:supplier_code", want: "供应商编码（main:supplier_code）"},
-		{name: "明细字段显示中文名", ref: "formtable_main_151_dt1:supplier_code", want: "明细供应商编码（formtable_main_151_dt1:supplier_code）"},
+		{name: "明细字段显示中文名", ref: "formtable_main_900002_dt1:supplier_code", want: "明细供应商编码（formtable_main_900002_dt1:supplier_code）"},
 		{name: "未配置显示名时保留原字段", ref: "main:unknown_field", want: "main:unknown_field"},
 	}
 

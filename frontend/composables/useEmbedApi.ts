@@ -123,7 +123,7 @@ export const useEmbedApi = () => {
       method: 'POST',
       body: req,
     })
-    if (!['pending', 'assembling', 'reasoning', 'extracting'].includes(submit.status) || !submit.id) {
+    if (!['pending', 'assembling', 'reasoning', 'extracting', 'rechecking'].includes(submit.status) || !submit.id) {
       return submit as unknown as AuditResult
     }
     onProgress?.(submit as unknown as AuditResult & { progress_steps?: unknown[] })

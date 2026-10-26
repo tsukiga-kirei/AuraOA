@@ -2,7 +2,7 @@ import type { QueryEvidence } from './audit-data-query'
 // types/audit.ts — 审核工作台相关类型定义
 
 /** 异步审核阶段（与后端 audit_logs.status / JobStatus 一致） */
-export type AuditRunStatus = 'pending' | 'assembling' | 'reasoning' | 'extracting' | 'completed' | 'failed' | 'cancelled'
+export type AuditRunStatus = 'pending' | 'assembling' | 'reasoning' | 'extracting' | 'rechecking' | 'completed' | 'failed' | 'cancelled'
 
 /** OA 流程列表项（后端聚合 OA 待办 + AI 审核状态返回） */
 export interface OAProcessItem {
@@ -23,6 +23,7 @@ export interface OAProcessItem {
 
 /** AI 审核结构化结果（对应提取阶段 JSON Schema） */
 export interface AuditResult {
+  ai_recheck?: import('./ai-recheck').AIRecheckRecord
   query_evidence?: QueryEvidence[]
   result_source?: 'personal' | 'embed'
   trigger_source?: string
@@ -72,6 +73,7 @@ export interface RuleResultItem {
 
 /** 审核链记录（租户级，所有用户共享） */
 export interface AuditChainItem {
+  ai_recheck?: import('./ai-recheck').AIRecheckRecord
   trigger_source?: string
   trigger_detail?: string
   id: string

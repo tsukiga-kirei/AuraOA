@@ -219,3 +219,11 @@ GET /api/tenant/archive/prompt-templates
 ### 草稿恢复与版本提示
 
 已发布配置支持[丢弃草稿](./execution-config.md#丢弃当前草稿)，恢复当前发布可用版本，不删除发布历史或执行记录。草稿是否修改按规范化后的实际内容判断；嵌入页是否有版本可用则只比较执行所依据的基础版本号与当前发布可用版本号是否不同，不比较内容或版本大小。
+
+## 可选 AI 复核（第三阶段）
+
+`ai_config.recheck` 为可选对象：`enabled`（默认 `false`）、`system_prompt`、`user_prompt`。两段提示词均可编辑，复核不另设审核尺度；`enabled=false` 保留提示词草稿。保存时缺省提示词补齐默认内容，单段最多100000字符。
+
+复核设置参与保存草稿、发布、个人配置、导入导出与最终执行快照。切换原审核尺度保留复核设置。旧配置未包含该对象时不注入、不自动开启、不改变旧版本指纹；旧流程沿用绑定版本，只有明确选择已发布新版才变更。
+
+独立默认模板为 `archive_system_recheck`、`archive_user_recheck`，`phase=recheck`、`strictness=null`。用户提示词支持 `{{audit_context}}`（当次已过滤材料、规则及查询证据）、`{{original_system_prompt}}`（原审核要求）、`{{reasoning_result}}`、`{{initial_result}}` 与系统日期变量。遗漏必要变量时仍附上当次复核材料；固定 JSON 输出格式由后端补充，业务提示词原文仍保留。

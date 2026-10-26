@@ -1,3 +1,4 @@
+// 自定义标识和业务数据均为虚拟样例；厂商标准表结构按适配器约定保留。
 package oa
 
 import (
@@ -45,15 +46,15 @@ func TestE10ProfileStaysUnimplemented(t *testing.T) {
 }
 
 func TestBuildProcessURLUsesTypeDefaultOnly(t *testing.T) {
-	e9 := BuildProcessURL("http://oa.example.com", "", "weaver_e9", "613446")
-	want := "http://oa.example.com/workflow/request/ViewRequestForwardSPA.jsp?requestid=613446"
+	e9 := BuildProcessURL("http://oa.example.com", "", "weaver_e9", "900000001")
+	want := "http://oa.example.com/workflow/request/ViewRequestForwardSPA.jsp?requestid=900000001"
 	if e9 != want {
 		t.Fatalf("E9 URL = %q, want %q", e9, want)
 	}
-	if got := BuildProcessURL("http://oa.example.com", "", "weaver_e10", "613446"); got != "" {
+	if got := BuildProcessURL("http://oa.example.com", "", "weaver_e10", "900000001"); got != "" {
 		t.Fatalf("E10 未配置模板时不应套用 E9 地址，得到 %q", got)
 	}
-	if got := BuildProcessURL("http://oa.example.com", "", "zhiyuan_a8", "613446"); got != "" {
+	if got := BuildProcessURL("http://oa.example.com", "", "zhiyuan_a8", "900000001"); got != "" {
 		t.Fatalf("未登记兜底的类型应返回空地址，得到 %q", got)
 	}
 	if got := BuildProcessURL("", "", "weaver_e9", "100"); got != "" {

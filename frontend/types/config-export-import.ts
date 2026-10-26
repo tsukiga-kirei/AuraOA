@@ -19,6 +19,7 @@ export interface ExportedRuleItem {
 
 /** 导出的 AI 配置项 */
 export interface ExportedAIConfig {
+  recheck?: import('./ai-recheck').AIRecheckConfig
   skip_empty_fields?: boolean
   skip_empty_field_keys?: string[]
   audit_strictness?: string
@@ -72,6 +73,7 @@ export interface ImportValidationReport {
     invalid: number
   }
   ai_stats?: {
+    recheck_enabled?: boolean
     strictness?: string
     enable_thinking?: boolean
     unknown_variables: string[]

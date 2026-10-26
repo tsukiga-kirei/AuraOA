@@ -23,7 +23,7 @@
 
 **01. 租户可修改所有租户共用的内置智能体工具绑定。**
 
-位置：[agent_allocation_service.go:289](E:/Work/GJCW/AuraOA/go-service/internal/service/agent_allocation_service.go:289)、[agent_repo.go:78](E:/Work/GJCW/AuraOA/go-service/internal/repository/agent_repo.go:78)。引入：`c794812`。证据：静态调用链与迁移结构。
+位置：[agent_allocation_service.go:289](../../go-service/internal/service/agent_allocation_service.go#L289)、[agent_repo.go:78](../../go-service/internal/repository/agent_repo.go#L78)。引入：`c794812`。证据：静态调用链与迁移结构。
 
 租户管理员更新平台种子智能体时，`tenant_id=NULL` 通过归属检查；随后 `ReplaceAgentToolBindings` 仅按 `agent_id` 删除原绑定，再写入当前租户的新绑定。所有租户读取同一个种子和同一组 `ToolBindings`，因此租户 A 修改或清空工具会影响租户 B。普通字段更新反而受 `tenant_id = A` 限制而不生效，形成“部分无效、工具全局生效”的错误行为。
 
@@ -31,55 +31,55 @@
 
 **02. 清空角色授权反而获得全部租户能力。**
 
-位置：[agent_permission_service.go:83](E:/Work/GJCW/AuraOA/go-service/internal/service/agent_permission_service.go:83)。引入：`c794812`。证据：静态分支。
+位置：[agent_permission_service.go:83](../../go-service/internal/service/agent_permission_service.go#L83)。引入：`c794812`。证据：静态分支。
 
 `grantedAgentCodes` 或 `grantedToolCodes` 为空时，代码复制全部租户配额作为角色授权；没有组织角色的用户也落入同一路径。管理员撤销最后一项授权后权限会扩大，违反两级分配取交集的设计。应将“未迁移默认配置”和“显式空授权”区分，运行时空授权应拒绝能力；默认授权在迁移/角色初始化时落库。
 
 **03. 关闭聊天或撤销智能体后，旧会话仍可调用模型。**
 
-位置：[agent_permission_service.go:138](E:/Work/GJCW/AuraOA/go-service/internal/service/agent_permission_service.go:138)、[agent_runtime_service.go:100](E:/Work/GJCW/AuraOA/go-service/internal/service/agent_runtime_service.go:100)。引入：`c794812`。证据：静态执行链。
+位置：[agent_permission_service.go:138](../../go-service/internal/service/agent_permission_service.go#L138)、[agent_runtime_service.go:100](../../go-service/internal/service/agent_runtime_service.go#L100)。引入：`c794812`。证据：静态执行链。
 
 发送旧会话时只核验会话所有者，权限函数只返回工具交集，不要求当前智能体属于 `perms.Agents`。关闭 `chat_enabled` 得到空工具集后，仍继续保存消息并调用 AI；停用智能体或移除其配额亦未拒绝旧会话。应在每轮执行前校验聊天总开关及当前智能体的有效授权。
 
 **04. 聊天发送在 HTTP 请求发出前就报错。**
 
-位置：[useChatStream.ts:15](E:/Work/GJCW/AuraOA/frontend/composables/useChatStream.ts:15)、[useChatStream.ts:60](E:/Work/GJCW/AuraOA/frontend/composables/useChatStream.ts:60)、[useAuth.ts:738](E:/Work/GJCW/AuraOA/frontend/composables/useAuth.ts:738)。引入：`c794812`。证据：执行真实 composable 的隔离复现。
+位置：[useChatStream.ts:15](../../frontend/composables/useChatStream.ts#L15)、[useChatStream.ts:60](../../frontend/composables/useChatStream.ts#L60)、[useAuth.ts:738](../../frontend/composables/useAuth.ts#L738)。引入：`c794812`。证据：执行真实 composable 的隔离复现。
 
 聊天解构 `accessToken`、`effectiveTenantCode`，但 `useAuth()` 实际导出 `token`、`effectiveActiveRoleForApi` 等字段。读取 `accessToken.value` 报 `Cannot read properties of undefined (reading 'value')`。隔离运行确认 `fetch_calls=0`。此外相对路径裸 `fetch` 未衔接现有 `apiBase` 与 token 刷新机制；应统一封装认证流式请求。
 
 **05. 智能体标识与历史消息 DTO 不一致，无法正常新建及回看会话。**
 
-位置：[chat.vue:74](E:/Work/GJCW/AuraOA/frontend/pages/chat.vue:74)、[ChatHeader.vue:22](E:/Work/GJCW/AuraOA/frontend/components/Chat/ChatHeader.vue:22)、[ChatThread.vue:53](E:/Work/GJCW/AuraOA/frontend/components/Chat/ChatThread.vue:53)、[chat_dto.go:10](E:/Work/GJCW/AuraOA/go-service/internal/dto/chat_dto.go:10)。引入：`c794812`。证据：前后端契约逐项对照。
+位置：[chat.vue:74](../../frontend/pages/chat.vue#L74)、[ChatHeader.vue:22](../../frontend/components/Chat/ChatHeader.vue#L22)、[ChatThread.vue:53](../../frontend/components/Chat/ChatThread.vue#L53)、[chat_dto.go:10](../../go-service/internal/dto/chat_dto.go#L10)。引入：`c794812`。证据：前后端契约逐项对照。
 
 后端智能体返回 `agent_code`，前端选择及默认新建读取 `code`，导致发送缺失的必填 `agent_code`。历史消息返回 `role/tool_calls/token_usage`，前端原样赋值后按 `sender_type/tool_executions/token_cost` 渲染；因此重载历史后用户和助手消息均不进入对应模板分支。应统一类型与 wire DTO，避免只修某一处模板。
 
 **06. SSE 事件和载荷不一致，即使认证修好仍没有正常答案。**
 
-位置：[useChatStream.ts:117](E:/Work/GJCW/AuraOA/frontend/composables/useChatStream.ts:117)、[agent_runtime_service.go:240](E:/Work/GJCW/AuraOA/go-service/internal/service/agent_runtime_service.go:240)。引入：`c794812`。证据：按后端实际事件构造流，执行前端原函数。
+位置：[useChatStream.ts:117](../../frontend/composables/useChatStream.ts#L117)、[agent_runtime_service.go:240](../../go-service/internal/service/agent_runtime_service.go#L240)。引入：`c794812`。证据：按后端实际事件构造流，执行前端原函数。
 
 后端发送 `delta/content`、`reasoning/content`、`tool_start`、`tool_result/payload`、`done/token_usage`；前端监听 `token/delta`、`answer`、`tool_call`，读取 `result/error/token_cost`。注入真实格式的事件后，正文、思考过程仍为空，工具结果未显示。应明确一套 SSE 契约，以 `tool_call_id` 关联工具，补充前后端契约验证。
 
 **07. “触发审核”和“触发总结”并未真正创建任务。**
 
-位置：[executor.go:488](E:/Work/GJCW/AuraOA/go-service/internal/pkg/agenttools/executor.go:488)、[executor.go:515](E:/Work/GJCW/AuraOA/go-service/internal/pkg/agenttools/executor.go:515)。引入：`c794812`。证据：两个执行函数完整调用链。
+位置：[executor.go:488](../../go-service/internal/pkg/agenttools/executor.go#L488)、[executor.go:515](../../go-service/internal/pkg/agenttools/executor.go#L515)。引入：`c794812`。证据：两个执行函数完整调用链。
 
 检查流程可见性后，仅生成随机 UUID 并返回 `submitted`、“已在后台排队处理”，没有调用现有审核/总结 Service，没有写业务日志，也没有入队。用户和模型会被告知不存在的任务已提交。应接入 `AuditExecuteService` / `ProcessSummaryService` 的真实执行与权限逻辑，返回真实任务 ID 和状态。
 
 **08. 租户智能体管理页面加载必然触发权限错误。**
 
-位置：[agents.vue:74](E:/Work/GJCW/AuraOA/frontend/pages/admin/tenant/agents.vue:74)、[router.go:110](E:/Work/GJCW/AuraOA/go-service/internal/router/router.go:110)。引入：`c794812`。证据：路由角色限制及 Promise 调用链。
+位置：[agents.vue:74](../../frontend/pages/admin/tenant/agents.vue#L74)、[router.go:110](../../go-service/internal/router/router.go#L110)。引入：`c794812`。证据：路由角色限制及 Promise 调用链。
 
 租户管理员页面在 `Promise.all` 中请求 `/api/admin/agent-catalog`，该路由要求 `system_admin`。这一请求返回 403 后，其他已成功的三个列表也不会赋值。即便允许访问，前端读 `system_tools`，后端实际返回 `tool_catalog`。应提供适合租户配额的只读目录，使用真实字段，并处理局部加载失败。
 
 **09. 智能体、Skill 的保存表单与接口不匹配。**
 
-位置：[agents.vue:121](E:/Work/GJCW/AuraOA/frontend/pages/admin/tenant/agents.vue:121)、[agents.vue:215](E:/Work/GJCW/AuraOA/frontend/pages/admin/tenant/agents.vue:215)、[agent_dto.go:74](E:/Work/GJCW/AuraOA/go-service/internal/dto/agent_dto.go:74)。引入：`c794812`。证据：请求体与校验规则对照。
+位置：[agents.vue:121](../../frontend/pages/admin/tenant/agents.vue#L121)、[agents.vue:215](../../frontend/pages/admin/tenant/agents.vue#L215)、[agent_dto.go:74](../../go-service/internal/dto/agent_dto.go#L74)。引入：`c794812`。证据：请求体与校验规则对照。
 
 智能体提交 `code/system_prompt_override/tools`，后端要求 `agent_code/system_prompt/tool_codes`；编辑也始终 POST 集合接口，未调用 PUT `/:id`。Skill 提交 `prompt_template`，后端要求 `content`，会触发必填校验。MCP 的 `is_enabled` 与后端 `enabled` 亦不一致。应分别补齐创建/编辑行为和精确 DTO，而非仅让 TypeScript 本地自洽。
 
 **10. 保存历史配置会破坏快照结构，后续激活失败或丢失配置。**
 
-位置：[rules.vue:333](E:/Work/GJCW/AuraOA/frontend/pages/admin/tenant/rules.vue:333)、[execution_config_source.go:279](E:/Work/GJCW/AuraOA/go-service/internal/service/execution_config_source.go:279)。引入：`6a6b67d`。证据：请求、反序列化和数据库列约束对照。
+位置：[rules.vue:333](../../frontend/pages/admin/tenant/rules.vue#L333)、[execution_config_source.go:279](../../go-service/internal/service/execution_config_source.go#L279)。引入：`6a6b67d`。证据：请求、反序列化和数据库列约束对照。
 
 前端历史快照保存 `ai_strictness/ai_prompt_template/allow_user_*/enabled`；后端发布和恢复使用 `main_table_name/field_mode/kb_mode/ai_config/user_permissions/status`。前端载入历史时也未恢复嵌套 `ai_config`。保存后的快照缺少主表名、AI 配置、权限和状态。激活时这些字段成为空值；审核/归档的非空 JSON 列可能直接导致恢复失败，总结的状态等字段也可能被置空。
 
@@ -87,19 +87,19 @@
 
 **11. 未发布的配置也参与执行，但标记为旧的已激活版本。**
 
-位置：[audit_review_service.go:202](E:/Work/GJCW/AuraOA/go-service/internal/service/audit_review_service.go:202)、[process_summary_service.go:482](E:/Work/GJCW/AuraOA/go-service/internal/service/process_summary_service.go:482)。引入：`c61f995`。证据：版本获取前后的数据来源。
+位置：[audit_review_service.go:202](../../go-service/internal/service/audit_review_service.go#L202)、[process_summary_service.go:482](../../go-service/internal/service/process_summary_service.go#L482)。引入：`c61f995`。证据：版本获取前后的数据来源。
 
 新流程或“按最新配置执行”先从当前主表合并字段、规则、AI 配置，再调用 `GetOrCreateLatestBaseVersion` 取已激活版本 ID/编号，却未使用该版本快照构建实际执行配置。管理员保存修改但未发布时，执行会使用未发布内容并关联旧版本；审核、归档、总结均需检查。应从激活版本构建执行输入，或清晰分离草稿存储与生效存储。
 
 **12. 激活版本未清理审核配置缓存，无法立即生效。**
 
-位置：[execution_config_source.go:235](E:/Work/GJCW/AuraOA/go-service/internal/service/execution_config_source.go:235)、[audit_review_service.go](E:/Work/GJCW/AuraOA/go-service/internal/service/audit_review_service.go) 的 `getProcessConfigCached`。引入：`47637c5`，历史覆盖保存同样受影响。证据：与既有配置 Service 的 invalidator 调用对照。
+位置：[execution_config_source.go:235](../../go-service/internal/service/execution_config_source.go#L235)、[audit_review_service.go](../../go-service/internal/service/audit_review_service.go) 的 `getProcessConfigCached`。引入：`47637c5`，历史覆盖保存同样受影响。证据：与既有配置 Service 的 invalidator 调用对照。
 
 恢复版本直接调用 Repo 更新主表和规则，没有调用现有 `InvalidationManager`。之前执行过该流程、缓存仍有效时，接下来新流程可继续拿到旧配置，默认 TTL 为 10 分钟。应在成功激活/覆盖当前版本后统一清理对应配置缓存，并检查相关调度刷新。
 
 **13. 个人嵌入审核覆盖标准视角共用的流程配置绑定。**
 
-位置：[embed_audit_service.go:477](E:/Work/GJCW/AuraOA/go-service/internal/service/embed_audit_service.go:477)、[execution_config_version_repo.go:453](E:/Work/GJCW/AuraOA/go-service/internal/repository/execution_config_version_repo.go:453)。引入：`3a940e8`。证据：新个人视角分支与既有绑定唯一键对照。
+位置：[embed_audit_service.go:477](../../go-service/internal/service/embed_audit_service.go#L477)、[execution_config_version_repo.go:453](../../go-service/internal/repository/execution_config_version_repo.go#L453)。引入：`3a940e8`。证据：新个人视角分支与既有绑定唯一键对照。
 
 个人视角强制 `useLatest=true`，最终覆盖 `(tenant_id,module,process_id)` 唯一绑定；该绑定没有用户或视角维度。之后标准嵌入自动审核、其他用户默认重审会复用该人的个性化执行快照。这使新增双视角无法与旧标准审核稳定共存。应隔离个人/标准及必要的用户维度，保留旧标准绑定兼容。
 
@@ -107,37 +107,37 @@
 
 **14. 发布历史相同内容触发唯一约束冲突。**
 
-位置：[execution_config_version_repo.go:255](E:/Work/GJCW/AuraOA/go-service/internal/repository/execution_config_version_repo.go:255)、[000061 迁移](E:/Work/GJCW/AuraOA/db/migrations/000061_execution_config_source_fingerprint.up.sql)。引入：`c61f995`。证据：SQL 唯一约束与发布算法。
+位置：[execution_config_version_repo.go:255](../../go-service/internal/repository/execution_config_version_repo.go#L255)、[000061 迁移](../../db/migrations/000061_execution_config_source_fingerprint.up.sql)。引入：`c61f995`。证据：SQL 唯一约束与发布算法。
 
 依次发布内容 A、B，再把当前配置改回 A 并发布：仅检查最新 B 的指纹，随后尝试创建 A 的新版本；但数据库对同一配置的 fingerprint 有唯一约束，必然失败。应恢复按完整历史指纹复用/激活，或通过迁移明确改变版本语义。历史编辑成另一版本相同内容也需覆盖。
 
 **15. SSE 状态更新绕过 Vue 响应式对象，且事件名跨网络分块丢失。**
 
-位置：[useChatStream.ts:39](E:/Work/GJCW/AuraOA/frontend/composables/useChatStream.ts:39)、[useChatStream.ts:85](E:/Work/GJCW/AuraOA/frontend/composables/useChatStream.ts:85)。引入：`c794812`。证据：Vue 深监听隔离复现及循环作用域。
+位置：[useChatStream.ts:39](../../frontend/composables/useChatStream.ts#L39)、[useChatStream.ts:85](../../frontend/composables/useChatStream.ts#L85)。引入：`c794812`。证据：Vue 深监听隔离复现及循环作用域。
 
 消息 push 进响应式数组后，回调继续修改原始普通对象 `assistantMsg`。隔离验证中，HTTP 返回之后的这些修改触发响应式更新次数为 0；修正事件名后仍可能只在其他状态变化时显示。另 `currentEvent` 在每次 reader.read 循环内重置，`event:` 与 `data:` 分属两个网络块时事件名丢失。应通过响应式消息代理更新，以完整 SSE 帧解析并保留跨块状态。
 
 **16. OA 跳转配置跨租户缓存串用。**
 
-位置：[useOAJump.ts:14](E:/Work/GJCW/AuraOA/frontend/composables/useOAJump.ts:14)。引入：`8351e36`。证据：执行真实 composable 的隔离复现。
+位置：[useOAJump.ts:14](../../frontend/composables/useOAJump.ts#L14)。引入：`8351e36`。证据：执行真实 composable 的隔离复现。
 
 模块级 `configState`、`fetchPromise` 不带租户键，也未监听角色切换。A 加载配置后切到 B，再打开审核/归档，仍复用 A 的地址。测试输出当前租户 B、生成 URL `https://A.example.test/123`、配置请求次数 1。应按有效租户缓存，并在登出/切租户时清理且隔离在途请求。
 
 **17. 总结完成回调会覆盖另一个流程的详情。**
 
-位置：[summary.vue:139](E:/Work/GJCW/AuraOA/frontend/pages/summary.vue:139)。引入：`3ccb459`。证据：异步回调与页面共享状态。
+位置：[summary.vue:139](../../frontend/pages/summary.vue#L139)。引入：`3ccb459`。证据：异步回调与页面共享状态。
 
 启动 A 的总结后关闭抽屉，打开 B 的结果；A 的进度和完成回调无条件写 `currentResult`，导致 B 标题下显示 A 的总结。`resumeJob` 已检查 `selected.process_id`，`runSummary` 却遗漏。应在进度和完成分支都核对当前选中流程，或按流程独立保存结果。
 
 **18. 标准结果缓存返回时遗漏个人视角。**
 
-位置：[embed_audit_service.go:205](E:/Work/GJCW/AuraOA/go-service/internal/service/embed_audit_service.go:205)、[embed_audit_service.go:257](E:/Work/GJCW/AuraOA/go-service/internal/service/embed_audit_service.go:257)。引入：`3a940e8`。证据：提前返回分支。
+位置：[embed_audit_service.go:205](../../go-service/internal/service/embed_audit_service.go#L205)、[embed_audit_service.go:257](../../go-service/internal/service/embed_audit_service.go#L257)。引入：`3a940e8`。证据：提前返回分支。
 
 已有标准结果且 `prefer_cached=true` 时提前返回，个人用户识别和 `personal_view/default_perspective` 组装尚未执行；标准任务运行中的提前返回也存在此问题。于是缓存命中和实时查询返回的双视角能力不一致。应在公共返回阶段组装个人视角，或在分支前完成相关读取。
 
 **19. 深色主题与窄屏聊天布局不合格。**
 
-位置：[chat.vue:175](E:/Work/GJCW/AuraOA/frontend/pages/chat.vue:175)、[ChatSidebar.vue:133](E:/Work/GJCW/AuraOA/frontend/components/Chat/ChatSidebar.vue:133)，以及 Chat 子组件样式。引入：`c794812`。证据：本轮真实生产构建截图。
+位置：[chat.vue:175](../../frontend/pages/chat.vue#L175)、[ChatSidebar.vue:133](../../frontend/components/Chat/ChatSidebar.vue#L133)，以及 Chat 子组件样式。引入：`c794812`。证据：本轮真实生产构建截图。
 
 桌面深色模式下全局导航已变暗，但聊天画布、顶部、会话栏和输入框仍大面积浅色；搜索框受到全局主题样式影响而变暗，造成同一区域主题混用。390×844 下聊天侧栏维持 260px，又没有折叠/抽屉响应式处理，正文和输入区被截出屏幕。应沿用已有 CSS 变量，并在手机宽度切换会话列表呈现方式。
 
@@ -147,11 +147,11 @@
 2. 桌面 1440×900 切换深色主题：不通过，聊天主体未随全局切换。截图已保存并重新读取核对。
 3. 手机 390×844 检查布局：不通过，正文与输入区裁切。截图在布局稳定后保存并重新核对。检查后恢复浅色主题和默认视口。
 
-![初始聊天空态](E:/Work/GJCW/AuraOA/docs/reviews/2026-09-05-assets/01-chat-empty.png)
+![初始聊天空态](../../docs/reviews/2026-09-05-assets/01-chat-empty.png)
 
-![桌面深色模式：全局导航与聊天主体主题不一致](E:/Work/GJCW/AuraOA/docs/reviews/2026-09-05-assets/02-chat-dark-desktop.png)
+![桌面深色模式：全局导航与聊天主体主题不一致](../../docs/reviews/2026-09-05-assets/02-chat-dark-desktop.png)
 
-![手机宽度：会话栏挤占正文和输入区](E:/Work/GJCW/AuraOA/docs/reviews/2026-09-05-assets/03-chat-mobile.png)
+![手机宽度：会话栏挤占正文和输入区](../../docs/reviews/2026-09-05-assets/03-chat-mobile.png)
 
 没有从截图推断完整无障碍合规；键盘主流程、读屏、真实长消息、工具结果卡片、登录后的总结/规则页仍需补验。
 

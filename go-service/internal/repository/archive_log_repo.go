@@ -72,6 +72,12 @@ func (r *ArchiveLogRepo) UpdateFields(c *gin.Context, id uuid.UUID, updates map[
 	return r.WithTenant(c).Model(&model.ArchiveLog{}).Where("id = ?", id).Updates(updates).Error
 }
 
+// UpdateActiveFields 防止取消或失败后的复核请求覆盖终态结果。
+func (r *ArchiveLogRepo) UpdateActiveFields(c *gin.Context, id uuid.UUID, updates map[string]interface{}) (int64, error) {
+	tx := r.WithTenant(c).Model(&model.ArchiveLog{}).Where("id = ? AND status IN ?", id, []string{model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting, model.JobStatusRechecking}).Updates(updates)
+	return tx.RowsAffected, tx.Error
+}
+
 // GetLatestByProcessID 查询指定流程的最新一条归档复盘日志，不存在时返回 nil。
 func (r *ArchiveLogRepo) GetLatestByProcessID(c *gin.Context, processID string) (*model.ArchiveLog, error) {
 	var log model.ArchiveLog
@@ -372,7 +378,7 @@ func applyArchiveLogFilter(db *gorm.DB, f ArchiveLogFilter) *gorm.DB {
 func (r *ArchiveLogRepo) CountPendingSince(c *gin.Context, userID *uuid.UUID, since time.Time) (int64, error) {
 	var count int64
 	q := r.WithTenant(c).Model(&model.ArchiveLog{}).
-		Where("status IN ?", []string{"pending", "assembling", "reasoning", "extracting"}).
+		Where("status IN ?", []string{"pending", "assembling", "reasoning", "extracting", "rechecking"}).
 		Where("created_at >= ?", since)
 	if userID != nil {
 		q = q.Where("user_id = ?", *userID)

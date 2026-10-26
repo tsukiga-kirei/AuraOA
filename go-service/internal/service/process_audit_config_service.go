@@ -104,7 +104,11 @@ func (s *ProcessAuditConfigService) Create(c *gin.Context, req *dto.CreateProces
 			}
 		}
 	}
-	aiConfig = s.lockExtractionPrompts(aiConfig)
+	normalizedAI, recheckErr := normalizeSavedRecheckConfig(aiConfig)
+	if recheckErr != nil {
+		return nil, newServiceError(errcode.ErrParamValidation, recheckErr.Error())
+	}
+	aiConfig = s.lockExtractionPrompts(datatypes.JSON(normalizedAI))
 
 	accessControl := req.AccessControl
 	if accessControl == nil || string(accessControl) == "null" || len(accessControl) == 0 {
@@ -161,6 +165,7 @@ func (s *ProcessAuditConfigService) buildDefaultAIConfig(strictness string, base
 	data := model.AIConfigData{AuditStrictness: strictness}
 	// 自动补齐提示词时保留调用方提交的空值传输策略。
 	if len(base) > 0 {
+		data.Recheck = base[0].Recheck
 		data.SkipEmptyFields = base[0].SkipEmptyFields
 		data.SkipEmptyFieldKeys = base[0].SkipEmptyFieldKeys
 	}
@@ -194,6 +199,7 @@ func (s *ProcessAuditConfigService) lockExtractionPrompts(raw datatypes.JSON) da
 	if err := json.Unmarshal(raw, &data); err != nil {
 		return raw
 	}
+	normalizeAIRecheckConfig(data.Recheck)
 	strictness := defaultStr(data.AuditStrictness, "standard")
 	data.AuditStrictness = strictness
 	templates, err := s.templateRepo.GetByStrictnessAuditWorkbench(strictness)
@@ -282,7 +288,11 @@ func (s *ProcessAuditConfigService) Update(c *gin.Context, id uuid.UUID, req *dt
 		fields["kb_mode"] = req.KBMode
 	}
 	if req.AIConfig != nil {
-		fields["ai_config"] = s.lockExtractionPrompts(req.AIConfig)
+		normalizedAI, recheckErr := normalizeSavedRecheckConfig(req.AIConfig)
+		if recheckErr != nil {
+			return nil, newServiceError(errcode.ErrParamValidation, recheckErr.Error())
+		}
+		fields["ai_config"] = s.lockExtractionPrompts(datatypes.JSON(normalizedAI))
 	}
 	if req.UserPermissions != nil {
 		fields["user_permissions"] = req.UserPermissions

@@ -356,6 +356,7 @@ function handleCancel() {
                   {{ t('admin.ruleConfig.thinkingMode', '深度思考') }}:
                   <strong>{{ report.ai_stats?.enable_thinking ? t('admin.ruleConfig.enabled', '开启') : t('admin.ruleConfig.disabled', '关闭') }}</strong>
                 </span>
+                <span>{{ t('recheck.enable') }}: {{ report.ai_stats?.recheck_enabled ? t('admin.ruleConfig.enabled') : t('admin.ruleConfig.disabled') }}</span>
                 <span v-if="report.ai_stats?.unknown_variables?.length === 0" style="color: #52c41a;">
                   ✓ {{ t('admin.ruleConfig.variablesAllValid', '提示词系统变量全部合规') }}
                 </span>

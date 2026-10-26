@@ -6,6 +6,7 @@ const (
 	JobStatusAssembling = "assembling"
 	JobStatusReasoning  = "reasoning"
 	JobStatusExtracting = "extracting"
+	JobStatusRechecking = "rechecking"
 	JobStatusCompleted  = "completed"
 	JobStatusFailed     = "failed"
 	JobStatusCancelled  = "cancelled"

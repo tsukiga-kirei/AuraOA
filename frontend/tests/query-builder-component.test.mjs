@@ -1,3 +1,4 @@
+// 自定义 OA 表名、字段及业务名称为虚拟样例；厂商标准表名按适配器约定保留。
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -14,7 +15,7 @@ const { descriptor } = parse(fs.readFileSync(new URL('../components/QueryBuilder
 const compiled = transpile(compileScript(descriptor, { id: 'query-builder-test', inlineTemplate: true }).content)
 
 test('output selection fills the visible alias input through the actual Vue template event', async () => {
-  const columns = [{ key: 'DZYWDJRKLC', label: '抵质押物登记入库流程', data_type: 'INT' }]
+  const columns = [{ key: 'DEMO_FLOW_REF', label: '演示业务流程', data_type: 'INT' }]
   const module = { exports: {} }
   const requireStub = (name) => {
     if (name === 'vue') return vue
@@ -39,8 +40,8 @@ test('output selection fills the visible alias input through the actual Vue temp
   })
   const updates = []
   const app = renderer.createApp(module.exports.default, {
-    definition: { tables: ['formtable_main_199'], parameters: [], dialect: 'dm', builder: {
-      table: 'formtable_main_199', source_type: 'table', archived_only: false,
+    definition: { tables: ['formtable_main_900001'], parameters: [], dialect: 'dm', builder: {
+      table: 'formtable_main_900001', source_type: 'table', archived_only: false,
       columns: [{ field: '', alias: '', aggregate: '' }], filters: [], order_alias: '', order_dir: 'DESC',
     } },
     'onUpdate:builder': (builder) => updates.push(builder),
@@ -56,13 +57,13 @@ test('output selection fills the visible alias input through the actual Vue temp
     await vue.nextTick()
     await vue.nextTick()
     const all = (node) => [node, ...(node.children || []).flatMap(all)]
-    const select = all(root).find(node => node.type === 'select' && node.props.options?.some(option => option.value === 'DZYWDJRKLC'))
+    const select = all(root).find(node => node.type === 'select' && node.props.options?.some(option => option.value === 'DEMO_FLOW_REF'))
     assert.ok(select, 'field selector must use the loaded OA schema')
-    select.props.choose('DZYWDJRKLC')
+    select.props.choose('DEMO_FLOW_REF')
     await vue.nextTick()
     const alias = all(root).find(node => node.type === 'a-input' && node.props.placeholder === 'query.builder.alias')
-    assert.equal(alias.props.value, '抵质押物登记入库流程')
-    assert.equal(updates.at(-1).columns[0].alias, '抵质押物登记入库流程')
+    assert.equal(alias.props.value, '演示业务流程')
+    assert.equal(updates.at(-1).columns[0].alias, '演示业务流程')
   } finally {
     app.unmount()
   }

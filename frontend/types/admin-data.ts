@@ -10,6 +10,7 @@ export interface PagedResult<T> {
 // ─── 审核日志（原始日志，保留用于详情链展示） ─────────────────────────────────
 
 export interface AuditLogItem {
+  ai_recheck?: import('./ai-recheck').AIRecheckRecord
   trigger_source?: string
   trigger_detail?: string
   id: string
@@ -103,6 +104,7 @@ export interface AuditSnapshotFilter {
 // ─── 归档复盘日志（原始日志） ──────────────────────────────────────────────
 
 export interface ArchiveLogItem {
+  ai_recheck?: import('./ai-recheck').AIRecheckRecord
   id: string
   tenant_id: string
   user_id: string

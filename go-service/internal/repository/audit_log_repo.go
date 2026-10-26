@@ -71,6 +71,7 @@ func (r *AuditLogRepo) GetRunningByProcessIDForTriggers(c *gin.Context, processI
 			model.JobStatusAssembling,
 			model.JobStatusReasoning,
 			model.JobStatusExtracting,
+			model.JobStatusRechecking,
 		})
 	if len(triggerSources) > 0 {
 		q = q.Where("trigger_source IN ?", triggerSources)
@@ -112,6 +113,7 @@ func (r *AuditLogRepo) GetRunningByProcessIDAndUser(c *gin.Context, processID st
 			model.JobStatusAssembling,
 			model.JobStatusReasoning,
 			model.JobStatusExtracting,
+			model.JobStatusRechecking,
 		}).
 		Where("trigger_source NOT IN ?", model.EmbedTriggerSources()).
 		Order("created_at DESC").
@@ -425,6 +427,7 @@ func (r *AuditLogRepo) CountStats(c *gin.Context, forUserID *uuid.UUID) (*AuditL
 		model.JobStatusAssembling: true,
 		model.JobStatusReasoning:  true,
 		model.JobStatusExtracting: true,
+		model.JobStatusRechecking: true,
 		model.JobStatusFailed:     true,
 	}
 	for _, rw := range rows {
@@ -509,6 +512,7 @@ func (r *AuditLogRepo) CountStatsGlobal() (*AuditLogStats, error) {
 		model.JobStatusAssembling: true,
 		model.JobStatusReasoning:  true,
 		model.JobStatusExtracting: true,
+		model.JobStatusRechecking: true,
 		model.JobStatusFailed:     true,
 	}
 	for _, row := range rows {
@@ -873,7 +877,7 @@ func applyAuditLogFilter(db *gorm.DB, f AuditLogFilter) *gorm.DB {
 func (r *AuditLogRepo) CountPendingSince(c *gin.Context, userID *uuid.UUID, since time.Time) (int64, error) {
 	var count int64
 	q := r.WithTenant(c).Model(&model.AuditLog{}).
-		Where("status IN ?", []string{"pending", "assembling", "reasoning", "extracting"}).
+		Where("status IN ?", []string{"pending", "assembling", "reasoning", "extracting", "rechecking"}).
 		Where("created_at >= ?", since)
 	if userID != nil {
 		q = q.Where("user_id = ?", *userID)

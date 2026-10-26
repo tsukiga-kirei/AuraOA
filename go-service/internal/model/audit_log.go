@@ -9,6 +9,7 @@ import (
 
 // AuditLog 审核日志，记录每次审核执行的结果。
 type AuditLog struct {
+	AIRecheck          datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"ai_recheck"`
 	ID                 uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	TenantID           uuid.UUID      `gorm:"type:uuid;not null" json:"tenant_id"`
 	UserID             uuid.UUID      `gorm:"type:uuid;not null" json:"user_id"`
@@ -100,6 +101,7 @@ func (CronLog) TableName() string { return "cron_logs" }
 
 // ArchiveLog 归档复盘日志。
 type ArchiveLog struct {
+	AIRecheck       datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"ai_recheck"`
 	ID              uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	TenantID        uuid.UUID      `gorm:"type:uuid;not null" json:"tenant_id"`
 	UserID          uuid.UUID      `gorm:"type:uuid;not null" json:"user_id"`

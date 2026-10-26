@@ -607,6 +607,7 @@ func (s *DashboardOverviewService) buildAIPerformanceByModel() *dto.PlatformAIPe
 		Provider      string
 		Reasoning     dto.AICallTypeStats
 		Structured    dto.AICallTypeStats
+		Recheck       dto.AICallTypeStats
 	}
 	groupMap := make(map[string]*modelGroup)
 	var order []string
@@ -623,7 +624,9 @@ func (s *DashboardOverviewService) buildAIPerformanceByModel() *dto.PlatformAIPe
 		}
 		g := groupMap[s.ModelConfigID]
 		ct := dto.AICallTypeStats{Calls: s.Calls, AvgMs: s.AvgMs, SuccessRate: 100.0}
-		if s.CallType == "structured" {
+		if s.CallType == "recheck" {
+			g.Recheck = ct
+		} else if s.CallType == "structured" {
 			g.Structured = ct
 		} else {
 			g.Reasoning = ct
@@ -633,10 +636,10 @@ func (s *DashboardOverviewService) buildAIPerformanceByModel() *dto.PlatformAIPe
 	models := make([]dto.AIModelPerformanceRow, 0, len(order))
 	for _, id := range order {
 		g := groupMap[id]
-		total := g.Reasoning.Calls + g.Structured.Calls
+		total := g.Reasoning.Calls + g.Structured.Calls + g.Recheck.Calls
 		overallRate := 100.0
 		if total > 0 {
-			overallRate = (g.Reasoning.SuccessRate*float64(g.Reasoning.Calls) + g.Structured.SuccessRate*float64(g.Structured.Calls)) / float64(total)
+			overallRate = (g.Reasoning.SuccessRate*float64(g.Reasoning.Calls) + g.Structured.SuccessRate*float64(g.Structured.Calls) + g.Recheck.SuccessRate*float64(g.Recheck.Calls)) / float64(total)
 		}
 		models = append(models, dto.AIModelPerformanceRow{
 			ModelConfigID:      g.ModelConfigID,
@@ -645,6 +648,7 @@ func (s *DashboardOverviewService) buildAIPerformanceByModel() *dto.PlatformAIPe
 			Provider:           g.Provider,
 			ReasoningStats:     g.Reasoning,
 			StructuredStats:    g.Structured,
+			RecheckStats:       g.Recheck,
 			OverallSuccessRate: overallRate,
 			TotalCalls:         total,
 		})

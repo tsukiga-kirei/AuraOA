@@ -51,7 +51,7 @@ PUT /api/tenant/rules/configs/:id
 | 字段 | 默认值 | 说明 |
 |------|--------|------|
 | `skip_empty_fields` | `false` | 统一开关。开启后，当前传输范围内所有空值字段均不传给 AI |
-| `skip_empty_field_keys` | `[]` | 单独开启“为空时不传”的字段引用，如 `main:remark`、`formtable_main_151_dt1:remark` |
+| `skip_empty_field_keys` | `[]` | 单独开启“为空时不传”的字段引用，如 `main:remark`、`formtable_main_900002_dt1:remark` |
 
 统一开关关闭后按各字段设置执行，不清除单字段配置；单字段未开启时空值也传输。
 字段仍须先满足原有字段选择范围；统一开关在全部字段模式下也生效。
@@ -317,3 +317,11 @@ POST /api/tenant/rules/context/test
 ### 草稿恢复与版本提示
 
 已发布配置支持[丢弃草稿](./execution-config.md#丢弃当前草稿)，恢复当前发布可用版本，不删除发布历史或执行记录。草稿是否修改按规范化后的实际内容判断；嵌入页是否有版本可用则只比较执行所依据的基础版本号与当前发布可用版本号是否不同，不比较内容或版本大小。
+
+## 可选 AI 复核（第三阶段）
+
+`ai_config.recheck` 为可选对象：`enabled`（默认 `false`）、`system_prompt`、`user_prompt`。两段提示词均可编辑，复核不另设审核尺度；`enabled=false` 保留提示词草稿。保存时缺省提示词补齐默认内容，单段最多100000字符。
+
+复核设置参与保存草稿、发布、个人配置、导入导出与最终执行快照。切换原审核尺度保留复核设置。旧配置未包含该对象时不注入、不自动开启、不改变旧版本指纹；旧流程沿用绑定版本，只有明确选择已发布新版才变更。
+
+独立默认模板为 `audit_system_recheck`、`audit_user_recheck`，`phase=recheck`、`strictness=null`。用户提示词支持 `{{audit_context}}`（当次已过滤材料、规则及查询证据）、`{{original_system_prompt}}`（原审核要求）、`{{reasoning_result}}`、`{{initial_result}}` 与系统日期变量。遗漏必要变量时仍附上当次复核材料；固定 JSON 输出格式由后端补充，业务提示词原文仍保留。

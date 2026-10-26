@@ -1,3 +1,4 @@
+// 自定义标识和业务数据均为虚拟样例；厂商标准表结构按适配器约定保留。
 package service
 
 import (
@@ -78,16 +79,16 @@ func TestFormatAttachmentsUnlimitedKeepsAllContent(t *testing.T) {
 func TestFormatAttachmentsWithDetailTableAndRow(t *testing.T) {
 	attachments := []oa.AttachmentInfo{
 		{
-			FileName:    "主表附件.pdf",
-			FieldKey:    "T006",
-			FieldName:   "附件上传",
-			Content:     "主表内容",
+			FileName:  "主表附件.pdf",
+			FieldKey:  "T006",
+			FieldName: "附件上传",
+			Content:   "主表内容",
 		},
 		{
 			FileName:    "发票1.pdf",
 			FieldKey:    "fpfj",
 			FieldName:   "发票附件",
-			DetailTable: "formtable_main_60_dt1",
+			DetailTable: "formtable_main_900003_dt1",
 			RowIndex:    1,
 			Content:     "发票1内容",
 		},
@@ -95,7 +96,7 @@ func TestFormatAttachmentsWithDetailTableAndRow(t *testing.T) {
 			FileName:    "发票2.pdf",
 			FieldKey:    "fpfj",
 			FieldName:   "发票附件",
-			DetailTable: "formtable_main_60_dt1",
+			DetailTable: "formtable_main_900003_dt1",
 			RowIndex:    2,
 			Content:     "发票2内容",
 		},

@@ -338,6 +338,7 @@ function handleConfigImportConfirm(
       selectedConfig.value.ai_config = {
         ...(selectedConfig.value.ai_config || {}),
         ...payload.ai,
+        recheck: payload.ai.recheck ?? undefined,
       }
       importedAiUpdated = true
     }
@@ -356,6 +357,7 @@ function handleConfigImportConfirm(
       selectedArchiveConfig.value.ai_config = {
         ...(selectedArchiveConfig.value.ai_config || {}),
         ...payload.ai,
+        recheck: payload.ai.recheck ?? undefined,
       }
       importedAiUpdated = true
     }
@@ -3867,6 +3869,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                 <a-switch v-model:checked="selectedConfig.ai_config.enable_thinking" />
               </div>
             </div>
+            <AIRecheckConfigEditor v-model="selectedConfig.ai_config.recheck" :default-system="getTemplateContent('audit_system_recheck')" :default-user="getTemplateContent('audit_user_recheck')" />
 
             <!--系统提示词区域-->
             <div class="ai-prompt-section">
@@ -6090,6 +6093,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                 <a-switch v-model:checked="selectedArchiveConfig.ai_config.enable_thinking" />
               </div>
             </div>
+            <AIRecheckConfigEditor v-model="selectedArchiveConfig.ai_config.recheck" :default-system="getArchiveTemplateContent('archive_system_recheck')" :default-user="getArchiveTemplateContent('archive_user_recheck')" />
 
             <!--系统提示词区域-->
             <div class="ai-prompt-section">

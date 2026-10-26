@@ -758,6 +758,7 @@ function tokenPct(used: number, quota: number) {
                   <span>{{ t('overview.avgResponseTime') }}: {{ m.structured_stats.avg_ms }}ms</span>
                 </div>
               </div>
+              <div v-if="m.recheck_stats?.calls" class="ai-model-stat-group"><div class="ai-model-stat-title">{{ t('recheck.title') }}</div><div class="ai-model-stat-row"><span>{{ t('overview.callCount') }}: {{ formatNum(m.recheck_stats.calls) }}</span><span>{{ t('overview.avgResponseTime') }}: {{ m.recheck_stats.avg_ms }}ms</span></div></div>
             </div>
             <div class="ai-model-footer">
               <span>{{ t('overview.totalCalls') }}: {{ formatNum(m.total_calls) }}</span>

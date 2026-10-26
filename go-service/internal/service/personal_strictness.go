@@ -47,6 +47,7 @@ func auditAIConfigFromTemplates(strictness string, items []model.SystemPromptTem
 	effective := model.AIConfigData{AuditStrictness: strictness}
 	// 个人尺度只切换提示词，空值传输策略仍沿用租户配置。
 	if len(base) > 0 {
+		effective.Recheck = base[0].Recheck
 		effective.SkipEmptyFields = base[0].SkipEmptyFields
 		effective.SkipEmptyFieldKeys = base[0].SkipEmptyFieldKeys
 	}
@@ -97,6 +98,7 @@ func archiveAIConfigFromTemplates(strictness string, items []model.SystemPromptT
 	effective := model.ArchiveAIConfigData{AuditStrictness: strictness}
 	// 与审核侧对称，个人尺度不能丢失租户空值传输策略。
 	if len(base) > 0 {
+		effective.Recheck = base[0].Recheck
 		effective.SkipEmptyFields = base[0].SkipEmptyFields
 		effective.SkipEmptyFieldKeys = base[0].SkipEmptyFieldKeys
 	}

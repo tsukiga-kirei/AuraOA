@@ -128,6 +128,7 @@ function handleExport() {
     if (exportAi.value && props.aiConfig) {
       contents.ai = {
         audit_strictness: props.aiConfig.audit_strictness,
+        recheck: props.aiConfig.recheck,
         enable_thinking: props.aiConfig.enable_thinking,
         skip_empty_fields: props.aiConfig.skip_empty_fields,
         skip_empty_field_keys: props.aiConfig.skip_empty_field_keys,

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -169,6 +170,7 @@ type AuditExecuteResponse struct {
 	ParseError      string                 `json:"parse_error,omitempty"`
 	RawContent      string                 `json:"raw_content,omitempty"`
 	ConfigVersionNo *int                   `json:"config_version_no,omitempty"`
+	AIRecheck       datatypes.JSON         `json:"ai_recheck,omitempty"`
 }
 
 // createPendingAuditLog 校验配置并写入 pending 记录（供单条异步与批量同步共用）。
@@ -330,6 +332,7 @@ func (s *AuditExecuteService) Execute(c *gin.Context, req *AuditExecuteRequest) 
 		ProcessID:       req.ProcessID,
 		CreatedAt:       apptime.FormatRFC3339(createdAt),
 		ConfigVersionNo: log.ConfigVersionNo,
+		AIRecheck:       log.AIRecheck,
 	}, nil
 }
 
@@ -410,6 +413,7 @@ func (s *AuditExecuteService) FailStaleAuditJobs(ctx context.Context) (int64, er
 			model.JobStatusAssembling,
 			model.JobStatusReasoning,
 			model.JobStatusExtracting,
+			model.JobStatusRechecking,
 		}, cutoff).
 		Updates(map[string]interface{}{
 			"status":        model.JobStatusFailed,
@@ -740,6 +744,39 @@ func (s *AuditExecuteService) processAuditJob(
 	totalDuration := int(time.Since(startTime).Milliseconds())
 	parsed, parseErr := ParseAuditResult(extractionResp.Content)
 	GuardQueryEvidence(parsed, queryEvidence)
+	var recheckRecord *model.AIRecheckRecord
+	if parseErr == nil && aiConfig.Recheck != nil && aiConfig.Recheck.Enabled {
+		initial, _ := json.Marshal(parsed)
+		scrub := s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled()
+		finalRaw, record, recheckErr := runAIRecheck(c, s.aiCaller, tenantID, userID, modelCfg, fallbackCfg, aiConfig.Recheck, reasoningReq, aiReasoning, initial, scrub,
+			func(record *model.AIRecheckRecord) error {
+				fields := map[string]interface{}{"status": model.JobStatusRechecking, "ai_recheck": datatypes.JSON(persistRecheckJSON(record)), "duration_ms": int(time.Since(startTime).Milliseconds()), "updated_at": apptime.Now()}
+				rows, saveErr := s.updateAuditLogIfNotCancelled(tenantID, auditLogID, fields)
+				if saveErr != nil {
+					return saveErr
+				}
+				if rows == 0 {
+					return context.Canceled
+				}
+				return nil
+			})
+		recheckRecord = record
+		if recheckErr != nil {
+			s.markAuditFailedOrTimeout(c, tenantID, auditLogID, recheckErr)
+			return recheckErr
+		}
+		parsed, parseErr = ParseAuditResult(string(finalRaw))
+		GuardQueryEvidence(parsed, queryEvidence)
+		if parseErr == nil {
+			recheckRecord.FinalResult, _ = json.Marshal(parsed)
+			var before, after interface{}
+			_ = json.Unmarshal(initial, &before)
+			_ = json.Unmarshal(recheckRecord.FinalResult, &after)
+			recheckRecord.Changed = !reflect.DeepEqual(before, after)
+			extractionResp.Content = string(finalRaw)
+		}
+	}
+	totalDuration = int(time.Since(startTime).Milliseconds())
 
 	rawStored := extractionResp.Content
 	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
@@ -759,6 +796,9 @@ func (s *AuditExecuteService) processAuditJob(
 		"updated_at":    time.Now(),
 	}
 
+	if recheckRecord != nil {
+		updates["ai_recheck"] = datatypes.JSON(persistRecheckJSON(recheckRecord))
+	}
 	if parseErr != nil {
 		updates["status"] = model.JobStatusFailed
 		updates["recommendation"] = ""
@@ -940,6 +980,7 @@ func auditExecuteResponseFromLog(log *model.AuditLog) *AuditExecuteResponse {
 		CreatedAt:       apptime.FormatRFC3339(log.CreatedAt),
 		Status:          log.Status,
 		ConfigVersionNo: log.ConfigVersionNo,
+		AIRecheck:       log.AIRecheck,
 	}
 	if log.Status == model.JobStatusFailed {
 		resp.Recommendation = ""
@@ -1108,7 +1149,7 @@ func (s *AuditExecuteService) GetAuditJobStatus(c *gin.Context, id uuid.UUID) (m
 	}
 	out := buildAuditResultFromLog(log)
 	out["updated_at"] = apptime.FormatRFC3339(log.UpdatedAt)
-	out["progress_steps"] = auditProgressSteps(log.Status)
+	out["progress_steps"] = auditProgressSteps(log.Status, len(log.AIRecheck) > 2)
 	return out, nil
 }
 
@@ -1169,7 +1210,7 @@ func (s *AuditExecuteService) userCanAccessAuditProcess(
 	return accessControlAllows(config.AccessControl, member)
 }
 
-func auditProgressSteps(status string) []map[string]interface{} {
+func auditProgressSteps(status string, recheck ...bool) []map[string]interface{} {
 	defs := []struct {
 		key   string
 		label string
@@ -1179,18 +1220,28 @@ func auditProgressSteps(status string) []map[string]interface{} {
 		{model.JobStatusReasoning, "推理分析"},
 		{model.JobStatusExtracting, "结构化提取"},
 	}
+	if status == model.JobStatusRechecking || (len(recheck) > 0 && recheck[0]) {
+		defs = append(defs, struct {
+			key   string
+			label string
+		}{model.JobStatusRechecking, "AI复核"})
+	}
 	phaseIdx := map[string]int{
 		model.JobStatusPending:    0,
 		model.JobStatusAssembling: 1,
 		model.JobStatusReasoning:  2,
 		model.JobStatusExtracting: 3,
+		model.JobStatusRechecking: 4,
 	}
 	cur, ok := phaseIdx[status]
 	if !ok {
 		if status == model.JobStatusCompleted {
-			cur = 3
+			cur = len(defs) - 1
 		} else if status == model.JobStatusFailed {
 			cur = 2
+			if len(defs) == 5 {
+				cur = 4
+			}
 		} else {
 			cur = 0
 		}
@@ -1205,7 +1256,7 @@ func auditProgressSteps(status string) []map[string]interface{} {
 			m["failed"] = true
 		case i < cur:
 			m["done"] = true
-		case i == cur && cur < 4 && status != model.JobStatusFailed:
+		case i == cur && cur < len(defs) && status != model.JobStatusFailed:
 			m["current"] = true
 		}
 		steps = append(steps, m)
@@ -1804,7 +1855,7 @@ func (s *AuditExecuteService) ListProcessesPaged(c *gin.Context, params dto.Audi
 		if hasLatest {
 			st := auditLog.Status
 			switch st {
-			case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting:
+			case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting, model.JobStatusRechecking:
 				record["audit_status"] = st
 				record["audit_result"] = buildAuditResultFromLog(auditLog)
 			case model.JobStatusFailed:
@@ -1940,7 +1991,7 @@ func (s *AuditExecuteService) ListAllProcesses(c *gin.Context, params dto.AuditL
 		if hasLatest {
 			st := auditLog.Status
 			switch st {
-			case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting:
+			case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting, model.JobStatusRechecking:
 				record["audit_status"] = st
 				record["audit_result"] = buildAuditResultFromLog(auditLog)
 			case model.JobStatusFailed:
@@ -2258,6 +2309,7 @@ func (s *AuditExecuteService) listCompletedProcessesPaged(c *gin.Context, tenant
 func buildAuditResultFromLog(log *model.AuditLog) (result map[string]interface{}) {
 	defer func() {
 		if result != nil {
+			result["ai_recheck"] = log.AIRecheck
 			result["query_evidence"] = log.QueryEvidence
 			result["trigger_source"] = log.TriggerSource
 			result["user_id"] = log.UserID.String()
@@ -2269,7 +2321,7 @@ func buildAuditResultFromLog(log *model.AuditLog) (result map[string]interface{}
 		}
 	}()
 	switch log.Status {
-	case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting:
+	case model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting, model.JobStatusRechecking:
 		out := map[string]interface{}{
 			"id":            log.ID.String(),
 			"trace_id":      fmt.Sprintf("TR-%s", log.ID.String()[:8]),

@@ -26,7 +26,7 @@ export interface SystemPromptTemplate {
   id: string
   prompt_key: string
   prompt_type: 'system' | 'user'
-  phase: 'reasoning' | 'extraction'
+  phase: 'reasoning' | 'extraction' | 'recheck'
   strictness: string | null
   content: string
   description: string

@@ -43,15 +43,10 @@
 
 <table>
   <tr>
-    <td width="50%" align="center">
+    <td colspan="2" align="center">
       <strong>系统运营总览</strong><br />
       <sub>租户规模、AI 模型表现、资源用量与服务健康状态</sub><br /><br />
-      <img src="docs/assets/screenshots/system-overview.jpg" alt="AuraOA 系统运营总览" />
-    </td>
-    <td width="50%" align="center">
-      <strong>流程规则配置</strong><br />
-      <sub>统一管理字段、审核规则、AI 参数与用户权限</sub><br /><br />
-      <img src="docs/assets/screenshots/rule-config.jpg" alt="AuraOA 流程规则配置" />
+      <img src="docs/assets/screenshots/system-overview.jpg" alt="AuraOA 系统运营总览" width="88%" />
     </td>
   </tr>
   <tr>

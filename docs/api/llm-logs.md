@@ -111,3 +111,7 @@ GET /api/admin/stats/token-usage
 统计新增 `rule_assist_count`、`feedback_memory_count`；`sql_assist_count` 继续保留。`total` 是不同业务调用链总量，同一 OA 流程包含审核和归档时合为一个流程链，因此分场景数量不要求相加等于总量。筛选场景时保留同一流程的完整调用链，但不同对话或辅助操作不会因空流程ID而串到一起。
 
 页面为辅助操作提供独立详情：结构化条目/SQL、待确认事项、输入输出Token、只读提示词与原始模型输出，不展示不适用的审核配置版本。
+
+## AI复核调用
+
+`call_type=recheck` 表示可选第三阶段 AI 复核，`request_type` 仍为 `audit` 或 `archive`，关联原业务日志与执行版本。流程任务数量不增加，模型调用次数、Token 与耗时按实际第三阶段统计。数据管理支持该类别筛选，模型表现增加 `recheck_stats`，不将复核调用归入推理或结构化统计。

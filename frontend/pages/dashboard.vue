@@ -243,7 +243,7 @@ const batchAuditDone = ref(0)
 const currentInflightProcessId = ref<string | null>(null)
 const pollProcessId = ref<string | null>(null)
 
-const asyncAuditStatuses = ['pending', 'assembling', 'reasoning', 'extracting'] as const
+const asyncAuditStatuses = ['pending', 'assembling', 'reasoning', 'extracting', 'rechecking'] as const
 
 const auditInProgress = computed(() => {
   if (loading.value || batchAuditing.value) return true
@@ -380,7 +380,7 @@ const toggleSelectProcess = (processId: string) => {
 
 const selectableIdsComputed = computed(() => {
   return processList.value
-    .filter(p => !(p.audit_status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(p.audit_status)))
+    .filter(p => !(p.audit_status && ['pending', 'assembling', 'reasoning', 'extracting', 'rechecking'].includes(p.audit_status)))
     .map(p => p.process_id)
 })
 
@@ -517,13 +517,14 @@ const handleSelectProcess = (processId: string) => {
   if (item?.audit_result) {
     currentResult.value = { ...item.audit_result }
     const st = item.audit_status ?? item.audit_result.status
-    if (st && ['pending', 'assembling', 'reasoning', 'extracting'].includes(st)) {
+    if (st && ['pending', 'assembling', 'reasoning', 'extracting', 'rechecking'].includes(st)) {
        if (!currentResult.value.progress_steps) {
          currentResult.value.progress_steps = [
            { key: 'pending', label: '排队中', done: st !== 'pending', current: st === 'pending' },
-           { key: 'assembling', label: '组装提示词', done: ['reasoning','extracting'].includes(st), current: st === 'assembling' },
-           { key: 'reasoning', label: '推理分析', done: st === 'extracting', current: st === 'reasoning' },
-           { key: 'extracting', label: '结构化提取', done: false, current: st === 'extracting' },
+           { key: 'assembling', label: '组装提示词', done: ['reasoning','extracting','rechecking'].includes(st), current: st === 'assembling' },
+           { key: 'reasoning', label: '推理分析', done: ['extracting', 'rechecking'].includes(st), current: st === 'reasoning' },
+           { key: 'extracting', label: '结构化提取', done: st === 'rechecking', current: st === 'extracting' },
+           ...(st === 'rechecking' ? [{ key: 'rechecking', label: t('recheck.title'), done: false, current: true }] : []),
          ]
        }
 
@@ -888,7 +889,7 @@ const viewModeLabel = computed(() => {
 
 
 const isResultAsyncRunning = (r: AuditResult | null) =>
-  !!(r?.status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(r.status))
+  !!(r?.status && ['pending', 'assembling', 'reasoning', 'extracting', 'rechecking'].includes(r.status))
 
 /** 「AI 已审核 / 全部已完成」页签下，已出结果时展示流程摘要（与归档复盘区一致） */
 const showDashboardProcessSummary = computed(
@@ -1179,13 +1180,13 @@ onMounted(async () => {
               }"
               @click="handleSelectProcess(item.process_id)"
             >
-              <div v-if="isBatchAuditTab" class="todo-item-checkbox" @click.stop="auditInProgress || (item.audit_status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(item.audit_status)) ? null : toggleSelectProcess(item.process_id)">
-                <a-checkbox :checked="selectedProcessIds.includes(item.process_id)" :disabled="auditInProgress || (item.audit_status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(item.audit_status))" />
+              <div v-if="isBatchAuditTab" class="todo-item-checkbox" @click.stop="auditInProgress || (item.audit_status && ['pending', 'assembling', 'reasoning', 'extracting', 'rechecking'].includes(item.audit_status)) ? null : toggleSelectProcess(item.process_id)">
+                <a-checkbox :checked="selectedProcessIds.includes(item.process_id)" :disabled="auditInProgress || (item.audit_status && ['pending', 'assembling', 'reasoning', 'extracting', 'rechecking'].includes(item.audit_status))" />
               </div>
               <div class="todo-item-main">
                 <div class="todo-item-title">
                   <LoadingOutlined
-                    v-if="item.audit_status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(item.audit_status)"
+                    v-if="item.audit_status && ['pending', 'assembling', 'reasoning', 'extracting', 'rechecking'].includes(item.audit_status)"
                     class="todo-item-audited-icon"
                     spin
                     style="color: var(--color-primary);"
@@ -1212,7 +1213,7 @@ onMounted(async () => {
                   </div>
                   <div class="todo-item-audit-right">
                     <span
-                      v-if="item.audit_status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(item.audit_status)"
+                      v-if="item.audit_status && ['pending', 'assembling', 'reasoning', 'extracting', 'rechecking'].includes(item.audit_status)"
                       class="todo-item-score-badge"
                       style="color: var(--color-primary); background: var(--color-primary-bg);"
                     >
@@ -1317,6 +1318,7 @@ onMounted(async () => {
 
           <!--结果展示-->
           <template v-else-if="currentResult">
+            <AIRecheckResult :record="currentResult.ai_recheck" :task-status="currentResult.status" />
             <div v-if="isResultAsyncRunning(currentResult)" class="result-async-panel">
               <a-spin size="large">
                 <div class="async-progress-steps">
@@ -1329,7 +1331,7 @@ onMounted(async () => {
                     <LoadingOutlined v-else-if="s.current" spin style="color: var(--color-primary);" />
                     <CloseCircleOutlined v-else-if="s.failed" style="color: var(--color-danger);" />
                     <span v-else class="async-step-pending-dot" />
-                    <span>{{ s.label }}</span>
+                    <span>{{ s.key === 'rechecking' ? t('recheck.title') : s.label }}</span>
                   </div>
                 </div>
               </a-spin>
@@ -1608,6 +1610,7 @@ onMounted(async () => {
                             <div class="markdown-body" v-html="renderMarkdown(chainItemDeepThinking(item) || '')"></div>
                           </div>
 
+                          <AIRecheckResult :record="item.ai_recheck" />
                           <!--AI 推理：后端链数据里推理在行字段 ai_reasoning，不在 audit_result JSONB 内 -->
                           <div v-if="chainItemAiReasoning(item)" class="chain-section-title" style="margin-top: 10px;">{{ t('dashboard.aiReasoning') }}</div>
                           <div v-if="chainItemAiReasoning(item)" class="chain-reasoning">

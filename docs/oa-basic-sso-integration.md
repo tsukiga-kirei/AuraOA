@@ -41,10 +41,10 @@ Authorization: Basic base64(tenantCode/username:sharedPassword)
 Origin: https://oa.example.com
 ```
 
-例如租户编码为 `GJCW`，OA 用户为 `zhangsan`，则参与 Base64 编码的原始凭据是：
+以下租户编码与账号均为虚拟示例，不对应实际环境。例如租户编码为 `DEMO01`，OA 用户为 `zhangsan`，则参与 Base64 编码的原始凭据是：
 
 ```text
-GJCW/zhangsan:租户共享密码
+DEMO01/zhangsan:租户共享密码
 ```
 
 成功响应：
@@ -85,7 +85,7 @@ import java.util.Base64;
 public class AuraOAAPI {
     private static String AURAOA_BASIC_REDIRECTION_URL =
         "https://auraoa.example.com/api/auth/sso/basic-redirection";
-    private static String AURAOA_TENANT_CODE = "GJCW";
+    private static String AURAOA_TENANT_CODE = "DEMO01";
     private static String AURAOA_SHARED_PASSWORD = "请从安全配置读取";
     private static String AURAOA_PORTAL = "business";
     private static String AURAOA_SOURCE_ORIGIN = "https://oa.example.com";
@@ -156,7 +156,7 @@ public class AuraOAAPI {
 
 ```bash
 curl -i --max-redirs 0 \
-  -u 'GJCW/zhangsan:租户共享密码' \
+  -u 'DEMO01/zhangsan:租户共享密码' \
   -H 'Origin: https://oa.example.com' \
   'https://auraoa.example.com/api/auth/sso/basic-redirection?portal=business'
 ```

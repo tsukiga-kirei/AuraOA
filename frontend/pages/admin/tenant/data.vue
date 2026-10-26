@@ -588,6 +588,7 @@ function getLLMCallTypeLabel(value: string) {
   const map: Record<string, string> = {
     reasoning: t('admin.data.llmCallReasoning'),
     structured: t('admin.data.llmCallStructured'),
+    recheck: t('recheck.title'),
   }
   return map[value] || value || '-'
 }
@@ -615,7 +616,7 @@ function getCallTypeLabels(callType?: string): Array<{ label: string; color: str
     if (t === 'structured') {
       return { label: getLLMCallTypeLabel('structured'), color: 'blue' }
     }
-    return { label: t, color: 'default' }
+    return { label: getLLMCallTypeLabel(t), color: 'default' }
   })
 }
 
@@ -2497,6 +2498,7 @@ onMounted(async () => {
           >
             <a-select-option value="reasoning">{{ t('admin.data.llmCallReasoning') }}</a-select-option>
             <a-select-option value="structured">{{ t('admin.data.llmCallStructured') }}</a-select-option>
+            <a-select-option value="recheck">{{ t('recheck.title') }}</a-select-option>
           </a-select>
 
           <a-input
@@ -2763,6 +2765,7 @@ onMounted(async () => {
                               </CopyableContent>
                             </div>
 
+                            <AIRecheckResult :record="logItem.ai_recheck" :task-status="logItem.status" />
                             <div v-if="logItem.ai_reasoning" class="chain-section-title">{{ t('admin.data.aiReasoning', 'AI推理过程') }}</div>
                             <div v-if="logItem.ai_reasoning" class="chain-reasoning">
                               <CopyableContent :text="logItem.ai_reasoning">
@@ -2912,6 +2915,7 @@ onMounted(async () => {
                           </div>
 
                           <!-- 推理过程 (Archive) -->
+                          <AIRecheckResult :record="logItem.ai_recheck" :task-status="logItem.status" />
                           <div class="detail-section" v-if="logItem.ai_reasoning">
                             <h4 class="chain-section-title">{{ t('admin.data.aiSummary') }}</h4>
                             <div class="chain-reasoning">

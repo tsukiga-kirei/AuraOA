@@ -1,3 +1,4 @@
+// 自定义 OA 表名、字段及业务名称为虚拟样例；厂商标准表名按适配器约定保留。
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -83,28 +84,28 @@ test('reloading schema fills empty output and filter labels across identifier ca
 })
 
 test('schema notes use Chinese defaults and preserve manual descriptions with different casing', () => {
-  const notes = { 'FORMTABLE_MAIN_199.amount': '实际支付金额', 'other.amount': '另一张表' }
-  const result = fillQueryFieldNotes(notes, 'formtable_main_199', [
+  const notes = { 'FORMTABLE_MAIN_900001.amount': '实际支付金额', 'other.amount': '另一张表' }
+  const result = fillQueryFieldNotes(notes, 'formtable_main_900001', [
     { key: 'AMOUNT', label: '金额' },
     { key: 'PERSON', label: '申请人' },
     { key: 'UNKNOWN', label: 'UNKNOWN' },
   ])
   assert.deepEqual(result, {
-    'formtable_main_199.AMOUNT': '实际支付金额',
-    'formtable_main_199.PERSON': '申请人',
+    'formtable_main_900001.AMOUNT': '实际支付金额',
+    'formtable_main_900001.PERSON': '申请人',
     'other.amount': '另一张表',
   })
-  assert.equal(notes['FORMTABLE_MAIN_199.amount'], '实际支付金额', 'source notes must not be mutated')
+  assert.equal(notes['FORMTABLE_MAIN_900001.amount'], '实际支付金额', 'source notes must not be mutated')
 })
 
 test('choosing an output updates its Chinese alias and preserves a custom alias', () => {
   const columns = [
     { key: 'SQR', label: '申请人' },
-    { key: 'DZYWDJRKLC', label: '抵质押物登记入库流程' },
+    { key: 'DEMO_FLOW_REF', label: '演示业务流程' },
   ]
   const builder = { columns: [{ field: '', aggregate: '' }], filters: [] }
   selectQueryOutputField(builder, 0, columns[1].key, columns)
-  assert.equal(builder.columns[0].alias, '抵质押物登记入库流程')
+  assert.equal(builder.columns[0].alias, '演示业务流程')
   selectQueryOutputField(builder, 0, 'SQR', columns)
   assert.equal(builder.columns[0].alias, '申请人')
   builder.columns[0].alias = '经办申请人'
@@ -115,20 +116,20 @@ test('choosing an output updates its Chinese alias and preserves a custom alias'
 test('AI field context sends one schema and retains only distinct manual descriptions', () => {
   const definition = {
     ai_context: { oa_module: 'workflow', notes: '业务口径', field_notes: {
-      'FORMTABLE_MAIN_199.sqr': '申请人',
-      'formtable_main_199.AMOUNT': '实付金额，单位元',
+      'FORMTABLE_MAIN_900001.sqr': '申请人',
+      'formtable_main_900001.AMOUNT': '实付金额，单位元',
     } },
   }
-  const schema = { formtable_main_199: [
+  const schema = { formtable_main_900001: [
     { key: 'SQR', label: '申请人', data_type: 'INT' },
     { key: 'AMOUNT', label: '金额', data_type: 'NUMBER' },
   ] }
   const result = queryAssistFieldContext(definition, schema)
   assert.equal('field_notes' in result.definition.ai_context, false)
-  assert.equal(result.schema.formtable_main_199[0].description, undefined)
-  assert.equal(result.schema.formtable_main_199[1].description, '实付金额，单位元')
-  assert.equal(definition.ai_context.field_notes['FORMTABLE_MAIN_199.sqr'], '申请人')
-  assert.equal(schema.formtable_main_199[1].description, undefined)
+  assert.equal(result.schema.formtable_main_900001[0].description, undefined)
+  assert.equal(result.schema.formtable_main_900001[1].description, '实付金额，单位元')
+  assert.equal(definition.ai_context.field_notes['FORMTABLE_MAIN_900001.sqr'], '申请人')
+  assert.equal(schema.formtable_main_900001[1].description, undefined)
 })
 
 test('compileQueryBuilder handles varchar date without TO_DATE and native date with TO_DATE in oracle/dm', () => {

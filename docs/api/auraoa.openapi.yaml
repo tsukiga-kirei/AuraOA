@@ -5031,6 +5031,7 @@ paths:
           enum:
           - reasoning
           - structured
+          - recheck
       - name: keyword
         in: query
         schema:
@@ -9981,6 +9982,8 @@ components:
     JobStatus:
       type: object
       properties:
+        ai_recheck:
+          $ref: '#/components/schemas/AIRecheckRecord'
         query_evidence:
           type: array
           items:
@@ -9995,6 +9998,7 @@ components:
           - assembling
           - reasoning
           - extracting
+          - rechecking
           - completed
           - failed
           - cancelled
@@ -10156,6 +10160,8 @@ components:
           type: object
           description: 审核和归档配置中的 system_extraction_prompt、user_extraction_prompt 由服务端按 audit_strictness 模板锁定
           properties:
+            recheck:
+              $ref: '#/components/schemas/AIRecheckConfig'
             skip_empty_fields:
               type: boolean
               default: false
@@ -10167,7 +10173,7 @@ components:
                 type: string
               example:
               - main:remark
-              - formtable_main_151_dt1:remark
+              - formtable_main_900002_dt1:remark
         user_permissions:
           type: object
         access_control:
@@ -10647,3 +10653,6 @@ components:
     FeedbackMemoryPublishInput: {"allOf":[{"$ref":"#/components/schemas/FeedbackMemoryScope"},{"type":"object","properties":{"edit_revision":{"type":"integer","minimum":0,"default":0}}}]}
     FeedbackMemoryCommentStateInput: {"allOf":[{"$ref":"#/components/schemas/FeedbackMemoryScope"},{"type":"object","properties":{"deprecated":{"type":"boolean"}},"required":["deprecated"]}]}
     FeedbackMemoryInputPreview: {"type":"object","properties":{"system_prompt":{"type":"string"},"user_prompt":{"type":"string"},"base_version_id":{"type":"string","format":"uuid","nullable":true}}}
+
+    AIRecheckConfig: {"type": "object", "description": "随配置版本保存；缺省关闭，不影响旧版本；不按审核尺度分组。", "properties": {"enabled": {"type": "boolean", "default": false}, "system_prompt": {"type": "string", "maxLength": 100000}, "user_prompt": {"type": "string", "maxLength": 100000}}}
+    AIRecheckRecord: {"type": "object", "description": "任务、审核/归档结果及历史行的ai_recheck字段；未启用时为空对象。", "properties": {"status": {"type": "string", "enum": ["running", "completed", "failed", "cancelled"]}, "changed": {"type": "boolean"}, "reason": {"type": "string"}, "error": {"type": "string"}, "duration_ms": {"type": "integer", "format": "int64"}, "original_result": {"type": "object", "additionalProperties": true}, "final_result": {"type": "object", "additionalProperties": true}}}

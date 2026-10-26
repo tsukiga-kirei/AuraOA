@@ -11,7 +11,7 @@ import (
 )
 
 // SelectedFieldSet 描述用户最终生效的字段选择集合。
-// key 为 "main"（主表）或明细表名（如 "formtable_main_151_dt1"），value 为字段 key 的集合。
+// key 为 "main"（主表）或明细表名（如 "formtable_main_900002_dt1"），value 为字段 key 的集合。
 // value 为 nil 时表示该表全选所有字段，不做过滤。
 type SelectedFieldSet map[string]map[string]bool
 
@@ -196,7 +196,7 @@ func formatGroupedDetailData(detailTables map[string][]map[string]interface{}, f
 	var sb strings.Builder
 	for _, tableName := range tableNames {
 		rows := detailTables[tableName]
-		// 从表名提取友好标签（如 formtable_main_151_dt1 → 明细表1）
+		// 从表名提取友好标签（如 formtable_main_900002_dt1 → 明细表1）
 		label := tableName
 		if idx := strings.LastIndex(tableName, "_dt"); idx != -1 && idx+3 < len(tableName) {
 			label = "明细表" + tableName[idx+3:]

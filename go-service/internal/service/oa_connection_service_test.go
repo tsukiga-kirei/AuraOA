@@ -1,3 +1,4 @@
+// 自定义标识和业务数据均为虚拟样例；厂商标准表结构按适配器约定保留。
 package service
 
 import (
@@ -26,8 +27,8 @@ func TestBuildOAProcessURL(t *testing.T) {
 			baseURL:   "http://oa.example.com",
 			template:  "",
 			oaType:    "weaver_e9",
-			processID: "613446",
-			want:      "http://oa.example.com/workflow/request/ViewRequestForwardSPA.jsp?requestid=613446",
+			processID: "900000001",
+			want:      "http://oa.example.com/workflow/request/ViewRequestForwardSPA.jsp?requestid=900000001",
 		},
 		{
 			name:      "未配置模板-带尾部斜杠自动去除",
@@ -63,18 +64,18 @@ func TestBuildOAProcessURL(t *testing.T) {
 		},
 		{
 			name:      "自定义绝对路径模板直接覆盖域名",
-			baseURL:   "http://default.com",
-			template:  "https://standalone-oa.corp.com/flow/{process_id}",
+			baseURL:   "http://default.example.com",
+			template:  "https://standalone-oa.example.com/flow/{process_id}",
 			oaType:    "weaver_e9",
 			processID: "555",
-			want:      "https://standalone-oa.corp.com/flow/555",
+			want:      "https://standalone-oa.example.com/flow/555",
 		},
 		{
 			name:      "未登记兜底的类型留空模板不套用E9地址",
 			baseURL:   "http://oa.example.com",
 			template:  "",
 			oaType:    "weaver_e10",
-			processID: "613446",
+			processID: "900000001",
 			want:      "",
 		},
 		{

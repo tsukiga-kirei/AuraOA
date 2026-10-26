@@ -1,3 +1,4 @@
+// 自定义标识和业务数据均为虚拟样例；厂商标准表结构按适配器约定保留。
 package oa
 
 import (
@@ -54,7 +55,7 @@ func (r *queryLabelRows) Next(values []driver.Value) error {
 
 func TestAuditQuerySchemaDictionaryLabels(t *testing.T) {
 	for _, dbDriver := range []string{"mysql", "oracle", "dm"} {
-		for _, table := range []string{"formtable_main_199", "formtable_main_199_dt1", "uf_contract", "uf_contract_dt1"} {
+		for _, table := range []string{"formtable_main_900001", "formtable_main_900001_dt1", "uf_contract", "uf_contract_dt1"} {
 			t.Run(dbDriver+"/"+table, func(t *testing.T) {
 				main := strings.TrimSuffix(table, "_dt1")
 				names := []string{"fieldkey", "fieldname", "detailtable", "maintable"}

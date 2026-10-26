@@ -479,7 +479,7 @@ func (a *Ecology9Adapter) fetchFieldsByForm(ctx context.Context, formID int, mai
 				dt = fmt.Sprintf("%s_dt%s", mainTableName, dt)
 			}
 
-			// 从形如 formtable_main_151_dt1 提取出 1 作为显示标签
+			// 从形如 formtable_main_900002_dt1 提取出 1 作为显示标签
 			label := dt
 			if idx := strings.LastIndex(dt, "_dt"); idx != -1 && idx+3 < len(dt) {
 				label = "明细表" + dt[idx+3:]

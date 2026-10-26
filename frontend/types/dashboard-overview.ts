@@ -167,6 +167,7 @@ export interface AIModelPerformanceRow {
   provider: string
   reasoning_stats: AICallTypeStats
   structured_stats: AICallTypeStats
+  recheck_stats?: AICallTypeStats
   overall_success_rate: number
   total_calls: number
 }

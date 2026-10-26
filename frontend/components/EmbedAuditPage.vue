@@ -80,7 +80,7 @@ const getScoreColorConfig = (score: number | undefined) => {
 }
 
 const isResultAsyncRunning = (r: AuditResult | null) =>
-  !!(r?.status && ['pending', 'assembling', 'reasoning', 'extracting'].includes(r.status))
+  !!(r?.status && ['pending', 'assembling', 'reasoning', 'extracting', 'rechecking'].includes(r.status))
 
 const isAuditingActive = computed(
   () => auditing.value || !!(currentResult.value && isResultAsyncRunning(currentResult.value)),
@@ -88,7 +88,10 @@ const isAuditingActive = computed(
 
 const filteredProgressSteps = computed((): AuditProgressStep[] => {
   const steps = currentResult.value?.progress_steps
-  if (!steps?.length) return DEFAULT_PROGRESS_STEPS.map(s => ({ ...s }))
+  if (!steps?.length) {
+    if (currentResult.value?.status === 'rechecking') return [...DEFAULT_PROGRESS_STEPS.map(s => ({ ...s, done: true, current: false })), { key: 'rechecking', label: t('recheck.title'), current: true }]
+    return DEFAULT_PROGRESS_STEPS.map(s => ({ ...s }))
+  }
   return steps.filter(s => s.key !== 'pending')
 })
 
@@ -639,7 +642,7 @@ onBeforeUnmount(() => {
               <LoadingOutlined v-else-if="s.current" spin class="async-step-icon async-step-icon--current" />
               <CloseCircleOutlined v-else-if="s.failed" class="async-step-icon async-step-icon--fail" />
               <span v-else class="async-step-pending-dot" />
-              <span class="async-step-label">{{ s.label }}</span>
+              <span class="async-step-label">{{ s.key === 'rechecking' ? t('recheck.title') : s.label }}</span>
             </div>
           </div>
           <div v-if="currentResult?.deep_thinking" class="embed-reasoning-live">
@@ -663,6 +666,7 @@ onBeforeUnmount(() => {
         </div>
 
         <template v-else-if="currentResult">
+            <AIRecheckResult :record="currentResult.ai_recheck" :task-status="currentResult.status" />
           <template v-if="currentResult.status === 'failed' || currentResult.status === 'cancelled'">
             <div class="result-banner result-banner--error">
               <WarningOutlined class="result-banner-icon" style="color: var(--color-danger);" />

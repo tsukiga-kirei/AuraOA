@@ -168,6 +168,7 @@ type AIModelPerformanceRow struct {
 	// 按调用类型分组
 	ReasoningStats  AICallTypeStats `json:"reasoning_stats"`
 	StructuredStats AICallTypeStats `json:"structured_stats"`
+	RecheckStats    AICallTypeStats `json:"recheck_stats"`
 
 	// 总体
 	OverallSuccessRate float64 `json:"overall_success_rate"`

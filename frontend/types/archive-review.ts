@@ -7,6 +7,7 @@ export type ArchiveRunStatus =
   | 'assembling'
   | 'reasoning'
   | 'extracting'
+  | 'rechecking'
   | 'completed'
   | 'failed'
   | 'cancelled'
@@ -61,6 +62,7 @@ export interface ArchiveProcessSnapshot {
 }
 
 export interface ArchiveReviewResult {
+  ai_recheck?: import('./ai-recheck').AIRecheckRecord
   query_evidence?: QueryEvidence[]
   id?: string
   trace_id: string
@@ -160,6 +162,7 @@ export interface ArchiveProcessTypeOption {
 }
 
 export interface ArchiveReviewHistoryItem {
+  ai_recheck?: import('./ai-recheck').AIRecheckRecord
   id: string
   process_id: string
   title: string

@@ -1,3 +1,4 @@
+// 自定义标识和业务数据均为虚拟样例；厂商标准表结构按适配器约定保留。
 package service
 
 import (
@@ -6,12 +7,12 @@ import (
 )
 
 func TestParseBasicSSOCredential(t *testing.T) {
-	header := "Basic " + base64.StdEncoding.EncodeToString([]byte("GJCW/zhangsan:shared-secret"))
+	header := "Basic " + base64.StdEncoding.EncodeToString([]byte("DEMO01/zhangsan:shared-secret"))
 	tenantCode, username, password, err := parseBasicSSOCredential(header)
 	if err != nil {
 		t.Fatalf("解析 Basic 凭据失败: %v", err)
 	}
-	if tenantCode != "GJCW" || username != "zhangsan" || password != "shared-secret" {
+	if tenantCode != "DEMO01" || username != "zhangsan" || password != "shared-secret" {
 		t.Fatalf("解析结果不符合预期: %s %s %s", tenantCode, username, password)
 	}
 }

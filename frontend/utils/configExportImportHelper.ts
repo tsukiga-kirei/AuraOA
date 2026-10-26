@@ -79,6 +79,9 @@ export const KNOWN_AUDIT_AI_VARIABLES = new Set([
   '{{external_context}}',
   '{{feedback_memory}}',
   '{{reasoning_result}}',
+  '{{audit_context}}',
+  '{{initial_result}}',
+  '{{original_system_prompt}}',
   ...KNOWN_SYSTEM_TIME_VARIABLES,
 ])
 
@@ -232,7 +235,7 @@ export function validateImportBundle(
     const unknownVars: string[] = []
 
     // 检查尺度
-    if (ai.audit_strictness && !['relaxed', 'standard', 'strict'].includes(ai.audit_strictness)) {
+    if (ai.audit_strictness && !['loose', 'relaxed', 'standard', 'strict'].includes(ai.audit_strictness)) {
       report.warnings.push(`AI 审核尺度 "${ai.audit_strictness}" 未知，将默认回退为 standard。`)
       ai.audit_strictness = 'standard'
     }
@@ -243,6 +246,8 @@ export function validateImportBundle(
       ai.system_extraction_prompt,
       ai.user_reasoning_prompt,
       ai.user_extraction_prompt,
+      ai.recheck?.system_prompt,
+      ai.recheck?.user_prompt,
     ].filter(Boolean).join('\n')
 
     const vars = extractPlaceholderVariables(allPrompts)
@@ -257,6 +262,7 @@ export function validateImportBundle(
     }
 
     report.ai_stats = {
+      recheck_enabled: !!ai.recheck?.enabled,
       strictness: ai.audit_strictness,
       enable_thinking: ai.enable_thinking,
       unknown_variables: unknownVars,
