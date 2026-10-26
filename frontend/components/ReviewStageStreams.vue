@@ -11,7 +11,7 @@ const definitions = computed(() => [
   { key: 'structured', text: props.result.structured_output || '', title: t('embed.auditProgress.extracting'), icon: CodeOutlined, format: 'json' as const },
   { key: 'recheck', text: props.result.recheck_output || '', title: t('recheck.title'), icon: SafetyCertificateOutlined, format: 'json' as const },
 ])
-const latest = computed(() => [...definitions.value].reverse().find(item => item.text)?.key || 'reasoning')
+const latest = computed(() => props.result.status === 'rechecking' ? 'recheck' : props.result.status === 'extracting' ? 'structured' : [...definitions.value].reverse().find(item => item.text)?.key || 'reasoning')
 const expanded = ref('reasoning')
 watch(latest, stage => { expanded.value = stage }, { immediate: true })
 watch(() => props.result.id, () => { expanded.value = latest.value })
@@ -40,7 +40,7 @@ const visibleStages = computed(() => definitions.value.filter(item => item.text 
 .review-stage__title :deep(.anticon), .review-stage__action { color:var(--color-primary); }
 .review-stage__action { display:flex; align-items:center; gap:10px; font-size:12px; }
 .review-stage__arrow--open { transform:rotate(180deg); }
-.review-stage__body { padding:0 12px 12px; }
+.review-stage__body { padding:0 12px 12px; text-align:left; }
 .review-stage__body :deep(.ai-stream) { margin:0; border:0; }
 .review-stage__toggle:focus-visible { outline:2px solid var(--color-primary); outline-offset:-2px; }
 </style>

@@ -6,7 +6,9 @@ import type { useExperienceApi } from '~/composables/useExperienceApi'
 /** 预览页提供内存适配器，正式嵌入页没有提供者，始终使用原有鉴权与 API。 */
 export interface EmbedAuditPreview {
   context: Ref<EmbedContextResponse>
+  autoStart?: boolean
   execute: (progress: (result: Partial<AuditResult>) => void, personal: boolean, latest: boolean) => Promise<AuditResult>
+  retryRecheck: (progress: (result: Partial<AuditResult>) => void, result: AuditResult, personal: boolean) => Promise<AuditResult>
   feedbackApi: Pick<ReturnType<typeof useExperienceApi>, 'interactions' | 'comment' | 'updateComment' | 'deleteComment'>
 }
 

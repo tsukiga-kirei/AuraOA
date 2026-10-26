@@ -162,3 +162,13 @@ test('the next output stage collapses the previous stage and still allows reopen
     assert.equal(view.find('button')[0].props['aria-expanded'], true)
   } finally { view.app.unmount() }
 })
+
+test('recheck retry opens the last stage immediately, before the first response chunk arrives', () => {
+  const view = mountReadOnlyComponent('ReviewStageStreams', { result: { id: 'retry', status: 'rechecking', ai_reasoning: '# 初审分析', structured_output: '{"overall_score":96}', recheck_output: '' } })
+  try {
+    assert.equal(view.find('button').length, 3)
+    assert.equal(view.find('button')[0].props['aria-expanded'], false)
+    assert.equal(view.find('button')[1].props['aria-expanded'], false)
+    assert.equal(view.find('button')[2].props['aria-expanded'], true)
+  } finally { view.app.unmount() }
+})

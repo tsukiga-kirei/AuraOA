@@ -40,6 +40,7 @@ const DEFAULT_PROGRESS_STEPS: AuditProgressStep[] = [
 const processId = ref('')
 const pageLoading = ref(true)
 const auditing = ref(false)
+const retryingRecheck = ref(false)
 const context = ref<EmbedContextResponse | null>(null)
 const currentResult = ref<AuditResult | null>(null)
 const pageError = ref('')
@@ -92,7 +93,7 @@ const filteredProgressSteps = computed((): AuditProgressStep[] => {
     if (currentResult.value?.status === 'rechecking') return [...DEFAULT_PROGRESS_STEPS.map(s => ({ ...s, done: true, current: false })), { key: 'rechecking', label: t('recheck.title'), current: true }]
     return DEFAULT_PROGRESS_STEPS.map(s => ({ ...s }))
   }
-  return steps.filter(s => s.key !== 'pending')
+  return steps.filter(s => s.key !== 'pending' || currentResult.value?.status === 'pending')
 })
 
 const embedHeaderStatus = computed(() => {
@@ -353,6 +354,7 @@ async function runAudit(trigger: 'embed_auto' | 'embed_manual', useLatestConfig 
       message.success(t('embed.reAuditDone'))
     }
   } catch (e: any) {
+    if (e?.name === 'AbortError') return
     message.error(extractEmbedErrorMessage(e, t('embed.auditFailed')))
     currentResult.value = null
     await refreshContext(false, true)
@@ -360,6 +362,23 @@ async function runAudit(trigger: 'embed_auto' | 'embed_manual', useLatestConfig 
     auditing.value = false
     publishStatusToParent()
     disconnectStream()
+  }
+}
+
+// 预览复用正式进度与流式组件，单独复核仅从最后一步开始；尚不调用生产重试接口。
+async function runRecheckPreview() {
+  if (!preview || !currentResult.value || auditing.value) return
+  const original = currentResult.value
+  auditing.value = true
+  retryingRecheck.value = true
+  try {
+    const result = await preview.retryRecheck(mergeAuditProgress, original, activePerspective.value === 'personal')
+    mergeAuditProgress(result)
+  } catch (e: any) {
+    if (e?.name !== 'AbortError') message.error(extractEmbedErrorMessage(e, t('embed.auditFailed')))
+  } finally {
+    auditing.value = false
+    retryingRecheck.value = false
   }
 }
 
@@ -431,6 +450,7 @@ onMounted(async () => {
     updateCurrentResultForPerspective()
     pageLoading.value = false
     waitingParent.value = false
+    if (preview.autoStart && context.value.supported) await runAudit('embed_auto')
     return
   }
   waitingParent.value = true
@@ -640,7 +660,7 @@ onBeforeUnmount(() => {
 
         <div v-if="isAuditingActive" class="embed-auditing-center">
           <a-spin size="large" />
-          <p class="embed-auditing-title">{{ t('dashboard.aiAnalyzing') }}</p>
+          <p class="embed-auditing-title">{{ t(retryingRecheck ? 'recheck.status.running' : 'dashboard.aiAnalyzing') }}</p>
           <div class="async-progress-steps">
             <div
               v-for="s in filteredProgressSteps"
@@ -739,7 +759,8 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <AIRecheckResult :record="currentResult.ai_recheck" :task-status="currentResult.status" />
+            <ResultRecheckPanel v-if="preview && currentResult.ai_recheck" :record="currentResult.ai_recheck" :output="currentResult.recheck_output" :retrying="retryingRecheck" @retry="runRecheckPreview" />
+            <AIRecheckResult v-else :record="currentResult.ai_recheck" :task-status="currentResult.status" />
 
             <ResultReasoningPanel
               page-flow

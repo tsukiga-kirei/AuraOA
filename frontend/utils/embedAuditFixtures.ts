@@ -4,7 +4,7 @@ import type { EmbedContextResponse } from '~/types/embed'
 import type { AuditComment, Feedback } from '~/types/experience'
 import type { EmbedAuditPreview } from '~/utils/embedAuditPreview'
 
-export const embedAuditPreviewScenarios = ['return', 'approve', 'review', 'long', 'commentsEmpty', 'commentsPaged', 'readonly', 'stale', 'contentChanged', 'bothChanged', 'empty', 'running', 'failed', 'parseError', 'unsupported'] as const
+export const embedAuditPreviewScenarios = ['return', 'approve', 'review', 'recheckChanged', 'recheckUnchanged', 'recheckCallFailed', 'recheckEmpty', 'recheckJsonFailed', 'recheckInvalid', 'retryFailed', 'noRecheck', 'long', 'commentsEmpty', 'commentsPaged', 'readonly', 'stale', 'contentChanged', 'bothChanged', 'empty', 'running', 'failed', 'parseError', 'unsupported'] as const
 export type EmbedAuditPreviewScenario = typeof embedAuditPreviewScenarios[number]
 
 const reasoning = `## 审核结论
@@ -73,9 +73,18 @@ const baseResult: AuditResult = {
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value))
 
 /** 所有数据与写入均留在当前预览实例的内存中，不读取 OA、不调用 AI 或业务接口。 */
-export function createEmbedAuditPreview(scenario: EmbedAuditPreviewScenario, labels: { failure: string; parseError: string; unsupported: string; stages: string[] }) {
+export function createEmbedAuditPreview(scenario: EmbedAuditPreviewScenario, labels: {
+  failure: string; parseError: string; unsupported: string; stages: string[]
+  recheckErrors: Record<'call' | 'empty' | 'json' | 'invalid', string>
+}, options: { autoStart?: boolean; speed?: number } = {}) {
+  const autoStart = !!options.autoStart && !['empty', 'unsupported'].includes(scenario)
+  const speed = Math.min(4, Math.max(0.25, options.speed || 1))
+  const failureKind = ({ recheckCallFailed: 'call', recheckEmpty: 'empty', recheckJsonFailed: 'json', recheckInvalid: 'invalid', retryFailed: 'json' } as Partial<Record<EmbedAuditPreviewScenario, keyof typeof labels.recheckErrors>>)[scenario]
+  const recheckEnabled = !['noRecheck', 'failed', 'parseError', 'unsupported'].includes(scenario)
+  const structured = (value: AuditResult) => ({ recommendation: value.recommendation, overall_score: value.overall_score, confidence: value.confidence, deductions: value.deductions || [], rule_results: copy(value.rule_results), risk_points: copy(value.risk_points), suggestions: copy(value.suggestions) })
+
   const result = copy(baseResult)
-  if (scenario === 'approve') {
+  if (['approve', 'noRecheck', 'recheckChanged', 'recheckUnchanged', 'recheckCallFailed', 'recheckEmpty', 'recheckJsonFailed', 'recheckInvalid', 'retryFailed'].includes(scenario)) {
     result.recommendation = 'approve'; result.overall_score = 96; result.confidence = 98
     result.rule_results.forEach(rule => { rule.passed = true; rule.reason = '申请表与补充材料内容一致，已满足该项审核要求。' })
     result.risk_points = []; result.suggestions = ['建议按已批准的阶段计划推进，并保留验收记录。']
@@ -95,21 +104,49 @@ export function createEmbedAuditPreview(scenario: EmbedAuditPreviewScenario, lab
     result.ai_reasoning += '\n\n' + Array.from({ length: 10 }, (_, i) => `### 补充分析 ${i + 1}：实施阶段核对\n从业务连续性、迁移校验、权限继承与人员培训四个方面检查项目计划。应明确负责人、完成日期和可核对的交付物，避免只描述原则而缺少执行安排。\n\n- 确认切换窗口与回退方案。\n- 保留历史数据核对记录。\n- 在验收前完成业务人员培训。`).join('\n\n')
     result.deep_thinking += '\n\n' + thinking
   }
+  const initial = copy(result)
+  if (scenario === 'recheckChanged') {
+    initial.rule_results[1]!.reason = '已提供初步估算，但正式报价尚未核实，需负责人进一步确认。'
+  }
+  function finishRecheck(source: AuditResult, failure?: keyof typeof labels.recheckErrors, adjusted = false): AuditResult {
+    const completed = copy(source)
+    completed.status = 'completed'
+    delete completed.error_message
+    delete completed.parse_error
+    const original = structured(source)
+    if (failure) {
+      completed.ai_recheck = { enabled: true, status: 'failed', changed: false, original_result: original, error: labels.recheckErrors[failure], duration_ms: 3200 }
+      completed.recheck_output = failure === 'json' ? '{"reuse_original": false, "reason": "继续核对", "final_result":' : failure === 'invalid' ? '{"reuse_original": false, "reason": "调整判断", "final_result": {"overall_score": 76}}' : ''
+      return completed
+    }
+    if (adjusted) {
+      completed.recommendation = 'review'; completed.overall_score = 76
+      completed.rule_results[1] = { ...completed.rule_results[1]!, passed: false, reason: '正式报价尚未核实，投资估算依据仍需负责人确认，不能同时判为已充分核实。' }
+      completed.risk_points = ['投资估算依据仍有待核实，需由负责人确认。']
+      completed.suggestions = ['核实正式报价与估算口径，并保留确认记录。']
+      completed.deductions = [{ item: '投资估算依据待核实', points: 24, reason: '现有判断仍包含未解决的关键疑点。' }]
+    }
+    completed.ai_recheck = { enabled: true, status: 'completed', changed: adjusted, reuse_original: !adjusted, original_result: original, final_result: adjusted ? structured(completed) : undefined, reason: adjusted ? '初审将尚待核实的估算依据判为通过，且给出了高分通过结论。依据初审已有说明修正规则状态、风险和评分，其他项目保持原样。' : undefined, duration_ms: 3200 }
+    completed.recheck_output = JSON.stringify(adjusted ? { reuse_original: false, reason: completed.ai_recheck.reason, final_result: completed.ai_recheck.final_result } : { reuse_original: true }, null, 2)
+    return completed
+  }
+  const finalResult = recheckEnabled ? finishRecheck(initial, failureKind, scenario === 'recheckChanged') : copy(initial)
+  Object.assign(result, finalResult)
+  result.structured_output = JSON.stringify(structured(initial), null, 2)
   if (scenario === 'failed') { result.status = 'failed'; result.error_message = labels.failure }
-  if (scenario === 'parseError') result.parse_error = labels.parseError
-  if (scenario === 'running') result.status = 'reasoning'
+  if (scenario === 'parseError') { result.status = 'failed'; result.parse_error = labels.parseError; result.error_message = labels.parseError }
 
   const context = ref<EmbedContextResponse>({
-    supported: scenario !== 'unsupported', message: labels.unsupported, has_audit: scenario !== 'empty',
+    supported: scenario !== 'unsupported', message: labels.unsupported, has_audit: !autoStart && scenario !== 'empty',
     process: {
       process_id: result.process_id, title: scenario === 'long' ? '跨区域业务协同与统一身份认证平台建设项目立项申请流程－一期基础能力升级及历史数据迁移专项' : '协同平台升级项目立项申请－周予安－2026-10-16',
       applicant: scenario === 'long' ? '周予安（项目联合负责人）' : '周予安',
       department: scenario === 'long' ? '企业数字化与业务协同建设中心 · 平台产品及技术管理部' : '企业数字化部',
       process_type: 'project', process_type_label: '项目管理', current_node: scenario === 'long' ? '部门负责人及分管领导联合审批（技术与预算复核）' : '部门负责人审批', submit_time: '2026-10-16T09:15:00+08:00',
     },
-    audit_result: scenario === 'empty' ? null : result, last_audit_at: scenario === 'empty' ? undefined : '2026-10-17T10:28:00+08:00',
+    audit_result: autoStart || scenario === 'empty' ? null : result, last_audit_at: autoStart || scenario === 'empty' ? undefined : '2026-10-17T10:28:00+08:00',
     config_version_no: 3, stale: scenario === 'contentChanged' || scenario === 'bothChanged', config_upgrade_available: scenario === 'stale' || scenario === 'bothChanged', allow_latest_config_rerun: scenario === 'stale' || scenario === 'bothChanged',
-    personal_view: { available: true, has_audit: true, last_audit_at: '2026-10-17T10:29:00+08:00', audit_result: { ...copy(baseResult), id: 'preview-personal', overall_score: 68, recommendation: 'review', confidence: 91, ai_reasoning: '## 我的定制审核\n结合项目执行视角，重点关注预算估算、交付责任与实施风险。\n\n' + reasoning, result_source: 'personal' } },
+    personal_view: { available: true, has_audit: !autoStart, last_audit_at: autoStart ? undefined : '2026-10-17T10:29:00+08:00', audit_result: autoStart ? null : { ...copy(result), id: 'preview-personal', result_source: 'personal' } },
   })
 
   const comments = new Map<string, AuditComment[]>()
@@ -128,30 +165,72 @@ export function createEmbedAuditPreview(scenario: EmbedAuditPreviewScenario, lab
     }
     return comments.get(id)!
   }
-  const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
   let disposed = false
+  const timers = new Map<ReturnType<typeof setTimeout>, () => void>()
+  const pause = (ms: number) => new Promise<void>(resolve => {
+    const timer = setTimeout(() => { timers.delete(timer); resolve() }, ms / speed)
+    timers.set(timer, resolve)
+  })
+  function checkActive() {
+    if (disposed) throw new DOMException('Preview disposed', 'AbortError')
+  }
+  const stageKeys: NonNullable<AuditResult['status']>[] = ['pending', 'assembling', 'reasoning', 'extracting', ...(recheckEnabled ? ['rechecking' as const] : [])]
+  const progressSteps = (stage: string) => stageKeys.map((key, index) => ({ key, label: labels.stages[index] || key, done: index < stageKeys.indexOf(stage as typeof stageKeys[number]), current: key === stage }))
+  function store(completed: AuditResult, personal: boolean) {
+    if (personal) {
+      context.value.personal_view!.audit_result = completed
+      context.value.personal_view!.has_audit = true
+      context.value.personal_view!.last_audit_at = '2026-10-26T14:30:00+08:00'
+    } else {
+      context.value.audit_result = completed
+      context.value.has_audit = true
+      context.value.last_audit_at = '2026-10-26T14:30:00+08:00'
+    }
+  }
+  async function stream(progress: (result: Partial<AuditResult>) => void, field: 'deep_thinking' | 'ai_reasoning' | 'structured_output' | 'recheck_output', text: string, count: number, delay: number) {
+    for (let index = 1; index <= count; index++) {
+      checkActive()
+      const value: Partial<AuditResult> = { [field]: text.slice(0, Math.ceil(text.length * index / count)) }
+      progress(value)
+      await pause(delay)
+    }
+    checkActive()
+  }
   const preview: EmbedAuditPreview = {
     context,
+    autoStart,
     async execute(progress, personal, latest) {
-      const completed = copy(personal ? context.value.personal_view!.audit_result! : context.value.audit_result || baseResult)
-      completed.status = 'completed'; delete completed.error_message; delete completed.parse_error
+      const completed = copy(result)
       completed.id = `preview-${personal ? 'personal' : 'standard'}-${++nextId}`
+      if (personal) completed.result_source = 'personal'
       if (latest) { context.value.config_version_no = 4; completed.config_version_no = 4; context.value.config_upgrade_available = false; context.value.stale = false }
-      const stages = ['assembling', 'reasoning', 'extracting'] as const
-      for (let i = 0; i < stages.length; i++) {
-        if (disposed) return completed
-        progress({ status: stages[i], progress_steps: stages.map((key, n) => ({ key, label: labels.stages[n] || key, done: n < i, current: n === i })) })
-        await pause(650)
-        if (i === 1) {
-          for (let chunk = 1; chunk <= 8; chunk++) {
-            if (disposed) return completed
-            progress({ ai_reasoning: completed.ai_reasoning.slice(0, Math.ceil(completed.ai_reasoning.length * chunk / 8)), deep_thinking: (completed.deep_thinking || '').slice(0, Math.ceil((completed.deep_thinking || '').length * chunk / 8)) })
-            await pause(230)
-          }
+      for (const stage of stageKeys) {
+        checkActive()
+        progress({ id: completed.id, status: stage, progress_steps: progressSteps(stage), ...(stage === 'pending' ? { ai_reasoning: '', deep_thinking: '', structured_output: '', recheck_output: '', ai_recheck: recheckEnabled ? { enabled: true, status: 'running' } : undefined } : {}) })
+        await pause(stage === 'pending' ? 500 : 700)
+        if (stage === 'reasoning') {
+          await stream(progress, 'deep_thinking', completed.deep_thinking || '', 16, 90)
+          await stream(progress, 'ai_reasoning', completed.ai_reasoning, 32, 125)
         }
+        if (stage === 'extracting') await stream(progress, 'structured_output', scenario === 'parseError' ? '{"recommendation":' : completed.structured_output || '', 24, 90)
+        if (stage === 'rechecking') await stream(progress, 'recheck_output', completed.recheck_output || '', 24, 100)
       }
-      if (personal) context.value.personal_view!.audit_result = completed
-      else { context.value.audit_result = completed; context.value.has_audit = true }
+      checkActive()
+      completed.progress_steps = stageKeys.map((key, index) => ({ key, label: labels.stages[index] || key, done: true, current: false }))
+      store(completed, personal)
+      return completed
+    },
+    async retryRecheck(progress, current, personal) {
+      const source = { ...copy(initial), id: current.id, config_version_no: current.config_version_no, result_source: current.result_source }
+      const completed = finishRecheck(source, scenario === 'retryFailed' ? failureKind : undefined, scenario === 'recheckChanged')
+      completed.structured_output = current.structured_output
+      completed.duration_ms = current.duration_ms + 3200
+      progress({ ...current, status: 'rechecking', ai_recheck: { ...current.ai_recheck, status: 'running', error: undefined }, recheck_output: '', progress_steps: progressSteps('rechecking') })
+      await pause(650)
+      await stream(progress, 'recheck_output', completed.recheck_output || '', 30, 120)
+      checkActive()
+      completed.progress_steps = stageKeys.map((key, index) => ({ key, label: labels.stages[index] || key, done: true, current: false }))
+      store(completed, personal)
       return completed
     },
     feedbackApi: {
@@ -178,5 +257,5 @@ export function createEmbedAuditPreview(scenario: EmbedAuditPreviewScenario, lab
       },
     },
   }
-  return { preview, dispose: () => { disposed = true } }
+  return { preview, dispose: () => { disposed = true; for (const [timer, resolve] of timers) { clearTimeout(timer); resolve() }; timers.clear() } }
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CloseOutlined, ThunderboltOutlined, DesktopOutlined, MobileOutlined, ExpandOutlined } from '@ant-design/icons-vue'
+import { CloseOutlined, ThunderboltOutlined, DesktopOutlined, MobileOutlined, ExpandOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { embedAuditPreviewKey } from '~/utils/embedAuditPreview'
 import { createEmbedAuditPreview, embedAuditPreviewScenarios, type EmbedAuditPreviewScenario } from '~/utils/embedAuditFixtures'
 
@@ -8,18 +8,22 @@ definePageMeta({ layout: false })
 const route = useRoute()
 const { t } = useI18n()
 const canvas = route.query.canvas === '1'
-const initialScenario = String(route.query.scenario || 'return')
+const initialScenario = String(route.query.scenario || 'recheckJsonFailed')
 const scenario = ref<EmbedAuditPreviewScenario>(embedAuditPreviewScenarios.includes(initialScenario as EmbedAuditPreviewScenario) ? initialScenario as EmbedAuditPreviewScenario : 'return')
 const width = ref(900)
 const closed = ref(false)
-const frameUrl = computed(() => `/embed/audit-preview?canvas=1&scenario=${scenario.value}`)
+const playback = ref(route.query.mode === 'result' ? 'result' : 'flow')
+const speed = ref(Number(route.query.speed) || 1)
+const replay = ref(0)
+const frameUrl = computed(() => `/embed/audit-preview?canvas=1&scenario=${scenario.value}&mode=${playback.value}&speed=${speed.value}&run=${replay.value}`)
 const options = computed(() => embedAuditPreviewScenarios.map(value => ({ value, label: t(`embed.preview.scenario.${value}`) })))
 
 if (canvas) {
   const fixture = createEmbedAuditPreview(scenario.value, {
     failure: t('embed.preview.mockFailure'), parseError: t('embed.preview.mockParseError'), unsupported: t('embed.preview.mockUnsupported'),
-    stages: [t('embed.auditProgress.assembling'), t('embed.auditProgress.reasoning'), t('embed.auditProgress.extracting')],
-  })
+    stages: [t('embed.auditProgress.pending'), t('embed.auditProgress.assembling'), t('embed.auditProgress.reasoning'), t('embed.auditProgress.extracting'), t('recheck.title')],
+    recheckErrors: { call: t('embed.preview.recheckError.call'), empty: t('embed.preview.recheckError.empty'), json: t('embed.preview.recheckError.json'), invalid: t('embed.preview.recheckError.invalid') },
+  }, { autoStart: playback.value === 'flow' || scenario.value === 'running', speed: speed.value })
   provide(embedAuditPreviewKey, fixture.preview)
   onBeforeUnmount(fixture.dispose)
 }
@@ -43,12 +47,17 @@ useHead({ title: t('embed.preview.title') })
       </div>
       <label class="preview-width"><input v-model.number="width" type="range" min="320" max="1200" step="10" :aria-label="t('embed.preview.viewport')" /><span>{{ width }} px</span></label>
       <label class="preview-scenario"><span>{{ t('embed.preview.scenarioLabel') }}</span><select v-model="scenario"><option v-for="option in options" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
+      <div class="preview-playback">
+        <label><span>{{ t('embed.preview.playback') }}</span><select v-model="playback"><option value="flow">{{ t('embed.preview.fullFlow') }}</option><option value="result">{{ t('embed.preview.resultOnly') }}</option></select></label>
+        <label><span>{{ t('embed.preview.speed') }}</span><select v-model.number="speed"><option :value="0.5">0.5×</option><option :value="1">1×</option><option :value="2">2×</option><option :value="4">4×</option></select></label>
+        <button type="button" @click="closed = false; replay++"><ReloadOutlined />{{ t('embed.preview.replay') }}</button>
+      </div>
     </div>
     <main class="preview-stage">
       <div class="preview-dialog" :style="{ width: `${width}px` }">
         <div class="preview-dialog-header"><strong>{{ t('embed.preview.dialogTitle') }}</strong><span>{{ t('embed.preview.advisory') }}</span><button type="button" :aria-label="t('embed.preview.close')" @click="closed = true"><CloseOutlined /></button></div>
         <div v-if="closed" class="preview-closed"><ThunderboltOutlined /><p>{{ t('embed.preview.closed') }}</p><button type="button" @click="closed = false">{{ t('embed.preview.reopen') }}</button></div>
-        <iframe v-else :key="scenario" :src="frameUrl" :title="t('embed.preview.frameTitle')" />
+        <iframe v-else :key="frameUrl" :src="frameUrl" :title="t('embed.preview.frameTitle')" />
       </div>
     </main>
     <footer class="preview-footer"><span>{{ t('embed.preview.interactions') }}</span><a :href="frameUrl" target="_blank" rel="noopener">{{ t('embed.preview.openStandalone') }} ↗</a></footer>
@@ -73,6 +82,10 @@ useHead({ title: t('embed.preview.title') })
 .preview-width span { min-width: 55px; color: var(--color-text-tertiary); font-size: 11px; font-variant-numeric: tabular-nums; }
 .preview-scenario { display: flex; align-items: center; gap: 8px; margin-left: auto; font-size: 12px; color: var(--color-text-secondary); }
 .preview-scenario select { max-width: 100%; padding: 6px 28px 6px 9px; border: 1px solid var(--color-border-light); border-radius: 7px; background: var(--color-bg-card); color: var(--color-text-primary); font: inherit; }
+.preview-playback { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; width: 100%; padding-top: 10px; border-top: 1px solid var(--color-border-light); font-size: 12px; color: var(--color-text-secondary); }
+.preview-playback label { display: inline-flex; align-items: center; gap: 8px; }
+.preview-playback select { padding: 5px 8px; border: 1px solid var(--color-border-light); border-radius: 7px; background: var(--color-bg-card); color: var(--color-text-primary); font: inherit; }
+.preview-playback button { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 6px 12px; border: 0; border-radius: 7px; background: var(--color-primary-bg); color: var(--color-primary); font: inherit; cursor: pointer; }
 .preview-stage { min-height: 0; flex: 1; display: flex; justify-content: center; padding: 20px 20px 12px; }
 .preview-dialog { max-width: 100%; min-width: 0; height: 100%; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #dfe4ec; border-radius: 16px; box-shadow: 0 10px 36px rgb(31 41 55 / 8%), 0 1px 3px rgb(31 41 55 / 3%); background: var(--color-bg-page); transition: width 240ms cubic-bezier(.2,.8,.2,1); }
 .preview-dialog-header { display: flex; align-items: center; gap: 10px; flex-shrink: 0; padding: 12px 16px; border-bottom: 1px solid var(--color-border-light); background: var(--color-bg-card); }
