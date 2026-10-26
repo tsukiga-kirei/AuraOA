@@ -173,6 +173,22 @@ func (h *AuditHandler) Execute(c *gin.Context) {
 	response.Success(c, result)
 }
 
+// RetryRecheck 为失败复核创建独立任务，返回新任务 ID；沿用原任务权限和输入快照。
+// POST /api/embed/jobs/:id/recheck，路径参数 id 为原审核任务 UUID。
+func (h *AuditHandler) RetryRecheck(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "任务 ID 无效")
+		return
+	}
+	result, err := h.auditService.RetryRecheck(c, id)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, response.Response{Code: 0, Message: "accepted", Data: result})
+}
+
 // GetJobStatus 查询审核异步任务的当前状态。
 // GET /api/audit/jobs/:id
 // 路径参数：id（任务 UUID）

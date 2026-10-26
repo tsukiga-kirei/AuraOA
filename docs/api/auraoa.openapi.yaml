@@ -7182,6 +7182,35 @@ paths:
           type: string
           format: uuid
         description: 资源 ID
+  /api/embed/jobs/{id}/recheck:
+    post:
+      summary: 仅重新执行失败复核
+      description: 沿用嵌入任务租户及个人 OA 操作人权限，创建新复核任务，复用原初审、绑定规则和输入，不重新取 OA 或解析附件。ai_recheck.retry_only=true，source_log_id 指向最初任务。已有对应渠道任务运行时返回409；原输入快照缺失或任务不可重试时返回400。
+      tags: [Embed]
+      security:
+      - embedToken: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      responses:
+        '202':
+          description: 已入队，data.id 为新任务 ID，使用现有轮询及 SSE
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: {type: integer, example: 0}
+                  message: {type: string, example: accepted}
+                  data: {$ref: '#/components/schemas/JobStatus'}
+        '400':
+          description: 无完整初审、绑定版本或所需输入快照，不可独立复核
+        '403':
+          description: 无权访问原任务
+        '409':
+          description: 流程已有对应渠道任务正在创建或执行
   /api/embed/stream/{id}:
     get:
       summary: 嵌入审核 SSE 流式输出
@@ -10681,4 +10710,4 @@ components:
     FeedbackMemoryInputPreview: {"type":"object","properties":{"system_prompt":{"type":"string"},"user_prompt":{"type":"string"},"base_version_id":{"type":"string","format":"uuid","nullable":true}}}
 
     AIRecheckConfig: {"type": "object", "description": "随配置版本保存，缺省关闭；默认要求按当前审核尺度选择，用户可编辑。默认输入rules及initial_result；其他变量仅显式引用时传入。", "properties": {"enabled": {"type": "boolean", "default": false}, "system_prompt": {"type": "string", "maxLength": 100000}, "user_prompt": {"type": "string", "maxLength": 100000}}}
-    AIRecheckRecord: {"type": "object", "description": "复核留痕；只有成功且业务内容实际变化时显示最终调整模块。沿用或无变化直接采用初审，格式失败仍使任务失败。", "properties": {"status": {"type": "string", "enum": ["running", "completed", "failed", "cancelled"]}, "changed": {"type": "boolean"}, "reason": {"type": "string"}, "error": {"type": "string"}, "duration_ms": {"type": "integer", "format": "int64"}, "original_result": {"type": "object", "additionalProperties": true}, "final_result": {"type": "object", "additionalProperties": true}, "reuse_original": {"type": "boolean", "description": "采用初审结果；为true时不重存最终副本，不显示最终复核卡片"}, "enabled": {"type": "boolean", "description": "入队时记录的复核计划标记"}}}
+    AIRecheckRecord: {"type": "object", "description": "复核留痕；复核失败采用有效初审，保留失败状态与原因。嵌入页签显示沿用初审、已调整或复核未完成。", "properties": {"retry_only": {"type": "boolean", "description": "本任务仅重新执行复核"}, "source_log_id": {"type": "string", "format": "uuid", "description": "独立重试的最初审核任务 ID"}, "status": {"type": "string", "enum": ["running", "completed", "failed", "cancelled"]}, "changed": {"type": "boolean"}, "reason": {"type": "string"}, "error": {"type": "string"}, "duration_ms": {"type": "integer", "format": "int64"}, "original_result": {"type": "object", "additionalProperties": true}, "final_result": {"type": "object", "additionalProperties": true}, "reuse_original": {"type": "boolean", "description": "采用初审结果，为true时不重存最终副本；失败时配合status=failed，不表示复核成功"}, "enabled": {"type": "boolean", "description": "入队时记录的复核计划标记"}}}

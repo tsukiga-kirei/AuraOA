@@ -1,6 +1,7 @@
 /**
  * 英文翻译*/
 export default {
+  'admin.ruleConfig.publishSelectionChanged': 'The selected configuration changed while saving or publishing. Select it again before publishing.',
   'recheck.panel.adjusted': 'Adjusted',
   'recheck.panel.reused': 'Initial result retained',
   'recheck.panel.fallback': 'The initial result is displayed and used. This recheck returned no valid result. You can retry the recheck.',
@@ -1378,7 +1379,7 @@ export default {
 	'executionConfig.statusUnavailable': 'Version status unavailable',
 	'executionConfig.publishVersion': 'Publish New Version',
 	'executionConfig.publishConfirmTitle': 'Publish New Version',
-	'executionConfig.publishConfirmContent': 'Freeze the currently saved settings and rules into a new version and set as active. Confirm?',
+	'executionConfig.publishConfirmContent': 'Unsaved changes will be saved before publishing. If the content is unchanged, the existing version will be retained. Publish now?',
 	'executionConfig.historyTitle': 'Version Management & History',
 	'executionConfig.viewHistory': 'Versions',
 	'executionConfig.noHistory': 'No version history recorded',

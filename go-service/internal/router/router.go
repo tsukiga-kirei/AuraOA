@@ -417,6 +417,7 @@ func SetupRouter(
 		embed.GET("/context", auditHandler.GetEmbedContext)
 		embed.POST("/execute", auditHandler.ExecuteEmbed)
 		embed.GET("/jobs/:id", auditHandler.GetJobStatus)
+		embed.POST("/jobs/:id/recheck", auditHandler.RetryRecheck)
 		embed.GET("/stream/:id", auditHandler.GetJobStream)
 
 		embed.GET("/summary/context", summaryHandler.GetEmbedContext)

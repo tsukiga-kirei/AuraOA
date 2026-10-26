@@ -2,6 +2,7 @@
  * 简体中文翻译
  */
 export default {
+  'admin.ruleConfig.publishSelectionChanged': '保存或发布期间切换了配置，请重新选择后发布。',
   'recheck.panel.adjusted': '已调整',
   'recheck.panel.reused': '沿用初审',
   'recheck.panel.fallback': '当前展示并采用初审结果。本次复核未返回有效结果，你可以重新复核。',
@@ -1379,7 +1380,7 @@ export default {
 	'executionConfig.statusUnavailable': '版本状态暂不可用',
 	'executionConfig.publishVersion': '发布新版本',
 	'executionConfig.publishConfirmTitle': '发布新版本',
-	'executionConfig.publishConfirmContent': '将当前已保存的规则与配置固化为新版本，并设为当前可用版本。确认发布？',
+	'executionConfig.publishConfirmContent': '如有未保存的修改，将先保存，再发布为当前可用版本；内容未变化时沿用现有版本。确认发布？',
 	'executionConfig.historyTitle': '版本管理与历史记录',
 	'executionConfig.viewHistory': '版本管理',
 	'executionConfig.noHistory': '暂无历史版本记录',

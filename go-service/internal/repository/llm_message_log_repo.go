@@ -282,6 +282,19 @@ type LLMLogDetailWithPayload struct {
 	ResponseContent  string `json:"response_content"`
 }
 
+// GetReasoningPayload 读取本租户原审核分析请求，用于独立复核复用当次材料。
+func (r *LLMMessageLogRepo) GetReasoningPayload(c *gin.Context, businessLogID uuid.UUID, module string) (*model.TenantLLMMessagePayload, error) {
+	var log model.TenantLLMMessageLog
+	if err := r.WithTenant(c).Where("business_log_id = ? AND request_type = ? AND call_type = ?", businessLogID, module, "reasoning").Order("created_at DESC").First(&log).Error; err != nil {
+		return nil, err
+	}
+	var payload model.TenantLLMMessagePayload
+	if err := r.WithTenant(c).Where("llm_message_log_id = ?", log.ID).First(&payload).Error; err != nil {
+		return nil, err
+	}
+	return &payload, nil
+}
+
 // llmRequestType 将历史规则导入从审核/归档统计中剥离，不改写历史原始记录。
 func llmRequestType(table string) string {
 	return "CASE WHEN " + table + ".process_id LIKE 'rule-import:%' AND " + table + ".request_type IN ('audit','archive') THEN 'rule_assist' ELSE " + table + ".request_type END"

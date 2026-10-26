@@ -35,8 +35,8 @@ const visibleStages = computed(() => definitions.value.filter(item => item.text 
 </script>
 
 <template>
-  <div class="review-stage-streams">
-    <section v-for="stage in visibleStages" :key="stage.key" class="review-stage">
+  <div class="review-stage-streams" :class="{ 'review-stage-streams--page-flow': pageFlow }">
+    <section v-for="stage in visibleStages" :key="stage.key" class="review-stage" :class="{ 'review-stage--expanded': isExpanded(stage.key) }">
       <button type="button" class="review-stage__toggle" :aria-expanded="isExpanded(stage.key)" @click="toggle(stage.key)">
         <span class="review-stage__title"><component :is="stage.icon" />{{ stage.title }}</span>
         <span class="review-stage__action"><LoadingOutlined v-if="latest === stage.key" spin /><DownOutlined :class="{ 'review-stage__arrow--open': isExpanded(stage.key) }" /></span>
@@ -59,4 +59,8 @@ const visibleStages = computed(() => definitions.value.filter(item => item.text 
 .review-stage__body { padding:0 12px 12px; text-align:left; }
 .review-stage__body :deep(.ai-stream) { margin:0; border:0; }
 .review-stage__toggle:focus-visible { outline:2px solid var(--color-primary); outline-offset:-2px; }
+.review-stage-streams--page-flow .review-stage { overflow:visible; border-radius:12px; }
+.review-stage-streams--page-flow .review-stage__toggle { position:sticky; top:0; z-index:4; border-radius:12px; background:var(--color-bg-card); }
+.review-stage-streams--page-flow .review-stage--expanded .review-stage__toggle { border-radius:12px 12px 0 0; box-shadow:0 3px 8px rgb(15 23 42 / 3%); }
+.review-stage-streams--page-flow .review-stage__body { border-radius:0 0 12px 12px; }
 </style>

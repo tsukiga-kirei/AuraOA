@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -142,6 +143,13 @@ func runAIRecheck(c *gin.Context, caller recheckModelCaller, tenantID, userID uu
 	}
 	record := &model.AIRecheckRecord{Status: "running", OriginalResult: initial}
 	if err := c.Request.Context().Err(); err != nil {
+		if err == context.DeadlineExceeded {
+			record.Status, record.ReuseOriginal, record.Error = "failed", true, "AI复核未完成：执行超时"
+			if saveErr := persist(record); saveErr != nil {
+				return nil, record, saveErr
+			}
+			return initial, record, nil
+		}
 		return nil, record, err
 	}
 	if err := persist(record); err != nil {
@@ -200,8 +208,9 @@ func runAIRecheck(c *gin.Context, caller recheckModelCaller, tenantID, userID uu
 	}
 	if err != nil {
 		record.Status = "failed"
+		record.ReuseOriginal = true
 		record.Error = "AI复核未完成：" + err.Error()
-		if c.Request.Context().Err() != nil {
+		if c.Request.Context().Err() == context.Canceled {
 			record.Status = "cancelled"
 			record.Error = "AI复核已取消或超时"
 		}
@@ -212,7 +221,7 @@ func runAIRecheck(c *gin.Context, caller recheckModelCaller, tenantID, userID uu
 	if saveErr := persist(record); saveErr != nil {
 		return nil, record, saveErr
 	}
-	if err != nil {
+	if err != nil && c.Request.Context().Err() == context.Canceled {
 		return nil, record, fmt.Errorf("AI复核未完成，请重新执行：%w", err)
 	}
 	if record.ReuseOriginal {

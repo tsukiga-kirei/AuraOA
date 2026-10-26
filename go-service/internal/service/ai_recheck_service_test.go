@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/ai"
@@ -17,15 +18,23 @@ import (
 )
 
 type fakeRecheckCaller struct {
-	calls    int
-	req      *ai.ChatRequest
-	response string
-	err      error
+	calls       int
+	req         *ai.ChatRequest
+	response    string
+	err         error
+	nilResponse bool
+	onCall      func()
 }
 
 func (f *fakeRecheckCaller) ChatWithFallback(_ *gin.Context, _ uuid.UUID, _ uuid.UUID, _ *model.AIModelConfig, _ *model.AIModelConfig, req *ai.ChatRequest) (*ai.ChatResponse, error) {
 	f.calls++
 	f.req = req
+	if f.onCall != nil {
+		f.onCall()
+	}
+	if f.nilResponse {
+		return nil, f.err
+	}
 	return &ai.ChatResponse{Content: f.response}, f.err
 }
 
@@ -110,6 +119,8 @@ func TestAIRecheckVariableSelection(t *testing.T) {
 func TestAIRecheckFailuresKeepInitial(t *testing.T) {
 	for name, caller := range map[string]*fakeRecheckCaller{
 		"调用失败":   {err: errors.New("模型不可用")},
+		"空响应":    {response: ""},
+		"无响应对象":  {nilResponse: true},
 		"格式错误":   {response: "不是JSON"},
 		"缺少完整结果": {response: `{"reuse_original":false,"reason":"维持","final_result":{}}`},
 		"分数结论矛盾": {response: `{"reuse_original":false,"reason":"调整","final_result":` + strings.Replace(finalAuditRecheck, `"review"`, `"approve"`, 1) + `}`},
@@ -120,10 +131,34 @@ func TestAIRecheckFailuresKeepInitial(t *testing.T) {
 			c.Request = httptest.NewRequest("POST", "/", nil)
 			var saved *model.AIRecheckRecord
 			out, record, err := runAIRecheck(c, caller, uuid.New(), uuid.New(), nil, nil, &model.AIRecheckConfig{Enabled: true}, &ai.ChatRequest{RequestType: "audit"}, "分析", json.RawMessage(initialAuditRecheck), false, func(r *model.AIRecheckRecord) error { saved = r; return nil })
-			if err == nil || out != nil || saved.Status != "failed" || len(record.FinalResult) != 0 || string(record.OriginalResult) != initialAuditRecheck {
-				t.Fatal("复核失败不能发布最终结论或丢失初审")
+			if err != nil || string(out) != initialAuditRecheck || saved.Status != "failed" || !record.ReuseOriginal || record.Changed || record.Error == "" || len(record.FinalResult) != 0 || string(record.OriginalResult) != initialAuditRecheck {
+				t.Fatal("复核失败应采用初审，并明确保留失败原因而非标记复核成功")
 			}
 		})
+	}
+}
+
+func TestAIRecheckDeadlineFallsBackButCancellationDoesNotPublish(t *testing.T) {
+	for _, cancelled := range []bool{false, true} {
+		ctx, cancel := context.WithCancel(context.Background())
+		if !cancelled {
+			ctx, cancel = context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+		}
+		defer cancel()
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest("POST", "/", nil).WithContext(ctx)
+		caller := &fakeRecheckCaller{response: `{"reuse_original":true}`}
+		if cancelled {
+			caller.onCall = cancel
+		}
+		out, record, err := runAIRecheck(c, caller, uuid.New(), uuid.New(), nil, nil, &model.AIRecheckConfig{Enabled: true}, &ai.ChatRequest{RequestType: "audit"}, "", json.RawMessage(initialAuditRecheck), false, func(*model.AIRecheckRecord) error { return nil })
+		if cancelled {
+			if err == nil || out != nil || record.Status != "cancelled" {
+				t.Fatal("主动取消不得发布迟到结果")
+			}
+		} else if err != nil || string(out) != initialAuditRecheck || record.Status != "failed" || !record.ReuseOriginal || caller.calls != 0 {
+			t.Fatal("已有初审时，复核超时应保留初审并标记未完成")
+		}
 	}
 }
 

@@ -11,6 +11,8 @@ type AIRecheckConfig struct {
 
 // AIRecheckRecord 保留初审和最终结果，调用失败不等于业务不通过。
 type AIRecheckRecord struct {
+	RetryOnly      bool            `json:"retry_only,omitempty"`
+	SourceLogID    string          `json:"source_log_id,omitempty"`
 	Status         string          `json:"status"`
 	Changed        bool            `json:"changed"`
 	ReuseOriginal  bool            `json:"reuse_original,omitempty"`

@@ -130,5 +130,11 @@ export const useEmbedApi = () => {
     return await waitAuditJob(submit.id, onProgress)
   }
 
-  return { getContext, executeEmbed, waitAuditJob }
+  async function retryRecheck(jobId: string, onProgress?: (st: AuditResult) => void): Promise<AuditResult> {
+    const submit = await embedFetch<AuditResult>(`/api/embed/jobs/${encodeURIComponent(jobId)}/recheck`, { method: 'POST' })
+    onProgress?.(submit)
+    return await waitAuditJob(submit.id!, onProgress)
+  }
+
+  return { getContext, executeEmbed, waitAuditJob, retryRecheck }
 }

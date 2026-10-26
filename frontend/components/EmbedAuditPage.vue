@@ -25,7 +25,7 @@ const auditPageId = useId()
 useEmbedAuditScrollbars()
 
 const { t } = useI18n()
-const { getContext, executeEmbed } = useEmbedApi()
+const { getContext, executeEmbed, retryRecheck } = useEmbedApi()
 const { setupEmbedSession } = useEmbedSession()
 
 type AuditProgressStep = NonNullable<AuditResult['progress_steps']>[number]
@@ -96,8 +96,12 @@ const isResultAsyncRunning = (r: AuditResult | null) =>
 const isAuditingActive = computed(
   () => auditing.value || !!(currentResult.value && isResultAsyncRunning(currentResult.value)),
 )
+const isRecheckOnlyRunning = computed(() => retryingRecheck.value || (isAuditingActive.value && !!currentResult.value?.ai_recheck?.retry_only))
 
 const filteredProgressSteps = computed((): AuditProgressStep[] => {
+  if (isRecheckOnlyRunning.value) {
+    return [...DEFAULT_PROGRESS_STEPS.filter(s => s.key !== 'pending').map(s => ({ ...s, done: true, current: false })), { key: 'rechecking', label: t('recheck.title'), current: true }]
+  }
   const steps = currentResult.value?.progress_steps
   if (!steps?.length) {
     if (currentResult.value?.status === 'rechecking') return [...DEFAULT_PROGRESS_STEPS.map(s => ({ ...s, done: true, current: false })), { key: 'rechecking', label: t('recheck.title'), current: true }]
@@ -191,6 +195,7 @@ const mergeAuditProgress = (st: Partial<AuditResult>) => {
   const oldReasoning = currentResult.value?.ai_reasoning || ''
   const oldThinking = currentResult.value?.deep_thinking || ''
   currentResult.value = { ...currentResult.value, ...st } as AuditResult
+  if (isRecheckOnlyRunning.value && isResultAsyncRunning(currentResult.value)) currentResult.value.status = 'rechecking'
   const nextReasoning = currentResult.value?.ai_reasoning || ''
   const nextThinking = currentResult.value?.deep_thinking || ''
   if (oldReasoning.length > nextReasoning.length && currentResult.value) {
@@ -376,20 +381,33 @@ async function runAudit(trigger: 'embed_auto' | 'embed_manual', useLatestConfig 
   }
 }
 
-// 预览复用正式进度与流式组件，单独复核仅从最后一步开始；尚不调用生产重试接口。
-async function runRecheckPreview() {
-  if (!preview || !currentResult.value || auditing.value) return
+// 独立复核沿用当次初审和规则版本，预览与生产共用最后一步的加载状态。
+async function runRecheck() {
+  if (!currentResult.value?.id || auditing.value) return
   const original = currentResult.value
+  disconnectStream()
   auditing.value = true
   retryingRecheck.value = true
+  let accepted = false
+  currentResult.value = { ...original, status: 'rechecking', ai_recheck: { ...original.ai_recheck, status: 'running', retry_only: true }, recheck_output: '', structured_output: '' }
+  publishStatusToParent()
   try {
-    const result = await preview.retryRecheck(mergeAuditProgress, original, activePerspective.value === 'personal')
+    const result = preview ? await preview.retryRecheck(mergeAuditProgress, original, activePerspective.value === 'personal') : await retryRecheck(original.id!, st => {
+      accepted = true
+      mergeAuditProgress(st)
+      startSSE(st.id)
+    })
     mergeAuditProgress(result)
+    await refreshContext(false, true)
   } catch (e: any) {
+    if (!accepted) currentResult.value = original
+    else await refreshContext(false, true)
     if (e?.name !== 'AbortError') message.error(extractEmbedErrorMessage(e, t('embed.auditFailed')))
   } finally {
     auditing.value = false
     retryingRecheck.value = false
+    publishStatusToParent()
+    disconnectStream()
   }
 }
 
@@ -670,7 +688,7 @@ onBeforeUnmount(() => {
 
         <div v-if="isAuditingActive" class="embed-auditing-center">
           <a-spin size="large" />
-          <p class="embed-auditing-title">{{ t(retryingRecheck ? 'recheck.status.running' : 'dashboard.aiAnalyzing') }}</p>
+          <p class="embed-auditing-title">{{ t(isRecheckOnlyRunning ? 'recheck.status.running' : 'dashboard.aiAnalyzing') }}</p>
           <div class="async-progress-steps">
             <div
               v-for="s in filteredProgressSteps"
@@ -791,8 +809,7 @@ onBeforeUnmount(() => {
               max-height="320px"
             ><template #icon><ExperimentOutlined /></template></ResultReasoningPanel>
 
-            <ResultRecheckPanel v-if="preview && currentResult.ai_recheck" :record="currentResult.ai_recheck" :output="currentResult.recheck_output" :retrying="retryingRecheck" :expanded="activePanelExpansion.recheck ?? false" @update:expanded="value => setPanelExpansion('recheck', value)" @retry="runRecheckPreview" />
-            <AIRecheckResult v-else :record="currentResult.ai_recheck" :task-status="currentResult.status" />
+            <ResultRecheckPanel v-if="currentResult.ai_recheck?.status" :record="currentResult.ai_recheck" :output="currentResult.recheck_output" :retrying="retryingRecheck" :expanded="activePanelExpansion.recheck ?? false" @update:expanded="value => setPanelExpansion('recheck', value)" @retry="runRecheck" />
           </div>
         </template>
 

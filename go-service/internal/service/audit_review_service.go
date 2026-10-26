@@ -375,6 +375,9 @@ func (s *AuditExecuteService) markAuditFailedOrTimeout(c *gin.Context, tenantID,
 	if err == nil {
 		return
 	}
+	if c.Request.Context().Err() != context.Canceled && !errors.Is(err, context.Canceled) && s.recoverAuditRecheckFailure(tenantID, id, err) {
+		return
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		_ = s.markAuditFailedDB(tenantID, id, "审核任务执行超时（请重新发起）")
 		return
@@ -590,6 +593,14 @@ func (s *AuditExecuteService) processAuditJob(
 	fieldSet := configSnapshot.FieldSet
 	mergedRulesText := configSnapshot.MergedRules
 	rules := configSnapshot.EffectiveRules
+	var recheckJob model.AIRecheckRecord
+	if json.Unmarshal(log.AIRecheck, &recheckJob) == nil && recheckJob.RetryOnly {
+		if err := s.processAuditRecheckJob(c, log, configSnapshot, aiConfig, modelCfg, fallbackCfg, tenant.MaxTokensPerRequest); err != nil {
+			s.markAuditFailedOrTimeout(c, tenantID, auditLogID, err)
+			return err
+		}
+		return nil
+	}
 
 	n, err := s.updateAuditLogIfNotCancelled(tenantID, auditLogID, map[string]interface{}{
 		"status":     model.JobStatusAssembling,
@@ -1175,6 +1186,10 @@ func (s *AuditExecuteService) GetAuditJobStatus(c *gin.Context, id uuid.UUID) (m
 	out := buildAuditResultFromLog(log)
 	out["updated_at"] = apptime.FormatRFC3339(log.UpdatedAt)
 	out["progress_steps"] = auditProgressSteps(log.Status, len(log.AIRecheck) > 2)
+	var recheck model.AIRecheckRecord
+	if json.Unmarshal(log.AIRecheck, &recheck) == nil && recheck.RetryOnly && log.Status != model.JobStatusCompleted && log.Status != model.JobStatusFailed && log.Status != model.JobStatusCancelled {
+		out["progress_steps"] = auditProgressSteps(model.JobStatusRechecking, true)
+	}
 	appendReviewStageSnapshots(c.Request.Context(), s.rdb, "audit", id, out)
 	return out, nil
 }

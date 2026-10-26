@@ -57,6 +57,7 @@ POST /api/admin/tenants/:id/embed-token
 | GET | `/api/embed/context?process_id=` | `GET /api/embed/context` |
 | POST | `/api/embed/execute` | `POST /api/embed/execute` |
 | GET | `/api/embed/jobs/:id` | `GET /api/embed/jobs/:id` |
+| POST | `/api/embed/jobs/:id/recheck` | `POST /api/embed/jobs/:id/recheck` |
 | GET | `/api/embed/stream/:id` | `GET /api/embed/stream/:id` |
 | GET | `/api/embed/summary/context?process_id=` | `GET /api/embed/summary/context` |
 | POST | `/api/embed/summary/execute` | `POST /api/embed/summary/execute` |
@@ -66,6 +67,17 @@ POST /api/admin/tenants/:id/embed-token
 ---
 
 ## Go 接口
+
+### 重新复核
+
+`POST /api/embed/jobs/:id/recheck`，无需请求体；沿用嵌入令牌、任务租户及个人任务 OA 操作人权限检查。
+只允许复核失败且保留完整初审与绑定版本的任务。返回 `202`，`data.id` 为新复核任务 ID、`status=pending`、`ai_recheck.retry_only=true`。
+使用现有任务轮询及 SSE 获取进度，前三步已完成，只加载最后一步复核。不会重新查询 OA、解析附件、调用初审/提取或切换规则版本。
+新任务保留原渠道和个人视角，`ai_recheck.source_log_id` 指向最初审核记录；已完成的原任务保持不变。
+同一流程已有对应渠道任务执行时返回 `409`。自定义提示词引用原始输入但调用快照已清理时返回 `400`，提示重新审核。
+
+生产嵌入结果在分析面板之后显示 AI 复核页签：成功无变化标注“沿用初审”，修改标注“已调整”；失败采用初审，并仅在复核页签标注“复核未完成”，展开可查看原因并重新复核。
+调用错误、空响应、JSON/结构/规则覆盖错误均按复核失败处理；主动取消不发布新结果。
 
 ### 安排后台刷新检查
 
@@ -436,6 +448,6 @@ Cron；服务启动时从该表恢复全部活跃任务。因此配置开启、�
 
 ## 复核和阶段输出展示
 
-嵌入审核沿用本次绑定版本的复核开关和尺度。主结果仍先展示最终分数、结论、规则、风险和建议；辅助内容按深度思考、推理分析、AI 复核的顺序展示，不额外展示初审结构化 JSON 全文。正式结果仅当复核实际修改了业务内容时展示主题适配的调整卡片；沿用初审或无实际变化时，不显示最终复核卡片。预览中的复核状态页签、失败采用初审及独立重试由内存适配器模拟，正式后端待接入。
+嵌入审核沿用本次绑定版本的复核开关和尺度。主结果仍先展示最终分数、结论、规则、风险和建议；辅助内容按深度思考、推理分析、AI 复核的顺序展示，不额外展示初审结构化 JSON 全文。正式结果保留复核状态页签：沿用时标注“沿用初审”，有实际业务变化时标注“已调整”并展开显示调整说明，失败时标注“复核未完成”并允许独立重新复核。生产接口与预览适配器共用相同页面和加载流程。
 
 执行中通过原SSE代理转发 `structured`、`recheck` 累计文本事件，提供结构化和复核输出块；未手动操作的面板随新阶段自动展开、旧阶段自动收起。用户主动展开或收起后，后续阶段与流式更新不再覆盖选择，允许多个面板同时展开。嵌入审核按视角保存本次手动选择，切换到完成态后继续沿用，重新发起完整审核时恢复默认。阶段文本使用原任务权限、重连缓存和轮询补齐机制，不构成额外AI调用，也不能在尚未通过格式校验时发布成正式结论。

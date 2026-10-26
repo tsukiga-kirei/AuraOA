@@ -40,6 +40,7 @@ import {
 import { message, Modal } from 'ant-design-vue'
 import type { ConfigExportModule, RuleConflictStrategy } from '~/types/config-export-import'
 import { applyRuleConflictStrategy } from '~/utils/configExportImportHelper'
+import { configFormFingerprint, publishAfterSavingChanges } from '~/utils/configPublish'
 import { isEmptyFieldSkipped, setEmptyFieldSkipped, setSkipEmptyFields } from '~/utils/fieldTransmission'
 import ConfigExportModal from '~/components/ConfigExportModal.vue'
 import ConfigImportModal from '~/components/ConfigImportModal.vue'
@@ -74,6 +75,16 @@ const customSQLPlaceholder = `仅允许 SELECT，必须使用 ${tableNameSQLVari
 
 function cloneSerializable<T>(value: T): T {
   return JSON.parse(JSON.stringify(toRaw(value))) as T
+}
+
+const savedConfigForms = reactive<Record<ExecutionConfigModule, Record<string, string>>>({ audit: {}, archive: {}, summary: {} })
+function rememberSavedConfigs(module: ExecutionConfigModule, configs: { id: string }[]) {
+  for (const config of configs) savedConfigForms[module][config.id] = configFormFingerprint(module, config)
+}
+function moduleHasUnsavedChanges(module: ExecutionConfigModule) {
+  const config = module === 'audit' ? selectedConfig.value : module === 'archive' ? selectedArchiveConfig.value : selectedSummaryConfig.value
+  return !!config && (savedConfigForms[module][config.id] !== configFormFingerprint(module, config)
+    || (module === 'audit' && auditRulesDirty.value) || (module === 'archive' && archiveRulesDirty.value))
 }
 
 function createDraftRuleID(): string {
@@ -167,11 +178,6 @@ async function handlePublishVersion(module: ExecutionConfigModule) {
   }
   if (!configId) return
 
-  if ((module === 'audit' && auditRulesDirty.value) || (module === 'archive' && archiveRulesDirty.value)) {
-    message.warning(t('admin.ruleConfig.saveRulesBeforePublish'))
-    return
-  }
-
   Modal.confirm({
     title: t('executionConfig.publishConfirmTitle'),
     content: t('executionConfig.publishConfirmContent'),
@@ -183,7 +189,13 @@ async function handlePublishVersion(module: ExecutionConfigModule) {
     onOk: async () => {
       publishingVersion[module] = true
       try {
-        const result = await executionConfigVersionApi.publish(module, configId!)
+        const result = await publishAfterSavingChanges(moduleHasUnsavedChanges(module),
+          () => saveModuleDraft(module, true, configId),
+          async () => {
+            if (selectedModuleConfigId(module) !== configId) throw new Error(t('admin.ruleConfig.publishSelectionChanged'))
+            return await executionConfigVersionApi.publish(module, configId!)
+          })
+        if (!result) return
         versionStatusRefs[module].value = result
         editingVersionNo[module] = null
         message.success(t('admin.ruleConfig.publishSuccess'))
@@ -210,6 +222,7 @@ async function reloadCurrentModuleData(module: ExecutionConfigModule, targetConf
   if (module === 'audit') {
     const configs = await rulesApi.listConfigs()
     const normalized = configs.map(normalizeAuditConfigForUI)
+    rememberSavedConfigs(module, normalized)
     processConfigs.value = targetConfigId
       ? processConfigs.value.map(config => config.id === targetConfigId ? normalized.find(item => item.id === targetConfigId) || config : config)
       : normalized
@@ -225,6 +238,7 @@ async function reloadCurrentModuleData(module: ExecutionConfigModule, targetConf
       ...cfg,
       access_control: typeof normalizeAccessControl === 'function' ? normalizeAccessControl(cfg.access_control) : cfg.access_control,
     }))
+    rememberSavedConfigs(module, normalized)
     archiveConfigs.value = targetConfigId
       ? archiveConfigs.value.map(config => config.id === targetConfigId ? normalized.find(item => item.id === targetConfigId) || config : config)
       : normalized
@@ -237,6 +251,7 @@ async function reloadCurrentModuleData(module: ExecutionConfigModule, targetConf
   } else if (module === 'summary') {
     const summaryList = await summaryApi.listConfigs()
     const normalized = summaryList.map(normalizeSummaryConfigForUI)
+    rememberSavedConfigs(module, normalized)
     summaryConfigs.value = targetConfigId
       ? summaryConfigs.value.map(config => config.id === targetConfigId ? normalized.find(item => item.id === targetConfigId) || config : config)
       : normalized
@@ -1516,6 +1531,7 @@ onMounted(async () => {
   try {
     const configs = await rulesApi.listConfigs()
     processConfigs.value = configs.map(normalizeAuditConfigForUI)
+    rememberSavedConfigs('audit', processConfigs.value)
     if (configs.length > 0) selectedProcessId.value = configs[0].id
   } catch (e) { console.error('[rules] 加载流程配置失败', e) }
   // 加载提示词模板（审核工作台）
@@ -1543,6 +1559,7 @@ onMounted(async () => {
       ...cfg,
       access_control: normalizeAccessControl(cfg.access_control),
     }))
+    rememberSavedConfigs('archive', archiveConfigs.value)
     if (archiveList.length > 0) selectedArchiveId.value = archiveList[0].id
     // 同时加载归档专用提示词模板
     archivePromptTemplates.value = await archiveApi.listPromptTemplates()
@@ -1553,6 +1570,7 @@ onMounted(async () => {
   try {
     const summaryList = await summaryApi.listConfigs()
     summaryConfigs.value = summaryList.map(normalizeSummaryConfigForUI)
+    rememberSavedConfigs('summary', summaryConfigs.value)
     if (summaryConfigs.value.length > 0) selectedSummaryId.value = summaryConfigs.value[0].id
   } catch (e) { console.error('[rules] 加载流程总结配置失败', e) }
   finally { loadingSummary.value = false }
@@ -2459,6 +2477,7 @@ const handleSaveSummaryConfig = async (silent = false): Promise<boolean> => {
     const normalized = normalizeSummaryConfigForUI(updated)
     const idx = summaryConfigs.value.findIndex(c => c.id === cfg.id)
     if (idx >= 0) summaryConfigs.value[idx] = normalized
+    rememberSavedConfigs('summary', [normalized])
     await refreshVersionStatus('summary', cfg.id)
     if (!silent) message.success(t('admin.ruleConfig.summarySaved'))
     return true
@@ -3173,6 +3192,7 @@ const handleSaveArchiveConfig = async (silent = false): Promise<boolean> => {
     })
     const idx = archiveConfigs.value.findIndex(c => c.id === cfg.id)
     if (idx >= 0) archiveConfigs.value[idx] = updated
+    rememberSavedConfigs('archive', [updated])
     originalArchivePerms.value = { ...(cfg.user_permissions as any) }
     const s = updated.ai_config.audit_strictness || 'standard'
     originalSavedArchiveAiConfig[cfg.id] = {
@@ -3327,6 +3347,7 @@ const handleSave = async (silent = false): Promise<boolean> => {
     // 更新本地数据并刷新快照
     const idx = processConfigs.value.findIndex(c => c.id === cfg.id)
     if (idx !== -1) processConfigs.value[idx] = normalizeAuditConfigForUI(updated)
+    rememberSavedConfigs('audit', [normalizeAuditConfigForUI(updated)])
     originalAuditPerms.value = { ...(cfg.user_permissions as any) }
     const s = updated.ai_config.audit_strictness || 'standard'
     originalSavedAuditAiConfig[cfg.id] = {
@@ -3349,12 +3370,15 @@ const handleSave = async (silent = false): Promise<boolean> => {
   }
 }
 
-async function saveModuleDraft(module: ExecutionConfigModule, silent = false): Promise<boolean> {
+async function saveModuleDraft(module: ExecutionConfigModule, silent = false, expectedConfigId?: string): Promise<boolean> {
+  if (expectedConfigId && selectedModuleConfigId(module) !== expectedConfigId) return false
   if (module === 'audit') {
     if (!await handleSave(true)) return false
+    if (expectedConfigId && selectedModuleConfigId(module) !== expectedConfigId) return false
     if (!await persistAuditRuleDrafts(true)) return false
   } else if (module === 'archive') {
     if (!await handleSaveArchiveConfig(true)) return false
+    if (expectedConfigId && selectedModuleConfigId(module) !== expectedConfigId) return false
     if (!await persistArchiveRuleDrafts(true)) return false
   } else if (!await handleSaveSummaryConfig(true)) {
     return false
@@ -3794,7 +3818,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                   <template #icon><SaveOutlined /></template>
                   {{ t('executionConfig.saveLoadedAsDraft') }}
                 </a-button>
-                <a-button size="large" :disabled="auditRulesDirty || publishingVersion.audit || savingHistoricalVersion" @click="handlePublishVersion('audit')">
+                <a-button size="large" :disabled="publishingVersion.audit || savingHistoricalVersion" @click="handlePublishVersion('audit')">
                   <CloudUploadOutlined />
                   {{ t('executionConfig.publishVersion') }}
                 </a-button>
@@ -3808,7 +3832,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                   <template #icon><SaveOutlined /></template>
                   {{ t('admin.ruleConfig.saveConfig') }}
                 </a-button>
-                <a-button size="large" :disabled="auditRulesDirty || publishingVersion.audit || savingAuditRules" @click="handlePublishVersion('audit')">
+                <a-button size="large" :disabled="publishingVersion.audit || savingAuditRules" @click="handlePublishVersion('audit')">
                   <CloudUploadOutlined />
                   {{ t('executionConfig.publishVersion') }}
                 </a-button>
@@ -6014,7 +6038,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                   <template #icon><SaveOutlined /></template>
                   {{ t('executionConfig.saveLoadedAsDraft') }}
                 </a-button>
-                <a-button size="large" :disabled="archiveRulesDirty || publishingVersion.archive || savingHistoricalVersion" @click="handlePublishVersion('archive')">
+                <a-button size="large" :disabled="publishingVersion.archive || savingHistoricalVersion" @click="handlePublishVersion('archive')">
                   <CloudUploadOutlined />
                   {{ t('executionConfig.publishVersion') }}
                 </a-button>
@@ -6028,7 +6052,7 @@ async function saveModuleDraft(module: ExecutionConfigModule, silent = false): P
                   <template #icon><SaveOutlined /></template>
                   {{ t('admin.ruleConfig.saveConfig') }}
                 </a-button>
-                <a-button size="large" :disabled="archiveRulesDirty || publishingVersion.archive || savingArchiveRules" @click="handlePublishVersion('archive')">
+                <a-button size="large" :disabled="publishingVersion.archive || savingArchiveRules" @click="handlePublishVersion('archive')">
                   <CloudUploadOutlined />
                   {{ t('executionConfig.publishVersion') }}
                 </a-button>

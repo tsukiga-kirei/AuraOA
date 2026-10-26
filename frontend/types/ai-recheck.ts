@@ -5,6 +5,8 @@ export interface AIRecheckConfig {
 }
 
 export interface AIRecheckRecord {
+  retry_only?: boolean
+  source_log_id?: string
   enabled?: boolean
   status?: 'running' | 'completed' | 'failed' | 'cancelled'
   changed?: boolean
