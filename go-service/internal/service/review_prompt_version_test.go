@@ -3,6 +3,8 @@ package service
 
 import (
 	"encoding/json"
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -88,4 +90,68 @@ func mustMarshalReviewConfig(t *testing.T, value interface{}) datatypes.JSON {
 		t.Fatal(err)
 	}
 	return datatypes.JSON(raw)
+}
+
+// TestDefaultReviewPromptsMatchReviewedText 验证默认模板、审核稿与实际请求一致，避免隐藏追加或复核缺省值漂移。
+func TestDefaultReviewPromptsMatchReviewedText(t *testing.T) {
+	sql, err := os.ReadFile("../../../db/migrations/000093_review_prompt_scale_requirements.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	review, err := os.ReadFile("../../../docs/reviews/2026-10-26-audit-archive-prompts-for-review.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := regexp.MustCompile(`(?s)\('([a-z_]+)', \$prompt\$(.*?)\$prompt\$\)`).FindAllStringSubmatch(string(sql), -1)
+	if len(rows) != 16 {
+		t.Fatalf("预期十二条系统模板和四条复核模板，实际%d条", len(rows))
+	}
+	for _, row := range rows {
+		key, prompt := row[1], row[2]
+		t.Run(key, func(t *testing.T) {
+			if !strings.Contains(string(review), "模板键：`"+key+"`\n\n~~~~text\n"+prompt+"\n~~~~") {
+				t.Fatal("审核稿与迁移中的完整模板不一致")
+			}
+			if strings.HasSuffix(key, "_recheck") {
+				want := defaultRecheckSystemPrompt
+				if strings.Contains(key, "_user_") {
+					want = defaultRecheckUserPrompt
+				}
+				if prompt != want {
+					t.Fatal("复核保存时的默认提示词与模板不一致")
+				}
+				return
+			}
+			audit := &model.AIConfigData{SystemReasoningPrompt: prompt, SystemExtractionPrompt: prompt}
+			archive := &model.ArchiveAIConfigData{SystemReasoningPrompt: prompt, SystemExtractionPrompt: prompt}
+			var req *ai.ChatRequest
+			switch {
+			case strings.HasPrefix(key, "audit_") && strings.Contains(key, "_reasoning_"):
+				req = BuildReasoningPrompt(audit, "演示流程", &oa.ProcessData{}, "演示规则", "", nil, nil, "")
+			case strings.HasPrefix(key, "audit_"):
+				req = BuildExtractionPrompt(audit, "演示分析", "演示规则")
+			case strings.Contains(key, "_reasoning_"):
+				req = BuildArchiveReasoningPrompt(archive, "演示流程", &oa.ProcessData{}, "演示规则", "", nil, nil, "")
+			default:
+				req = BuildArchiveExtractionPrompt(archive, "演示分析", "演示规则")
+			}
+			if req.SystemPrompt != prompt {
+				t.Fatal("新版模板已包含前提要求，实际请求不应再追加旧版说明")
+			}
+			if strings.Contains(key, "_extraction_") {
+				start := strings.Index(prompt, "\n{\n")
+				if start < 0 {
+					t.Fatal("结构化模板缺少JSON格式示例")
+				}
+				if strings.HasPrefix(key, "audit_") {
+					_, err = ParseAuditResult(prompt[start+1:])
+				} else {
+					_, err = ParseArchiveReviewResult(prompt[start+1:])
+				}
+				if err != nil {
+					t.Fatalf("模板中的JSON示例与实际解析器不兼容：%v", err)
+				}
+			}
+		})
+	}
 }

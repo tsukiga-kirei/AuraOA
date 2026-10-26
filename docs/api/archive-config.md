@@ -226,4 +226,4 @@ GET /api/tenant/archive/prompt-templates
 
 复核设置参与保存草稿、发布、个人配置、导入导出与最终执行快照。切换原审核尺度保留复核设置。旧配置未包含该对象时不注入、不自动开启、不改变旧版本指纹；旧流程沿用绑定版本，只有明确选择已发布新版才变更。
 
-独立默认模板为 `archive_system_recheck`、`archive_user_recheck`，`phase=recheck`、`strictness=null`。用户提示词支持 `{{audit_context}}`（当次已过滤材料、规则及查询证据）、`{{original_system_prompt}}`（原审核要求）、`{{reasoning_result}}`、`{{initial_result}}` 与系统日期变量。遗漏必要变量时仍附上当次复核材料；固定 JSON 输出格式由后端补充，业务提示词原文仍保留。
+独立默认模板为 `archive_system_recheck`、`archive_user_recheck`，`phase=recheck`、`strictness=null`。默认仅传 `{{initial_result}}`，检查结构化结果中的判断、风险、分数与结论是否一致。系统、用户提示词均可引用 `{{audit_context}}`（初审实际发送的完整用户内容，含已过滤材料、规则及查询证据等）、`{{original_system_prompt}}`（初审实际发送的系统提示词）、`{{reasoning_result}}`（初审分析）与系统日期变量；这些扩展数据仅在对应变量被引用时传入，不自动补齐。`initial_result` 为必需输入，两段模板都未引用时只补入这一项；固定 JSON 输出约定不再重复携带初审结果。前端两段编辑器均提供变量按钮，在各自光标位置插入，变量说明提示是否可选；固定返回格式及自动补入行为直接展示。

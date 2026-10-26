@@ -54,13 +54,54 @@ func TestAIRecheckCallAndTrace(t *testing.T) {
 			if caller.calls != 1 || caller.req.CallType != "recheck" || caller.req.RequestType != module || caller.req.SkipQuotaCheck || caller.req.BusinessLogID != &id {
 				t.Fatal("必须经统一调用入口、正确归集业务并独立检查配额")
 			}
-			for _, value := range []string{original.SystemPrompt, original.UserPrompt, "原推理正文", initial} {
-				if !strings.Contains(caller.req.UserPrompt, value) {
-					t.Fatal("自定义模板缺变量时不能丢失当次证据")
+			if !strings.Contains(caller.req.UserPrompt, initial) {
+				t.Fatal("复核不能丢失结构化结果")
+			}
+			for _, value := range []string{original.SystemPrompt, original.UserPrompt, "原推理正文"} {
+				if strings.Contains(caller.req.SystemPrompt+caller.req.UserPrompt, value) {
+					t.Fatal("未引用可选变量时不能自动补入原始材料或分析")
 				}
 			}
 			if len(records) != 2 || records[0].Status != "running" || records[1].Status != "completed" || !record.Changed || string(record.OriginalResult) != initial || len(raw) == 0 {
 				t.Fatal("应先保存初审，再保留最终结果与变更说明")
+			}
+		})
+	}
+}
+
+// TestAIRecheckVariableSelection 验证最小输入、按需扩展和必需结果的兜底，不重复发送整份初审。
+func TestAIRecheckVariableSelection(t *testing.T) {
+	original := &ai.ChatRequest{SystemPrompt: "原系统内容保留{{weekday}}", UserPrompt: "原用户材料保留{{current_date}}"}
+	const reasoning = "原分析内容保留{{current_time}}"
+	initial := json.RawMessage(`{"recommendation":"approve","remark":"业务原文{{current_datetime}}"}`)
+	for _, entry := range []struct {
+		name, system, user string
+		included           []string
+	}{
+		{"默认最小输入", defaultRecheckSystemPrompt, defaultRecheckUserPrompt, nil},
+		{"漏写结果仅补结果", "复核说明", "自定义要求", nil},
+		{"按需传用户材料", "复核说明", "{{initial_result}}\n{{audit_context}}", []string{original.UserPrompt}},
+		{"按需传已有分析", "复核说明", "{{initial_result}}\n{{reasoning_result}}", []string{reasoning}},
+		{"系统提示词也可插变量", "{{original_system_prompt}}\n{{initial_result}}", "{{current_date}}", []string{original.SystemPrompt}},
+		{"保留全部扩展变量", "复核说明", "{{initial_result}}\n{{original_system_prompt}}\n{{audit_context}}\n{{reasoning_result}}", []string{original.SystemPrompt, original.UserPrompt, reasoning}},
+	} {
+		t.Run(entry.name, func(t *testing.T) {
+			req := buildAIRecheckRequest(&model.AIRecheckConfig{SystemPrompt: entry.system, UserPrompt: entry.user}, original, reasoning, initial)
+			combined := req.SystemPrompt + req.UserPrompt
+			if strings.Count(combined, string(initial)) != 1 {
+				t.Fatal("初审结构化结果应发送一次，不能在格式要求里重复发送")
+			}
+			for _, value := range []string{original.SystemPrompt, original.UserPrompt, reasoning} {
+				want := false
+				for _, included := range entry.included {
+					want = want || value == included
+				}
+				if strings.Contains(combined, value) != want {
+					t.Fatal("可选初审内容必须只在显式引用时传入，且不能递归替换材料里的变量文字")
+				}
+			}
+			if entry.user == "{{current_date}}" && strings.Contains(req.UserPrompt, "{{current_date}}") {
+				t.Fatal("模板中的系统日期变量应正常替换")
 			}
 		})
 	}
@@ -137,7 +178,7 @@ func TestAIRecheckQueryEvidenceDoesNotForceDowngrade(t *testing.T) {
 					c.Request = httptest.NewRequest("POST", "/", nil)
 					caller := &fakeRecheckCaller{response: `{"reason":"维持原结论","final_result":` + initial + `}`}
 					saves := 0
-					out, record, err := runAIRecheck(c, caller, uuid.New(), uuid.New(), nil, nil, &model.AIRecheckConfig{Enabled: mode.enabled}, &ai.ChatRequest{RequestType: module, UserPrompt: contextText}, "原分析", json.RawMessage(initial), false, func(*model.AIRecheckRecord) error { saves++; return nil })
+					out, record, err := runAIRecheck(c, caller, uuid.New(), uuid.New(), nil, nil, &model.AIRecheckConfig{Enabled: mode.enabled, UserPrompt: "{{initial_result}}\n{{audit_context}}"}, &ai.ChatRequest{RequestType: module, UserPrompt: contextText}, "原分析", json.RawMessage(initial), false, func(*model.AIRecheckRecord) error { saves++; return nil })
 					if err != nil || string(out) != initial {
 						t.Fatalf("查询异常不应自行修改 AI 结果：%s, %v", out, err)
 					}
