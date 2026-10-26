@@ -4,7 +4,7 @@ import type { AIRecheckRecord } from '~/types/ai-recheck'
 import { renderSafeMarkdown } from '~/utils/markdown'
 const props = defineProps<{ record?: AIRecheckRecord | null; taskStatus?: string }>()
 const { t } = useI18n()
-const show = computed(() => props.record?.status === 'completed' && props.record.changed === true && !props.record.reuse_original && !!props.record.final_result)
+const show = computed(() => (!props.taskStatus || props.taskStatus === 'completed') && props.record?.status === 'completed' && props.record.changed === true && !props.record.reuse_original && !!props.record.final_result)
 const expanded = ref(false)
 const reasonHtml = computed(() => renderSafeMarkdown(props.record?.reason || ''))
 const originalRules = computed(() => (props.record?.original_result?.rule_results || props.record?.original_result?.rule_audit || []).map((rule: Record<string, any>, index: number) => ({ id: index, name: rule.rule_content || rule.rule_name, passed: !!rule.passed, reason: rule.reason || rule.reasoning })))

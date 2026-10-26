@@ -75,8 +75,6 @@ export interface RuleResultItem {
 
 /** 审核链记录（租户级，所有用户共享） */
 export interface AuditChainItem {
-  structured_output?: string
-  recheck_output?: string
   ai_recheck?: import('./ai-recheck').AIRecheckRecord
   trigger_source?: string
   trigger_detail?: string

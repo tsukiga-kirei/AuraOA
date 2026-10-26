@@ -16,11 +16,7 @@ import (
 
 // newReviewStageStream 按阶段发送完整累计文本，断线重连及重试时不会混入上一轮半截JSON。
 func newReviewStageStream(rdb *redis.Client, module string, id uuid.UUID, stage string, scrub bool) (func(string), func()) {
-	var mu sync.Mutex
-	var text strings.Builder
-	var lastPublished time.Time
-	publish := func() {
-		value := text.String()
+	return newReviewStageAccumulator(func(value string) {
 		if scrub {
 			value = sanitize.SanitizeText(value)
 		}
@@ -30,9 +26,24 @@ func newReviewStageStream(rdb *redis.Client, module string, id uuid.UUID, stage 
 			payload, _ := json.Marshal(JobStreamEvent{Event: stage, Data: value})
 			rdb.Publish(ctx, module+":stream:"+id.String(), string(payload))
 		}
-		lastPublished = time.Now()
+	})
+}
+
+// newReviewStageAccumulator 只管理阶段累计与重试清空，空增量用于立即刷新末尾。
+func newReviewStageAccumulator(emit func(string)) (func(string), func()) {
+	var mu sync.Mutex
+	var text strings.Builder
+	var lastPublished time.Time
+	publish := func() { emit(text.String()); lastPublished = time.Now() }
+
+	chunk := func(value string) {
+		mu.Lock()
+		defer mu.Unlock()
+		text.WriteString(value)
+		if value == "" || lastPublished.IsZero() || time.Since(lastPublished) >= 80*time.Millisecond {
+			publish()
+		}
 	}
-	chunk := func(value string) { mu.Lock(); defer mu.Unlock(); text.WriteString(value); if value == "" || lastPublished.IsZero() || time.Since(lastPublished) >= 80*time.Millisecond { publish() } }
 	reset := func() { mu.Lock(); defer mu.Unlock(); text.Reset(); publish(); lastPublished = time.Time{} }
 	reset()
 	return chunk, reset

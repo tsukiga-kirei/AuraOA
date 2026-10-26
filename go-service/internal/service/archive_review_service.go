@@ -1579,7 +1579,9 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 
 	extractionReq.StreamChunkFunc, extractionReq.StreamResetFunc = newReviewStageStream(s.rdb, "archive", archiveLogID, "structured", s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled())
 	extractionResp, err := s.aiCaller.ChatWithFallback(c, tenantID, userID, modelCfg, fallbackCfg, extractionReq)
-	if err == nil && extractionReq.StreamChunkFunc != nil { extractionReq.StreamChunkFunc("") }
+	if err == nil && extractionReq.StreamChunkFunc != nil {
+		extractionReq.StreamChunkFunc("")
+	}
 	if err != nil {
 		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, err)
 		tlog.Warn("归档复盘任务执行失败", zap.String("archiveLogID", archiveLogID.String()), zap.Error(err))

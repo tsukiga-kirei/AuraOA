@@ -227,6 +227,14 @@ onBeforeUnmount(() => {
   margin-bottom: 0;
 }
 
+.ai-stream__content :deep(pre) {
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
 .ai-stream__content :deep(h1),
 .ai-stream__content :deep(h2),
 .ai-stream__content :deep(h3),

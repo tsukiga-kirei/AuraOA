@@ -20,10 +20,14 @@ export function renderSafeMarkdown(content: string): string {
 
 /** 兼容模型流式输出时省略标题空格的写法，不改动代码围栏中的内容。 */
 export function normalizeModelMarkdown(content: string): string {
-  let fence = ''
+  let fence: { char: string; size: number } | null = null
   return content.split('\n').map(line => {
     const marker = line.match(/^\s*(`{3,}|~{3,})/)
-    if (marker) { if (!fence) fence = marker[1][0]; else if (fence === marker[1][0]) fence = ''; return line }
+    if (marker) {
+      if (!fence) fence = { char: marker[1][0], size: marker[1].length }
+      else if (fence.char === marker[1][0] && marker[1].length >= fence.size && line.slice(marker[0].length).trim() === '') fence = null
+      return line
+    }
     if (fence) return line
     return line.replace(/^( {0,3}#{1,6})(?=[^#\s])/, '$1 ')
   }).join('\n')

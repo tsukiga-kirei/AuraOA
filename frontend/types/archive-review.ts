@@ -164,8 +164,6 @@ export interface ArchiveProcessTypeOption {
 }
 
 export interface ArchiveReviewHistoryItem {
-  structured_output?: string
-  recheck_output?: string
   ai_recheck?: import('./ai-recheck').AIRecheckRecord
   id: string
   process_id: string

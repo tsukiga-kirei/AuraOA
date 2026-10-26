@@ -5,6 +5,7 @@ export interface AIRecheckConfig {
 }
 
 export interface AIRecheckRecord {
+  enabled?: boolean
   status?: 'running' | 'completed' | 'failed' | 'cancelled'
   changed?: boolean
   reuse_original?: boolean
