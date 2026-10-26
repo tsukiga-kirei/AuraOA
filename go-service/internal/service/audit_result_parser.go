@@ -30,6 +30,25 @@ type extractionPayload struct {
 // ParseAuditResult 解析 AI 提取阶段返回的 JSON，转换为结构化审核结论。
 // recommendation 字段缺失或无法归一化为 approve/return/review 时返回错误。
 func ParseAuditResult(raw string) (*model.AuditResultJSON, error) {
+	fields, err := reviewResultObject(raw)
+	if err != nil {
+		return nil, err
+	}
+	score, err := validateReviewCommon(fields)
+	if err != nil {
+		return nil, err
+	}
+	conclusion, err := reviewString(fields, "recommendation", true)
+	if err != nil {
+		return nil, err
+	}
+	rec := normalizeAuditRecommendation(conclusion)
+	if rec != "approve" && rec != "review" && rec != "return" {
+		return nil, fmt.Errorf("AI 结果审核结论无效")
+	}
+	if err := validateReviewRows(fields, "rule_results", "rule_content", "passed", "reason"); err != nil {
+		return nil, err
+	}
 	cleaned := cleanJSONResponse(raw)
 	var p extractionPayload
 	if err := json.Unmarshal([]byte(cleaned), &p); err != nil {
@@ -40,7 +59,7 @@ func ParseAuditResult(raw string) (*model.AuditResultJSON, error) {
 		RuleResults:  coalesceRuleResults(p.RuleResults),
 		RiskPoints:   coalesceStringSlice(p.RiskPoints),
 		Suggestions:  coalesceStringSlice(p.Suggestions),
-		OverallScore: pickOverallScoreInt(p.OverallScore, p.Score),
+		OverallScore: clampPercentInt(score),
 		Confidence:   clampPercentInt(p.Confidence),
 	}
 
@@ -64,7 +83,6 @@ func ParseAuditResult(raw string) (*model.AuditResultJSON, error) {
 		}
 	}
 
-	rec := normalizeAuditRecommendation(strings.TrimSpace(p.Recommendation))
 	out.Recommendation = CalibrateAuditRecommendationByScore(rec, out.OverallScore)
 
 	return out, nil

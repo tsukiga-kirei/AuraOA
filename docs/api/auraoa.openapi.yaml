@@ -9107,6 +9107,7 @@ components:
           format: int64
     AuditQueryEvidence:
       type: object
+      description: 当次规则查询资料；失败或截断信息交由 AI 判断业务影响，程序不据此强制降分、改写结论或规则结果。AI 复核仍为可选，不增加额外调用。
       properties:
         rule_id:
           type: string
@@ -9429,7 +9430,7 @@ components:
           "type": "boolean"
         "tool_history_turns":
           "type": "integer"
-          "description": "工具明细保留轮数"
+          "description": "工具明细保留轮数；显式0表示不保留，创建未传时默认3，读写及运行时保留0"
           "default": 3
         "system_prompt":
           "type": "string"
@@ -9582,7 +9583,7 @@ components:
           "type": "boolean"
         "tool_history_turns":
           "type": "integer"
-          "description": "工具明细保留轮数"
+          "description": "工具明细保留轮数；显式0表示不保留，创建未传时默认3，读写及运行时保留0"
           "default": 3
         "tool_codes":
           "type": "array"
@@ -9633,7 +9634,7 @@ components:
           "type": "boolean"
         "tool_history_turns":
           "type": "integer"
-          "description": "工具明细保留轮数"
+          "description": "工具明细保留轮数；显式0表示不保留，创建未传时默认3，读写及运行时保留0"
         "tool_codes":
           "type": "array"
           "items":
@@ -9981,6 +9982,7 @@ components:
           description: 明确使用当前最新配置并升级流程绑定
     JobStatus:
       type: object
+      description: 无效 AI 结果记为 failed，error_message 返回失败原因；失败的审核/归档结果不生成业务分数、结论或置信度，既有有效历史快照保留。取消请求仅更新活跃状态，已结束任务保持原终态。
       properties:
         ai_recheck:
           $ref: '#/components/schemas/AIRecheckRecord'
@@ -10655,4 +10657,4 @@ components:
     FeedbackMemoryInputPreview: {"type":"object","properties":{"system_prompt":{"type":"string"},"user_prompt":{"type":"string"},"base_version_id":{"type":"string","format":"uuid","nullable":true}}}
 
     AIRecheckConfig: {"type": "object", "description": "随配置版本保存；缺省关闭，不影响旧版本；不按审核尺度分组。", "properties": {"enabled": {"type": "boolean", "default": false}, "system_prompt": {"type": "string", "maxLength": 100000}, "user_prompt": {"type": "string", "maxLength": 100000}}}
-    AIRecheckRecord: {"type": "object", "description": "任务、审核/归档结果及历史行的ai_recheck字段；未启用时为空对象。", "properties": {"status": {"type": "string", "enum": ["running", "completed", "failed", "cancelled"]}, "changed": {"type": "boolean"}, "reason": {"type": "string"}, "error": {"type": "string"}, "duration_ms": {"type": "integer", "format": "int64"}, "original_result": {"type": "object", "additionalProperties": true}, "final_result": {"type": "object", "additionalProperties": true}}}
+    AIRecheckRecord: {"type": "object", "description": "任务、审核/归档结果及历史行的ai_recheck字段；未启用时为空对象。归档复核保留原有节点、字段核验对象，仅允许调整判断与说明；缺失或null明细不能发布。", "properties": {"status": {"type": "string", "enum": ["running", "completed", "failed", "cancelled"]}, "changed": {"type": "boolean"}, "reason": {"type": "string"}, "error": {"type": "string"}, "duration_ms": {"type": "integer", "format": "int64"}, "original_result": {"type": "object", "additionalProperties": true}, "final_result": {"type": "object", "additionalProperties": true}}}

@@ -14,6 +14,7 @@ const schema = ['requestid', 'person', 'amount', 'expense_date'].map((key) => ({
   label: key,
   data_type: 'text',
 }))
+const archive = { request_table: 'workflow_requestbase', request_id_column: 'requestid', form_request_id_column: 'requestid', status_column: 'currentnodetype', status_value: '3' }
 const base = () => ({
   source_type: 'workflow',
   table: 'formtable_main_123',
@@ -35,7 +36,7 @@ const base = () => ({
 })
 
 test('workflow aggregate uses archived EXISTS without multiplying source rows', () => {
-  const result = compileQueryBuilder(base(), 'mysql', schema)
+  const result = compileQueryBuilder(base(), 'mysql', schema, archive)
   assert.match(result.sql, /SUM\(d\.`amount`\) AS `累计金额`/)
   assert.match(result.sql, /EXISTS \(SELECT 1 FROM `workflow_requestbase`/)
   assert.match(result.sql, /currentnodetype` = '3'/)
@@ -47,7 +48,7 @@ test('Oracle dates use explicit conversion and identifiers preserve Chinese alia
   const nativeDateSchema = schema.map((column) =>
     column.key === 'expense_date' ? { ...column, data_type: 'DATE' } : column,
   )
-  const result = compileQueryBuilder(base(), 'oracle', nativeDateSchema)
+  const result = compileQueryBuilder(base(), 'oracle', nativeDateSchema, archive)
   assert.match(result.sql, /d\."EXPENSE_DATE" >= TO_DATE\(:start_date, 'YYYY-MM-DD'\)/)
   assert.match(result.sql, /AS "累计金额"/)
 })

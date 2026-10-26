@@ -286,10 +286,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		return fmt.Errorf("读取历史消息失败: %w", err)
 	}
 
-	toolHistoryTurns := agent.ToolHistoryTurns
-	if toolHistoryTurns < 0 {
-		toolHistoryTurns = 3
-	}
+	toolHistoryTurns := agent.EffectiveToolHistoryTurns()
 
 	// 找出需要保留工具明细的历史 Assistant 消息 ID
 	eligibleAssistantIDs := make(map[uuid.UUID]bool)

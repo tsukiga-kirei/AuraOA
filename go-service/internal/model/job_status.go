@@ -11,3 +11,8 @@ const (
 	JobStatusFailed     = "failed"
 	JobStatusCancelled  = "cancelled"
 )
+
+// ActiveReviewJobStatuses 返回审核与归档仍可推进或取消的状态，每次返回独立切片。
+func ActiveReviewJobStatuses() []string {
+	return []string{JobStatusPending, JobStatusAssembling, JobStatusReasoning, JobStatusExtracting, JobStatusRechecking}
+}

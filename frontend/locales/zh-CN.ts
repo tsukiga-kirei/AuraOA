@@ -444,7 +444,7 @@ export default {
     "query.modelPreview": "AI 数据预览",
     "query.resultSummary": "返回 {0} 行 · 耗时 {1} ms",
     "query.noRows": "查询成功，无匹配记录",
-    "query.truncated": "结果已截断，不可作为全量累计或无其他记录的依据。审核时将提示人工复核。",
+    "query.truncated": "结果已截断，不可作为全量累计或无其他记录的依据。截断信息将随审核材料提供给 AI 判断。",
     "query.ruleTitle": "数据记忆",
     "query.ruleHint": "流程字段在此绑定；固定值和系统变量默认沿用所选版本，可单独设置，仅对本条引用生效。",
     "query.inherited": "沿用记忆库配置",

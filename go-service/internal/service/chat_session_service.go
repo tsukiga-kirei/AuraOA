@@ -71,10 +71,7 @@ func (s *ChatSessionService) GetEffectiveAgents(ctx context.Context, tenantID, u
 		if quickQuestions == nil {
 			quickQuestions = []dto.QuickQuestionItem{}
 		}
-		turns := a.ToolHistoryTurns
-		if turns <= 0 {
-			turns = 3
-		}
+		turns := a.EffectiveToolHistoryTurns()
 		result = append(result, dto.EffectiveAgentDTO{
 			ID:               a.ID,
 			AgentCode:        a.AgentCode,

@@ -87,27 +87,3 @@ func TestRuleConditionSourceFingerprintCompatibility(t *testing.T) {
 		})
 	}
 }
-
-func TestQueryGuardRespectsUnmetConditionWithoutWeakeningMissingEvidence(t *testing.T) {
-	const skippedReason = "适用前提不满足，本规则直接通过：采购方式为竞争性采购"
-	for _, condition := range []string{"单一来源采购", ""} {
-		evidence := []QueryEvidence{{RuleID: "r1", RuleContent: "上传审批文件", ApplicabilityCondition: condition, Status: "failed", Name: "审批文件查询"}}
-		audit := &model.AuditResultJSON{Recommendation: "approve", RuleResults: []model.RuleResultJSON{{RuleContent: "上传审批文件", Passed: true, Reason: skippedReason}}}
-		archive := &model.ArchiveResultJSON{OverallCompliance: "compliant", RuleAudit: []model.ArchiveRuleAuditJSON{{RuleID: "r1", RuleName: "上传审批文件", Passed: true, Reasoning: skippedReason}}}
-		GuardQueryEvidence(audit, evidence)
-		GuardArchiveQueryEvidence(archive, evidence)
-		wantPassed := condition != ""
-		if audit.RuleResults[0].Passed != wantPassed || archive.RuleAudit[0].Passed != wantPassed {
-			t.Fatalf("前提 %q 的证据兜底不正确: %+v %+v", condition, audit, archive)
-		}
-		if wantPassed && (audit.Recommendation != "approve" || archive.OverallCompliance != "compliant" || len(audit.RiskPoints) != 0 || len(archive.RiskPoints) != 0) {
-			t.Fatal("明确不满足前提的规则不能因为查询失败增加风险")
-		}
-	}
-	// 有前提但只给出普通通过，仍须触发原有数据不足兜底。
-	audit := &model.AuditResultJSON{Recommendation: "approve", RuleResults: []model.RuleResultJSON{{RuleContent: "上传审批文件", Passed: true, Reason: "检查通过"}}}
-	GuardQueryEvidence(audit, []QueryEvidence{{RuleContent: "上传审批文件", ApplicabilityCondition: "单一来源采购", Status: "failed"}})
-	if audit.RuleResults[0].Passed || audit.Recommendation != "review" {
-		t.Fatal("普通通过不能绕过必要证据校验")
-	}
-}

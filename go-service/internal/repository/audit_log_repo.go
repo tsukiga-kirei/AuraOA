@@ -144,6 +144,12 @@ func (r *AuditLogRepo) GetByIDs(c *gin.Context, ids []uuid.UUID) (map[uuid.UUID]
 	return result, nil
 }
 
+// UpdateActiveFields 仅更新当前租户的活跃任务，避免迟到请求覆盖终态。
+func (r *AuditLogRepo) UpdateActiveFields(c *gin.Context, id uuid.UUID, updates map[string]interface{}) (int64, error) {
+	tx := r.WithTenant(c).Model(&model.AuditLog{}).Where("id = ? AND status IN ?", id, model.ActiveReviewJobStatuses()).Updates(updates)
+	return tx.RowsAffected, tx.Error
+}
+
 // UpdateFields 更新审核日志指定字段（租户隔离）。
 func (r *AuditLogRepo) UpdateFields(c *gin.Context, id uuid.UUID, updates map[string]interface{}) error {
 	return r.WithTenant(c).Model(&model.AuditLog{}).Where("id = ?", id).Updates(updates).Error

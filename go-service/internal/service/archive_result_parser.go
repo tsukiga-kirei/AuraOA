@@ -67,13 +67,43 @@ type archiveRuleResultPayload struct {
 // 先清理原始文本（去除 markdown 包裹、省略号等），再反序列化并校验必填字段。
 // overall_compliance 缺失或无法归一化时返回错误，要求模型重新输出。
 func ParseArchiveReviewResult(raw string) (*model.ArchiveResultJSON, error) {
+	fields, err := reviewResultObject(raw)
+	if err != nil {
+		return nil, err
+	}
+	value, err := validateReviewCommon(fields)
+	if err != nil {
+		return nil, err
+	}
+	conclusion, err := reviewString(fields, "overall_compliance", true)
+	if err != nil {
+		return nil, err
+	}
+	if normalizeArchiveCompliance(conclusion) == "" {
+		return nil, fmt.Errorf("AI 结果合规结论无效")
+	}
+	if err := validateArchiveReviewStructure(fields); err != nil {
+		return nil, err
+	}
+	if _, ok := fields["rule_audit"]; ok {
+		if err := validateReviewRows(fields, "rule_audit", "rule_name", "passed", "reasoning"); err != nil {
+			return nil, err
+		}
+	} else if err := validateReviewRows(fields, "rule_results", "rule_content", "passed", "reason"); err != nil {
+		return nil, err
+	}
+	if _, ok := fields["rule_results"]; ok {
+		if err := validateReviewRows(fields, "rule_results", "rule_content", "passed", "reason"); err != nil {
+			return nil, err
+		}
+	}
 	cleaned := cleanJSONResponse(raw)
 	var payload archiveExtractionPayload
 	if err := json.Unmarshal([]byte(cleaned), &payload); err != nil {
 		return nil, fmt.Errorf("JSON 解析失败: %w, 原始内容: %s", err, truncate(raw, 500))
 	}
 
-	score := pickOverallScoreInt(payload.OverallScore, payload.Score)
+	score := clampPercentInt(value)
 	compliance := CalibrateArchiveComplianceByScore(normalizeArchiveCompliance(payload.OverallCompliance), score)
 
 	result := &model.ArchiveResultJSON{

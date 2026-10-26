@@ -443,7 +443,7 @@ export default {
     "query.modelPreview": "AI context preview",
     "query.resultSummary": "{0} rows · {1} ms",
     "query.noRows": "Query succeeded with no matching records",
-    "query.truncated": "Results are truncated. They cannot establish complete totals or the absence of other records. Review requires human verification.",
+    "query.truncated": "Results are truncated. They cannot establish complete totals or the absence of other records. The truncation information is included in the materials for AI assessment.",
     "query.ruleTitle": "Custom audit data",
     "query.ruleHint": "Bind workflow fields here. Constants and system variables inherit the selected version by default; overrides apply only to this reference.",
     "query.inherited": "Using library defaults",

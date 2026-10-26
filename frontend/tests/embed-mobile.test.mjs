@@ -789,6 +789,9 @@ function animatedButton(state, status, text, loading = false, feature = 'audit')
   const paths = Array.from({ length: 2 }, () => ({ animate: (f, o) => animate('path', f, o) }))
   const glyph = { animate: (f, o) => animate('glyph', f, o), querySelectorAll: () => paths }
   const icon = { innerHTML: api.iconSvgMarkup(feature, status, loading, text), animate: (f, o) => animate('icon', f, o), querySelector: () => glyph }
+  icon.appendChild = node => { children.push(node) }
+  icon.getBoundingClientRect = () => ({ left: 0, top: 0, right: 32, bottom: 32, width: 32, height: 32 })
+  copy.getBoundingClientRect = () => ({ left: 40, top: 0, right: 140, bottom: 32, width: 100, height: 32 })
   const caption = { classList: { add() {} }, animate: (f, o) => animate('caption', f, o) }
   const number = { textContent: api.parseButtonLabel(text).scoreMatch?.[1] || '' }
   const holder = { appendChild(node) { children.push(node) } }
@@ -812,6 +815,7 @@ function animatedButton(state, status, text, loading = false, feature = 'audit')
     getBoundingClientRect() { return { width: btn.visibleWidth ?? (classes.has('aura-status-button--icon-only') ? 56 : 156), height: 56 } },
     animate: (f, o) => animate('button', f, o),
   }
+  Object.defineProperty(btn, 'offsetWidth', { get: () => classes.has('aura-status-button--icon-only') ? 56 : 156 })
   const createElement = state.document.createElement
   state.document.createElement = tag => {
     const node = createElement(tag)
@@ -831,7 +835,7 @@ for (const origin of ['export', 'template']) {
     const initial = btn.animations[0]
     assert.equal(initial.frames[0].width, '56px')
     assert.equal(initial.frames.at(-1).width, '156px')
-    assert.ok(initial.options.duration + initial.options.delay <= 550)
+    assert.ok(initial.options.duration + (initial.options.delay || 0) <= 750)
     assert.equal(btn.sr.textContent, '审核通过 (95分)')
     const stale = btn._auraEffects
     btn.visibleWidth = 124
@@ -890,7 +894,7 @@ for (const origin of ['export', 'template']) {
     assert.equal(current.frames[0].width, '102px')
     old.finish(); await flush(state)
     assert.equal(btn._auraModernAnimations[0], current)
-    current.finish(); await flush(state)
+    btn._auraModernAnimations.forEach(motion => motion.finish()); await flush(state)
     assert.equal(btn.copy.innerHTML, '')
     assert.ok(btn.classList.contains('aura-status-button--icon-only'))
   })
@@ -1004,7 +1008,7 @@ for (const origin of ['export', 'template']) {
       assert.equal(btn.getAttribute('data-aura-expanded'), 'false')
       const shrinking = btn._auraModernAnimations[0]
       assert.equal(shrinking.frames.at(-1).width, '56px')
-      shrinking.finish(); await flush(state)
+      btn._auraModernAnimations.forEach(motion => motion.finish()); await flush(state)
       assert.ok(btn.classList.contains('aura-status-button--icon-only'))
       assert.match(btn.copy.innerHTML, />95</)
       assert.equal(api.handleModernButtonClick(btn), false)

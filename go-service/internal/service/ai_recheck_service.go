@@ -246,11 +246,50 @@ func validateAIRecheckResult(raw, initial json.RawMessage, module string) error 
 		}
 	}
 	if module == "archive" {
-		_, err := ParseArchiveReviewResult(string(raw))
-		return err
+		if _, err := ParseArchiveReviewResult(string(raw)); err != nil {
+			return err
+		}
+		var oldFlow, newFlow map[string]json.RawMessage
+		_ = json.Unmarshal(before["flow_audit"], &oldFlow)
+		_ = json.Unmarshal(out["flow_audit"], &newFlow)
+		if err := validateRecheckRowCoverage(oldFlow["node_results"], newFlow["node_results"], "node_id", "node_name"); err != nil {
+			return err
+		}
+		return validateRecheckRowCoverage(before["field_audit"], out["field_audit"], "field_key", "field_name")
 	}
 	_, err := ParseAuditResult(string(raw))
 	return err
+}
+
+// validateRecheckRowCoverage 允许调整判断与说明、重排记录，但不允许删除或替换已核验的节点与字段。
+func validateRecheckRowCoverage(before, after json.RawMessage, idKey, nameKey string) error {
+	identities := func(raw json.RawMessage) (map[string]int, error) {
+		var rows []map[string]json.RawMessage
+		if json.Unmarshal(raw, &rows) != nil || rows == nil {
+			return nil, fmt.Errorf("复核核验明细结构无效")
+		}
+		counts := map[string]int{}
+		for _, row := range rows {
+			var id, name string
+			if json.Unmarshal(row[idKey], &id) != nil || json.Unmarshal(row[nameKey], &name) != nil {
+				return nil, fmt.Errorf("复核核验明细缺少标识或名称")
+			}
+			counts[id+"\x00"+name]++
+		}
+		return counts, nil
+	}
+	oldIDs, err := identities(before)
+	if err != nil {
+		return err
+	}
+	newIDs, err := identities(after)
+	if err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(oldIDs, newIDs) {
+		return fmt.Errorf("复核不能增删或替换原有核验节点与字段")
+	}
+	return nil
 }
 
 // persistRecheckJSON 保留合法 JSON，供业务日志和结果详情共用。

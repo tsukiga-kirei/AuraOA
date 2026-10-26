@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -75,7 +76,7 @@ func compactMapPayload(toolCode string, m map[string]interface{}) string {
 					item := make(map[string]interface{})
 					for _, k := range []string{
 						"request_id", "process_id", "request_name", "title",
-						"applicant", "creator_name", "created_at", "created_date",
+						"applicant", "creator_name", "created_at", "created_date", "submit_time", "department", "workflow_code",
 						"status", "current_node", "node_name", "amount", "total_amount",
 					} {
 						if v, exists := itemMap[k]; exists && v != nil && v != "" {
@@ -85,7 +86,8 @@ func compactMapPayload(toolCode string, m map[string]interface{}) string {
 					if len(item) == 0 {
 						// 若无预设字段，做通用清理取前 5 个非空键
 						count := 0
-						for k, v := range itemMap {
+						for _, k := range sortedPayloadKeys(itemMap) {
+							v := itemMap[k]
 							if count >= 5 {
 								break
 							}
@@ -113,16 +115,29 @@ func compactMapPayload(toolCode string, m map[string]interface{}) string {
 	// 针对获取流程详情 get_process
 	if toolCode == "get_process" {
 		resMap := make(map[string]interface{})
-		for _, k := range []string{"process_id", "request_id", "request_name", "creator_name", "status", "current_node", "node_name", "form_title"} {
+		for _, k := range []string{"process_id", "request_id", "request_name", "creator_name", "title", "applicant", "department", "process_type", "workflow_code", "status", "current_node", "node_name", "form_title"} {
 			if v, ok := m[k]; ok && v != nil && v != "" {
 				resMap[k] = v
 			}
 		}
-		// 表单数据瘦身
+		// 真实工具以 main_fields 数组返回主表字段，保留字段和值的对应关系。
+		if fields, ok := m["main_fields"].([]interface{}); ok {
+			kept := make([]interface{}, 0, len(fields))
+			for i, field := range fields {
+				if i >= 30 {
+					kept = append(kept, fmt.Sprintf("其余字段已折叠，共%d项", len(fields)))
+					break
+				}
+				kept = append(kept, cleanGenericValue(field, 0))
+			}
+			resMap["main_fields"] = kept
+		}
+		// 兼容旧工具的 form_data 返回格式。
 		if formData, ok := m["form_data"].(map[string]interface{}); ok {
 			cleanedForm := make(map[string]interface{})
 			fieldCount := 0
-			for k, v := range formData {
+			for _, k := range sortedPayloadKeys(formData) {
+				v := formData[k]
 				if fieldCount >= 30 {
 					cleanedForm["_more_fields"] = "更多表单字段已折叠"
 					break
@@ -160,7 +175,9 @@ func compactMapPayload(toolCode string, m map[string]interface{}) string {
 					names = append(names, fmt.Sprintf("...等共 %d 个附件", len(attachList)))
 					break
 				}
-				if atMap, ok := at.(map[string]interface{}); ok {
+				if name, ok := at.(string); ok {
+					names = append(names, name)
+				} else if atMap, ok := at.(map[string]interface{}); ok {
 					if n, ok := atMap["name"].(string); ok && n != "" {
 						names = append(names, n)
 					} else if n, ok := atMap["filename"].(string); ok && n != "" {
@@ -177,7 +194,7 @@ func compactMapPayload(toolCode string, m map[string]interface{}) string {
 	// 针对审批流 get_approval_flow
 	if toolCode == "get_approval_flow" {
 		resMap := make(map[string]interface{})
-		for _, k := range []string{"process_id", "request_name", "status"} {
+		for _, k := range []string{"process_id", "request_name", "workflow_code", "status"} {
 			if v, ok := m[k]; ok && v != nil && v != "" {
 				resMap[k] = v
 			}
@@ -198,7 +215,7 @@ func compactMapPayload(toolCode string, m map[string]interface{}) string {
 			for i := 0; i < stepLimit; i++ {
 				if sMap, ok := steps[i].(map[string]interface{}); ok {
 					step := make(map[string]interface{})
-					for _, k := range []string{"node_name", "operator_name", "action", "operate_time"} {
+					for _, k := range []string{"node_name", "operator_name", "action", "operate_time", "operated_at"} {
 						if v, ok := sMap[k]; ok && v != nil && v != "" {
 							step[k] = v
 						}
@@ -222,9 +239,15 @@ func compactMapPayload(toolCode string, m map[string]interface{}) string {
 	// 针对审核/总结结果
 	if toolCode == "get_latest_audit" || toolCode == "get_latest_summary" {
 		resMap := make(map[string]interface{})
-		for _, k := range []string{"conclusion", "status", "summary", "risk_level", "risk_count"} {
+		for _, k := range []string{"process_id", "has_audit", "has_summary", "message", "recommendation", "score", "created_at", "conclusion", "status", "summary", "risk_level", "risk_count"} {
 			if v, ok := m[k]; ok && v != nil && v != "" {
 				resMap[k] = v
+			}
+		}
+		// 审核与总结正文位于独立结果对象内，保留评估依据及分块正文。
+		for _, key := range []string{"audit_result", "summary_result"} {
+			if value, ok := m[key]; ok {
+				resMap[key] = cleanGenericValue(value, 0)
 			}
 		}
 		out, _ := json.Marshal(resMap)
@@ -235,7 +258,7 @@ func compactMapPayload(toolCode string, m map[string]interface{}) string {
 	cleaned := cleanGenericMap(m, 0)
 	out, _ := json.Marshal(cleaned)
 	if len(out) > 1200 {
-		return string(out[:1200]) + "...(已截断)"
+		return truncateUTF8Bytes(string(out), 1200) + "...(已截断)"
 	}
 	return string(out)
 }
@@ -266,7 +289,8 @@ func cleanGenericMap(m map[string]interface{}, depth int) map[string]interface{}
 	}
 	cleaned := make(map[string]interface{})
 	count := 0
-	for k, v := range m {
+	for _, k := range sortedPayloadKeys(m) {
+		v := m[k]
 		if count >= 20 {
 			cleaned["_more"] = "..."
 			break
@@ -293,4 +317,14 @@ func compactSlicePayload(slice []interface{}, depth int) []interface{} {
 		cleaned = append(cleaned, fmt.Sprintf("...等共 %d 项", len(slice)))
 	}
 	return cleaned
+}
+
+// sortedPayloadKeys 保证通用字段裁剪顺序可重复。
+func sortedPayloadKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }

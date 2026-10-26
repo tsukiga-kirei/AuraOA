@@ -74,7 +74,7 @@ func (r *ArchiveLogRepo) UpdateFields(c *gin.Context, id uuid.UUID, updates map[
 
 // UpdateActiveFields 防止取消或失败后的复核请求覆盖终态结果。
 func (r *ArchiveLogRepo) UpdateActiveFields(c *gin.Context, id uuid.UUID, updates map[string]interface{}) (int64, error) {
-	tx := r.WithTenant(c).Model(&model.ArchiveLog{}).Where("id = ? AND status IN ?", id, []string{model.JobStatusPending, model.JobStatusAssembling, model.JobStatusReasoning, model.JobStatusExtracting, model.JobStatusRechecking}).Updates(updates)
+	tx := r.WithTenant(c).Model(&model.ArchiveLog{}).Where("id = ? AND status IN ?", id, model.ActiveReviewJobStatuses()).Updates(updates)
 	return tx.RowsAffected, tx.Error
 }
 

@@ -1,10 +1,6 @@
 package service
 
-import (
-	"strings"
-
-	"auraoa/go-service/internal/model"
-)
+import "strings"
 
 // ruleApplicabilityInstructions 在推理与提取阶段统一适用前提语义，不改变通过/不通过结果结构。
 const ruleApplicabilityInstructions = `【规则适用前提】
@@ -21,41 +17,4 @@ func withRuleApplicabilityInstructions(prompt string) string {
 		return prompt
 	}
 	return strings.TrimSpace(prompt) + "\n\n" + ruleApplicabilityInstructions
-}
-
-// auditRulePassedForUnmetCondition 仅豁免已明确不适用的规则，普通通过不能绕过查询证据检查。
-// 审核结果没有规则 ID；同正文结果存在歧义时要求全部明确不适用，保留保守兜底。
-func auditRulePassedForUnmetCondition(result *model.AuditResultJSON, evidence QueryEvidence) bool {
-	if strings.TrimSpace(evidence.ApplicabilityCondition) == "" {
-		return false
-	}
-	matched := false
-	for _, rule := range result.RuleResults {
-		if rule.RuleContent != evidence.RuleContent {
-			continue
-		}
-		matched = true
-		if !rule.Passed || !strings.HasPrefix(strings.TrimSpace(rule.Reason), "适用前提不满足，本规则直接通过") {
-			return false
-		}
-	}
-	return matched
-}
-
-// archiveRulePassedForUnmetCondition 与审核侧保持一致，仅豁免明确不适用的归档规则。
-func archiveRulePassedForUnmetCondition(result *model.ArchiveResultJSON, evidence QueryEvidence) bool {
-	if strings.TrimSpace(evidence.ApplicabilityCondition) == "" {
-		return false
-	}
-	matched := false
-	for _, rule := range result.RuleAudit {
-		if rule.RuleID != evidence.RuleID && rule.RuleName != evidence.RuleContent {
-			continue
-		}
-		matched = true
-		if !rule.Passed || !strings.HasPrefix(strings.TrimSpace(rule.Reasoning), "适用前提不满足，本规则直接通过") {
-			return false
-		}
-	}
-	return matched
 }

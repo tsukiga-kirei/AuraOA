@@ -29,7 +29,7 @@ function runtime({ style = 'modern', reduced = false, systemReduced = false, hov
         getContext: () => new Proxy({}, { get: () => () => {} }),
       }),
     },
-    window: { matchMedia: query => ({ matches: query.includes('prefers-reduced-motion') ? systemReduced : hover }) },
+    window: { requestAnimationFrame: fn => schedule(() => fn(now), 16), cancelAnimationFrame: cancel, matchMedia: query => ({ matches: query.includes('prefers-reduced-motion') ? systemReduced : hover }) },
     Date: { now: () => now },
     setTimeout: schedule, clearTimeout: cancel,
     requestAnimationFrame: fn => schedule(() => fn(now), 16), cancelAnimationFrame: cancel,
@@ -62,6 +62,9 @@ function runtime({ style = 'modern', reduced = false, systemReduced = false, hov
     const classes = new Set(attrs.class.split(/\s+/))
     const icon = { innerHTML: context.iconSvgMarkup(feature, status, loading, text) }
     const copy = { style: { removeProperty() {} }, innerHTML: context.modernButtonCopyMarkup(feature, status, text, loading), animate: (frames, options) => animate('copy', frames, options) }
+    icon.getBoundingClientRect = () => { const inset = ((btn.visualHeight ?? 64) - 32) / 2; return { left: inset, top: inset, right: inset + 32, bottom: inset + 32, width: 32, height: 32 } }
+    copy.getBoundingClientRect = () => ({ left: 40, top: 0, right: 140, bottom: 32, width: 100, height: 32 })
+    icon.appendChild = node => { children.push(node) }
     icon.animate = (frames, options) => animate('icon', frames, options)
     const number = { textContent: context.parseButtonLabel(text).scoreMatch?.[1] || '' }
     const caption = { classList: { add() {} }, animate: (frames, options) => animate('caption', frames, options) }
@@ -92,9 +95,10 @@ function runtime({ style = 'modern', reduced = false, systemReduced = false, hov
         return copy
       },
       closest(selector) { return selector === '#galleryGroup' ? (gallery ? {} : null) : btn },
-      getBoundingClientRect() { return { width: btn.visualWidth ?? (classes.has('aura-status-button--icon-only') ? 64 : 156), height: btn.visualHeight ?? 64 } },
+      getBoundingClientRect() { const width = btn.visualWidth ?? (classes.has('aura-status-button--icon-only') ? 64 : 156), height = btn.visualHeight ?? 64; return { left: 0, top: 0, right: width, bottom: height, width, height } },
       animate: (frames, options) => animate('button', frames, options),
     }
+    Object.defineProperty(btn, 'offsetWidth', { get: () => classes.has('aura-status-button--icon-only') ? 64 : 156 })
     state.buttons.push(btn)
     return btn
   }
@@ -131,17 +135,17 @@ test('demo: modern states keep one icon and distinguish unavailable from audit r
   }
 })
 
-test('demo: initial result expands within 550ms and exposes accessible status', () => {
+test('demo: initial result expands within 750ms and exposes accessible status', () => {
   const { context, button, state, announcements } = runtime()
   const btn = button('gray', '加载中...', true)
   context.morphModernStatusButton(btn, 'audit', 'green', '审核通过 (95分)', false)
   const width = state.animations.find(motion => motion.target === 'button')
   assert.equal(width.frames[0].width, '64px')
   assert.equal(width.frames.at(-1).width, '156px')
-  assert.ok(width.options.delay + width.options.duration <= 550)
+  assert.ok((width.options.delay || 0) + width.options.duration <= 750)
   assert.equal(btn.getAttribute('aria-busy'), 'false')
   assert.equal(announcements.textContent, '审核通过 (95分)')
-  assert.ok(btn.classList.contains('aura-status-button--reveal'))
+  assert.ok(btn.classList.contains('aura-status-button--update'))
 })
 
 test('demo: result refresh does not collapse and identical refresh does not animate', () => {
@@ -158,13 +162,13 @@ test('demo: result refresh does not collapse and identical refresh does not anim
   assert.equal(state.animations.length, count)
 })
 
-test('demo: score-only updates preserve the icon and skip icon animation', () => {
+test('demo: score-only updates preserve the icon and skip glyph effects', () => {
   const { context, button, state } = runtime()
   const btn = button('green', '审核通过 (95分)')
   const oldIcon = btn.icon.innerHTML
   context.morphModernStatusButton(btn, 'audit', 'green', '审核通过 (96分)', false)
   assert.equal(btn.icon.innerHTML, oldIcon)
-  assert.ok(state.animations.every(motion => motion.target !== 'icon'))
+  assert.ok(state.animations.every(motion => !['glyph', 'path', 'caption'].includes(motion.target)))
   assert.match(btn.copy.innerHTML, /96/)
 })
 
@@ -179,10 +183,10 @@ test('demo: interrupted completion resumes at visible width and stale callbacks 
   const current = btn._auraModernAnimations[0]
   assert.equal(current.frames[0].width, '62px')
   old[0].finish()
-  await Promise.resolve()
+  await new Promise(setImmediate)
   assert.equal(btn._auraModernAnimations[0], current)
-  current.finish()
-  await Promise.resolve()
+  btn._auraModernAnimations.forEach(motion => motion.finish())
+  await new Promise(setImmediate)
   assert.equal(btn._auraModernAnimations.length, 0)
   assert.ok(!btn.classList.contains('aura-status-button--morph'))
 })
@@ -306,7 +310,8 @@ test('demo: pass, review, return and summary have different completion effects',
     const btn = button('loading', '分析中', false, feature)
     context.morphModernStatusButton(btn, feature, status, text, false)
     advance(1100)
-    if (expected === 'success' || expected === 'reject') assert.ok(btn.children.some(node => node.tagName === 'canvas'))
+    if (expected === 'success') assert.ok(btn.children.some(node => node.tagName === 'canvas'))
+    else if (expected === 'reject') assert.ok(btn.children.some(node => node.className === 'aura-modern-reject-ring'))
     else assert.ok(btn.children.some(node => node.className === 'aura-modern-scan'))
     if (expected === 'warning') assert.ok(btn.children.some(node => node.className === 'aura-modern-mark'))
     if (expected === 'reject') assert.ok(state.animations.some(motion => motion.target === 'caption'))
@@ -365,8 +370,8 @@ test('demo: while the dialog is open, state updates settle without new particle 
   assert.match(btn.copy.innerHTML, /<b>95<\/b>/)
   context.buttonEffectsSuspended = false
   context.morphModernStatusButton(btn, 'audit', 'red', '建议退回 (45分)', false)
-  advance(500)
-  assert.ok(btn.children.some(node => node.tagName === 'canvas'))
+  advance(600)
+  assert.ok(btn.children.some(node => node.className === 'aura-modern-reject-ring'))
 })
 
 test('demo: shared-image genie slices keep continuous edges and finite geometry', () => {
@@ -439,13 +444,13 @@ test('demo: secondary states begin as icons and hover reveals one concise line',
     const width = btn._auraModernAnimations[0]
     assert.equal(width.frames[0].width, '64px')
     assert.equal(width.frames[1].width, '156px')
-    width.finish()
-    await Promise.resolve()
+    btn._auraModernAnimations.forEach(motion => motion.finish())
+    await new Promise(setImmediate)
     context.queueSecondaryButtonHover(btn, false, 'mouse')
     advance(120)
     assert.ok(btn.copy.innerHTML.includes(description), 'copy fades with the shell before it is removed')
-    btn._auraModernAnimations[0].finish()
-    await Promise.resolve()
+    btn._auraModernAnimations.forEach(motion => motion.finish())
+    await new Promise(setImmediate)
     assert.equal(btn.copy.innerHTML, '')
     assert.ok(btn.classList.contains('aura-status-button--icon-only'))
   }
@@ -481,10 +486,10 @@ test('demo: interrupted disclosure starts at the visible width and stale complet
   assert.equal(old.cancelled, true)
   assert.equal(current.frames[0].width, '90px')
   old.finish()
-  await Promise.resolve()
+  await new Promise(setImmediate)
   assert.equal(btn._auraModernAnimations[0], current)
-  current.finish()
-  await Promise.resolve()
+  btn._auraModernAnimations.forEach(motion => motion.finish())
+  await new Promise(setImmediate)
   assert.equal(btn.copy.innerHTML, '')
 })
 

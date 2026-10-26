@@ -1361,60 +1361,6 @@ func SanitizeQueryEvidence(items []QueryEvidence) {
 	}
 }
 
-// GuardQueryEvidence 防止缺少必要数据时最终建议仍然通过。
-func GuardQueryEvidence(result *model.AuditResultJSON, evidence []QueryEvidence) {
-	if result == nil {
-		return
-	}
-	for _, e := range evidence {
-		if queryEvidenceSkipped(e) {
-			continue
-		}
-		if e.Status != "success" || e.Result == nil || e.Result.Truncated {
-			if auditRulePassedForUnmetCondition(result, e) {
-				continue
-			}
-			if result.Recommendation == "approve" {
-				result.Recommendation = "review"
-			}
-			result.RiskPoints = append(result.RiskPoints, "规则数据不足，需人工复核："+e.Name)
-			for i := range result.RuleResults {
-				if result.RuleResults[i].RuleContent == e.RuleContent {
-					result.RuleResults[i].Passed = false
-					result.RuleResults[i].Reason += "；关联查询失败或结果不完整，需人工复核"
-				}
-			}
-		}
-	}
-}
-
-// GuardArchiveQueryEvidence 与审核侧保持一致，不完整数据不能给出完全合规结论。
-func GuardArchiveQueryEvidence(result *model.ArchiveResultJSON, evidence []QueryEvidence) {
-	if result == nil {
-		return
-	}
-	for _, e := range evidence {
-		if queryEvidenceSkipped(e) {
-			continue
-		}
-		if e.Status != "success" || e.Result == nil || e.Result.Truncated {
-			if archiveRulePassedForUnmetCondition(result, e) {
-				continue
-			}
-			if result.OverallCompliance == "compliant" {
-				result.OverallCompliance = "partially_compliant"
-			}
-			result.RiskPoints = append(result.RiskPoints, "规则数据不足，需人工复核："+e.Name)
-			for i := range result.RuleAudit {
-				if result.RuleAudit[i].RuleID == e.RuleID || result.RuleAudit[i].RuleName == e.RuleContent {
-					result.RuleAudit[i].Passed = false
-					result.RuleAudit[i].Reasoning += "；查询失败或结果不完整，需人工复核"
-				}
-			}
-		}
-	}
-}
-
 // AttachDataQueryServices 统一注入共享能力，审核与归档使用同一查询库。
 func AttachDataQueryServices(
 	s *AuditDataQueryService,

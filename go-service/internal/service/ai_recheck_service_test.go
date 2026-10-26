@@ -10,6 +10,7 @@ import (
 
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/ai"
+	"auraoa/go-service/internal/pkg/oa"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
@@ -113,21 +114,54 @@ func TestAIRecheckDisabledAndPersistenceFailure(t *testing.T) {
 	}
 }
 
-func TestAIRecheckMaintainsResultAndCannotBypassEvidence(t *testing.T) {
-	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest("POST", "/", nil)
-	caller := &fakeRecheckCaller{response: `{"reason":"维持原结论","final_result":` + initialAuditRecheck + `}`}
-	out, record, err := runAIRecheck(c, caller, uuid.New(), uuid.New(), nil, nil, &model.AIRecheckConfig{Enabled: true}, &ai.ChatRequest{RequestType: "audit"}, "原分析", json.RawMessage(initialAuditRecheck), false, func(*model.AIRecheckRecord) error { return nil })
-	if err != nil || record.Changed {
-		t.Fatal("维持结论不能误报调整")
-	}
-	parsed, err := ParseAuditResult(string(out))
-	if err != nil {
-		t.Fatal(err)
-	}
-	GuardQueryEvidence(parsed, []QueryEvidence{{RuleContent: "检查金额", Name: "金额依据", Status: "failed"}})
-	if parsed.Recommendation == "approve" || parsed.RuleResults[0].Passed {
-		t.Fatal("第三阶段结果仍须经过原证据完整性保护")
+// TestAIRecheckQueryEvidenceDoesNotForceDowngrade 验证查询异常仅作为资料传递，复核开关不增加额外调用或强制改判。
+func TestAIRecheckQueryEvidenceDoesNotForceDowngrade(t *testing.T) {
+	for _, module := range []string{"audit", "archive"} {
+		for _, mode := range []struct {
+			name    string
+			enabled bool
+		}{{"disabled", false}, {"enabled", true}} {
+			for _, status := range []string{"failed", "truncated"} {
+				t.Run(module+"/"+mode.name+"/"+status, func(t *testing.T) {
+					initial := initialAuditRecheck
+					if module == "archive" {
+						initial = `{"overall_compliance":"compliant","overall_score":95,"confidence":95,"flow_audit":{"is_complete":true,"missing_nodes":[],"node_results":[]},"field_audit":[],"rule_audit":[{"rule_name":"检查金额","passed":true,"reasoning":"已核实"}],"risk_points":[],"suggestions":[],"ai_summary":"初审"}`
+					}
+					evidence := QueryEvidence{Name: "金额依据", RuleContent: "检查金额", Status: "failed", Error: "数据库超时"}
+					if status == "truncated" {
+						evidence.Status, evidence.Error = "success", ""
+						evidence.Result = &oa.AuditQueryResult{Truncated: true}
+					}
+					contextText := formatQueryEvidence(evidence)
+					c, _ := gin.CreateTestContext(httptest.NewRecorder())
+					c.Request = httptest.NewRequest("POST", "/", nil)
+					caller := &fakeRecheckCaller{response: `{"reason":"维持原结论","final_result":` + initial + `}`}
+					saves := 0
+					out, record, err := runAIRecheck(c, caller, uuid.New(), uuid.New(), nil, nil, &model.AIRecheckConfig{Enabled: mode.enabled}, &ai.ChatRequest{RequestType: module, UserPrompt: contextText}, "原分析", json.RawMessage(initial), false, func(*model.AIRecheckRecord) error { saves++; return nil })
+					if err != nil || string(out) != initial {
+						t.Fatalf("查询异常不应自行修改 AI 结果：%s, %v", out, err)
+					}
+					if mode.enabled {
+						if caller.calls != 1 || saves != 2 || record == nil || record.Changed || !strings.Contains(caller.req.UserPrompt, contextText) {
+							t.Fatal("开启时只执行已有复核并完整保留查询资料与原结果")
+						}
+					} else if caller.calls != 0 || saves != 0 || record != nil {
+						t.Fatal("关闭时不能新增 AI 调用或复核记录")
+					}
+					if module == "archive" {
+						parsed, err := ParseArchiveReviewResult(string(out))
+						if err != nil || parsed.OverallScore != 95 || parsed.OverallCompliance != "compliant" || !parsed.RuleAudit[0].Passed {
+							t.Fatalf("归档结果不应被查询状态改判：%+v, %v", parsed, err)
+						}
+					} else {
+						parsed, err := ParseAuditResult(string(out))
+						if err != nil || parsed.OverallScore != 95 || parsed.Recommendation != "approve" || !parsed.RuleResults[0].Passed {
+							t.Fatalf("审核结果不应被查询状态改判：%+v, %v", parsed, err)
+						}
+					}
+				})
+			}
+		}
 	}
 }
 

@@ -29,7 +29,7 @@
 | GET | /api/tenant/agent-sessions | 查询租户下所有用户的智能体会话列表（分页）；支持 keyword、agent_code、username、start_date、end_date 筛选 |
 | GET | /api/tenant/agent-sessions/:id/messages | 查询指定会话的完整消息记录（供抽屉审计回放） |
 
-智能体创建字段：agent_code、name、description、system_prompt、enabled、tool_codes、tool_history_turns（多轮对话中工具执行明细保留轮数，整数，默认 3 轮，0 表示不保留明细）、quick_questions（快捷提问配置数组：`[{icon, title, prompt, description}]`）、access_control（访问控制对象：`{allow_all: boolean, allowed_roles: string[], allowed_members: string[], allowed_departments: string[]}`，默认 `allow_all: true` 全员可用）。
+智能体创建字段：agent_code、name、description、system_prompt、enabled、tool_codes、tool_history_turns（多轮对话中工具执行明细保留轮数，整数，默认 3 轮，0 表示不保留明细；创建、更新、列表及运行时均保留显式 0，只有创建时未传字段才使用默认 3）、quick_questions（快捷提问配置数组：`[{icon, title, prompt, description}]`）、access_control（访问控制对象：`{allow_all: boolean, allowed_roles: string[], allowed_members: string[], allowed_departments: string[]}`，默认 `allow_all: true` 全员可用）。
 更新支持 name、description、system_prompt、enabled、tool_codes、tool_history_turns、quick_questions、access_control，标识码不可变。
 返回字段额外包含 `tool_history_turns`、`skill_codes`、`mcp_codes`（从 `tool_codes` 解析提取，方便前端快速装配与卡片展示）、`access_control`。
 修改平台智能体时创建租户专属覆盖，平台模板和其他租户保持独立；历史会话按 agent_code 解析本租户当前定义。定义和绑定同事务保存。

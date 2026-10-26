@@ -99,7 +99,7 @@ func TestQueryTriggerDatesUseConfiguredZone(t *testing.T) {
 	}
 }
 
-func TestQueryTriggerBeforeBindingsAndEvidenceGuards(t *testing.T) {
+func TestQueryTriggerBeforeBindingsAndEvidenceStatus(t *testing.T) {
 	def := model.AuditDataQueryDefinition{Parameters: []model.AuditDataQueryParameter{{Name: "company", Label: "公司", Type: "string"}}}
 	trigger := &model.AuditDataQueryTrigger{Field: "main:amount", ValueType: "number", Operator: "gte", Value: "5000"}
 	pd := &oa.ProcessData{MainData: map[string]interface{}{"amount": 1}}
@@ -112,13 +112,6 @@ func TestQueryTriggerBeforeBindingsAndEvidenceGuards(t *testing.T) {
 	if !strings.Contains(text, "不代表数据库没有记录") || strings.Contains(text, "数据不可用") {
 		t.Fatalf("跳过语义错误：%s", text)
 	}
-	audit := &model.AuditResultJSON{Recommendation: "approve"}
-	archive := &model.ArchiveResultJSON{OverallCompliance: "compliant"}
-	GuardQueryEvidence(audit, []QueryEvidence{evidence})
-	GuardArchiveQueryEvidence(archive, []QueryEvidence{evidence})
-	if audit.Recommendation != "approve" || archive.OverallCompliance != "compliant" {
-		t.Fatal("主动跳过不应强制降级结论")
-	}
 	pd.MainData["amount"] = 6000
 	_, matched, err = prepareTriggeredQueryInputs(def, nil, trigger, pd, "123")
 	if err == nil || matched == nil || !*matched {
@@ -129,9 +122,8 @@ func TestQueryTriggerBeforeBindingsAndEvidenceGuards(t *testing.T) {
 		t.Fatal("旧引用应继续正常绑定参数")
 	}
 	evidence.Status, evidence.TriggerMatched = "failed", nil
-	GuardQueryEvidence(audit, []QueryEvidence{evidence})
-	GuardArchiveQueryEvidence(archive, []QueryEvidence{evidence})
-	if audit.Recommendation != "review" || archive.OverallCompliance == "compliant" {
-		t.Fatal("条件判断错误仍须人工复核")
+	evidence.Error = "查询条件字段不存在"
+	if text := formatQueryEvidence(evidence); !strings.Contains(text, evidence.Error) || !strings.Contains(text, "数据不可用") || strings.Contains(text, "本项记忆未查询") {
+		t.Fatalf("条件判断错误应作为失败资料提供给 AI：%s", text)
 	}
 }

@@ -81,10 +81,7 @@ func (s *AgentAllocationService) GetAgentCatalog(ctx context.Context) (*dto.Agen
 			for _, b := range a.ToolBindings {
 				toolCodes = append(toolCodes, b.ToolCode)
 			}
-			turns := a.ToolHistoryTurns
-			if turns <= 0 {
-				turns = 3
-			}
+			turns := a.EffectiveToolHistoryTurns()
 			agentCatalog = append(agentCatalog, dto.AgentDefinitionDTO{
 				ID:               a.ID,
 				AgentCode:        a.AgentCode,
@@ -246,10 +243,7 @@ func (s *AgentAllocationService) ListTenantAgents(ctx context.Context, tenantID 
 		if len(ac) == 0 || string(ac) == "{}" || string(ac) == "null" {
 			ac = datatypes.JSON(`{"allow_all":true,"allowed_roles":[],"allowed_members":[],"allowed_departments":[]}`)
 		}
-		turns := a.ToolHistoryTurns
-		if turns <= 0 {
-			turns = 3
-		}
+		turns := a.EffectiveToolHistoryTurns()
 		res = append(res, dto.AgentDefinitionDTO{
 			ID:               a.ID,
 			TenantID:         a.TenantID,

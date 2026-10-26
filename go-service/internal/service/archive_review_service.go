@@ -1052,14 +1052,17 @@ func (s *ArchiveReviewService) ListPendingForBatch(c *gin.Context, workflowIds [
 }
 
 func (s *ArchiveReviewService) CancelJob(c *gin.Context, id uuid.UUID) error {
-	tenantID, _, err := s.extractIDs(c)
+	_, _, err := s.extractIDs(c)
 	if err != nil {
 		return err
 	}
 	if _, err := s.getAccessibleArchiveLog(c, id); err != nil {
 		return err
 	}
-	err = s.markArchiveFailedDB(tenantID, id, "已主动中止")
+	rows, err := s.archiveLogRepo.UpdateActiveFields(c, id, map[string]interface{}{"status": model.JobStatusFailed, "error_message": "已主动中止", "updated_at": apptime.Now()})
+	if err != nil || rows == 0 {
+		return err
+	}
 	if cancelFunc, ok := s.cancelMap.Load(id.String()); ok {
 		cancelFunc.(context.CancelFunc)()
 	}
@@ -1393,10 +1396,14 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		return err
 	}
 
-	_ = s.archiveLogRepo.UpdateFields(c, archiveLogID, map[string]interface{}{
+	if rows, saveErr := s.archiveLogRepo.UpdateActiveFields(c, archiveLogID, map[string]interface{}{
 		"status":     model.JobStatusAssembling,
 		"updated_at": time.Now(),
-	})
+	}); saveErr != nil {
+		return saveErr
+	} else if rows == 0 {
+		return nil
+	}
 
 	fetchCtx := ctx
 	if fieldSet != nil {
@@ -1514,11 +1521,15 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	}
 	bindLLMProcessContext(reasoningReq, logEntry.ProcessID, logEntry.Title, archiveLogID)
 
-	_ = s.archiveLogRepo.UpdateFields(c, archiveLogID, map[string]interface{}{
+	if rows, saveErr := s.archiveLogRepo.UpdateActiveFields(c, archiveLogID, map[string]interface{}{
 		"status":           model.JobStatusReasoning,
 		"process_snapshot": datatypes.JSON(snapshotJSON),
 		"updated_at":       time.Now(),
-	})
+	}); saveErr != nil {
+		return saveErr
+	} else if rows == 0 {
+		return nil
+	}
 
 	reasoningResp, err := s.aiCaller.ChatWithFallback(c, tenantID, userID, modelCfg, fallbackCfg, reasoningReq)
 	if err != nil {
@@ -1533,12 +1544,16 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		deepThinking = sanitize.SanitizeText(deepThinking)
 	}
 
-	_ = s.archiveLogRepo.UpdateFields(c, archiveLogID, map[string]interface{}{
+	if rows, saveErr := s.archiveLogRepo.UpdateActiveFields(c, archiveLogID, map[string]interface{}{
 		"status":        model.JobStatusExtracting,
 		"ai_reasoning":  aiReasoning,
 		"deep_thinking": deepThinking,
 		"updated_at":    time.Now(),
-	})
+	}); saveErr != nil {
+		return saveErr
+	} else if rows == 0 {
+		return nil
+	}
 
 	extractionReq := BuildArchiveExtractionPrompt(&aiConfig, aiReasoning, mergedRulesText)
 	prepareFeedbackMemoryExtraction(extractionReq)
@@ -1557,7 +1572,9 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 
 	totalDuration := int(time.Since(startTime).Milliseconds())
 	parsed, parseErr := ParseArchiveReviewResult(extractionResp.Content)
-	GuardArchiveQueryEvidence(parsed, queryEvidence)
+	if parseErr == nil {
+		parseErr = validateArchiveRuleCoverage(parsed, rules)
+	}
 	var recheckRecord *model.AIRecheckRecord
 	if parseErr == nil && aiConfig.Recheck != nil && aiConfig.Recheck.Enabled {
 		initial, _ := json.Marshal(parsed)
@@ -1580,7 +1597,9 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 			return recheckErr
 		}
 		parsed, parseErr = ParseArchiveReviewResult(string(finalRaw))
-		GuardArchiveQueryEvidence(parsed, queryEvidence)
+		if parseErr == nil {
+			parseErr = validateArchiveRuleCoverage(parsed, rules)
+		}
 		if parseErr == nil {
 			recheckRecord.FinalResult, _ = json.Marshal(parsed)
 			var before, after interface{}
@@ -1693,7 +1712,7 @@ func (s *ArchiveReviewService) markArchiveFailed(c *gin.Context, id uuid.UUID, e
 	if errors.As(err, &se) {
 		msg = se.Message
 	}
-	_ = s.archiveLogRepo.UpdateFields(c, id, map[string]interface{}{
+	_, _ = s.archiveLogRepo.UpdateActiveFields(c, id, map[string]interface{}{
 		"status":        model.JobStatusFailed,
 		"error_message": msg,
 		"updated_at":    time.Now(),
@@ -1702,7 +1721,7 @@ func (s *ArchiveReviewService) markArchiveFailed(c *gin.Context, id uuid.UUID, e
 
 func (s *ArchiveReviewService) markArchiveFailedDB(tenantID, id uuid.UUID, message string) error {
 	return s.db.Model(&model.ArchiveLog{}).
-		Where("id = ? AND tenant_id = ?", id, tenantID).
+		Where("id = ? AND tenant_id = ? AND status IN ?", id, tenantID, model.ActiveReviewJobStatuses()).
 		Updates(map[string]interface{}{
 			"status":        model.JobStatusFailed,
 			"error_message": message,
@@ -1732,7 +1751,7 @@ func (s *ArchiveReviewService) applyStaleArchiveTimeout(c *gin.Context, logEntry
 	if time.Since(logEntry.CreatedAt) <= archiveJobMaxAge {
 		return logEntry, nil
 	}
-	if err := s.archiveLogRepo.UpdateFields(c, logEntry.ID, map[string]interface{}{
+	if _, err := s.archiveLogRepo.UpdateActiveFields(c, logEntry.ID, map[string]interface{}{
 		"status":        model.JobStatusFailed,
 		"error_message": archiveErrStaleMessage,
 		"updated_at":    time.Now(),
@@ -2133,8 +2152,8 @@ func buildArchiveResultFromLog(logEntry *model.ArchiveLog) (result map[string]in
 		"duration_ms":    logEntry.DurationMs,
 	}
 	addExecutionConfigVersionMeta(base, logEntry.ConfigVersionID, logEntry.ConfigVersionNo)
-	if logEntry.ErrorMessage != "" {
-		base["error_message"] = logEntry.ErrorMessage
+	if message := firstNonEmpty(logEntry.ParseError, logEntry.ErrorMessage); message != "" {
+		base["error_message"] = message
 	}
 	if len(logEntry.ProcessSnapshot) > 0 {
 		var snapshot map[string]interface{}

@@ -352,7 +352,7 @@ func (s *AuditExecuteService) markAuditFailed(c *gin.Context, id uuid.UUID, err 
 	if errors.As(err, &se) {
 		msg = se.Message
 	}
-	_ = s.auditLogRepo.UpdateFields(c, id, map[string]interface{}{
+	_, _ = s.auditLogRepo.UpdateActiveFields(c, id, map[string]interface{}{
 		"status":        model.JobStatusFailed,
 		"error_message": msg,
 		"updated_at":    time.Now(),
@@ -362,7 +362,7 @@ func (s *AuditExecuteService) markAuditFailed(c *gin.Context, id uuid.UUID, err 
 // markAuditFailedDB 不依赖 Gin Context（避免 context 已取消时无法落库），用于收尾保存失败或超时标记。
 func (s *AuditExecuteService) markAuditFailedDB(tenantID, id uuid.UUID, message string) error {
 	return s.db.Model(&model.AuditLog{}).
-		Where("id = ? AND tenant_id = ?", id, tenantID).
+		Where("id = ? AND tenant_id = ? AND status IN ?", id, tenantID, model.ActiveReviewJobStatuses()).
 		Updates(map[string]interface{}{
 			"status":        model.JobStatusFailed,
 			"error_message": message,
@@ -394,7 +394,7 @@ func (s *AuditExecuteService) applyStaleAuditTimeout(c *gin.Context, log *model.
 	if time.Since(log.CreatedAt) <= auditJobMaxAge {
 		return log, nil
 	}
-	if err := s.auditLogRepo.UpdateFields(c, log.ID, map[string]interface{}{
+	if _, err := s.auditLogRepo.UpdateActiveFields(c, log.ID, map[string]interface{}{
 		"status":        model.JobStatusFailed,
 		"error_message": auditErrStaleMessage,
 		"updated_at":    time.Now(),
@@ -431,10 +431,7 @@ func (s *AuditExecuteService) FailStaleAuditJobs(ctx context.Context) (int64, er
 // updateAuditLogIfNotCancelled 用户中止或定时配置取消后不再被后续阶段覆盖。
 func (s *AuditExecuteService) updateAuditLogIfNotCancelled(tenantID, auditLogID uuid.UUID, updates map[string]interface{}) (int64, error) {
 	res := s.db.Model(&model.AuditLog{}).
-		Where("id = ? AND tenant_id = ? AND status NOT IN ?", auditLogID, tenantID, []string{
-			model.JobStatusFailed,
-			model.JobStatusCancelled,
-		}).
+		Where("id = ? AND tenant_id = ? AND status IN ?", auditLogID, tenantID, model.ActiveReviewJobStatuses()).
 		Updates(updates)
 	return res.RowsAffected, res.Error
 }
@@ -743,7 +740,9 @@ func (s *AuditExecuteService) processAuditJob(
 
 	totalDuration := int(time.Since(startTime).Milliseconds())
 	parsed, parseErr := ParseAuditResult(extractionResp.Content)
-	GuardQueryEvidence(parsed, queryEvidence)
+	if parseErr == nil {
+		parseErr = validateAuditRuleCoverage(parsed, rules)
+	}
 	var recheckRecord *model.AIRecheckRecord
 	if parseErr == nil && aiConfig.Recheck != nil && aiConfig.Recheck.Enabled {
 		initial, _ := json.Marshal(parsed)
@@ -766,7 +765,9 @@ func (s *AuditExecuteService) processAuditJob(
 			return recheckErr
 		}
 		parsed, parseErr = ParseAuditResult(string(finalRaw))
-		GuardQueryEvidence(parsed, queryEvidence)
+		if parseErr == nil {
+			parseErr = validateAuditRuleCoverage(parsed, rules)
+		}
 		if parseErr == nil {
 			recheckRecord.FinalResult, _ = json.Marshal(parsed)
 			var before, after interface{}
@@ -879,7 +880,10 @@ func (s *AuditExecuteService) CancelJob(c *gin.Context, id uuid.UUID) error {
 	if _, err := s.getAccessibleAuditLog(c, id); err != nil {
 		return err
 	}
-	err = s.markAuditFailedDB(tenantID, id, "已主动中止")
+	rows, err := s.updateAuditLogIfNotCancelled(tenantID, id, map[string]interface{}{"status": model.JobStatusFailed, "error_message": "已主动中止", "updated_at": apptime.Now()})
+	if err != nil || rows == 0 {
+		return err
+	}
 	if cancelFunc, ok := s.cancelMap.Load(id.String()); ok {
 		cancelFunc.(context.CancelFunc)()
 	}
@@ -984,7 +988,7 @@ func auditExecuteResponseFromLog(log *model.AuditLog) *AuditExecuteResponse {
 	}
 	if log.Status == model.JobStatusFailed {
 		resp.Recommendation = ""
-		resp.ParseError = log.ErrorMessage
+		resp.ParseError = firstNonEmpty(log.ParseError, log.ErrorMessage)
 		resp.RuleResults = []model.RuleResultJSON{}
 		resp.RiskPoints = []string{}
 		resp.Suggestions = []string{}
@@ -2338,20 +2342,17 @@ func buildAuditResultFromLog(log *model.AuditLog) (result map[string]interface{}
 		return out
 	case model.JobStatusFailed:
 		out := map[string]interface{}{
-			"id":             log.ID.String(),
-			"trace_id":       fmt.Sprintf("TR-%s", log.ID.String()[:8]),
-			"process_id":     log.ProcessID,
-			"status":         log.Status,
-			"error_message":  log.ErrorMessage,
-			"deep_thinking":  log.DeepThinking,
-			"ai_reasoning":   log.AIReasoning,
-			"created_at":     apptime.FormatRFC3339(log.CreatedAt),
-			"recommendation": "review",
-			"overall_score":  0,
-			"confidence":     0,
-			"rule_results":   []interface{}{},
-			"risk_points":    []string{},
-			"suggestions":    []string{},
+			"id":            log.ID.String(),
+			"trace_id":      fmt.Sprintf("TR-%s", log.ID.String()[:8]),
+			"process_id":    log.ProcessID,
+			"status":        log.Status,
+			"error_message": firstNonEmpty(log.ParseError, log.ErrorMessage),
+			"deep_thinking": log.DeepThinking,
+			"ai_reasoning":  log.AIReasoning,
+			"created_at":    apptime.FormatRFC3339(log.CreatedAt),
+			"rule_results":  []interface{}{},
+			"risk_points":   []string{},
+			"suggestions":   []string{},
 		}
 		addExecutionConfigVersionMeta(out, log.ConfigVersionID, log.ConfigVersionNo)
 		return out

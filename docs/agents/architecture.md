@@ -67,3 +67,10 @@
 ## 当前实现补充（2026-09-05）
 
 以 [chat API](../api/chat.md) 和 [agents API](../api/agents.md) 为实际契约；上文未实现的设计不代表现有能力。当前路径为 `/chat?session=<id>`，会话放入全局侧栏的智能体目录中。消息表保存 assistant 的 tool_calls 执行摘要；模型上下文使用 Messages/Tools，要求模型支持工具调用，尚未提供自定义 JSON 兜底。Skill 通过可调用指南读取工具装配。MCP 目前为 Streamable HTTP。保留期由每小时后台清理执行；暂无专用嵌入聊天路由。
+
+
+## 历史工具资料保留
+
+`tool_history_turns=0` 表示不恢复历史工具明细，只保留已有文本消息；未提交创建参数时默认 3。创建、更新、管理列表、有效智能体列表及运行时采用同一口径。
+
+历史资料压缩沿用系统工具的实际返回字段：流程主表 `main_fields` 的字段/值对应关系、标题与申请人、字符串附件名、审批节点的 `operated_at`、审核的 `recommendation/score/audit_result`、总结的 `summary_result`。明细有数量和长度上限，截断保留说明；通用对象按固定字段顺序裁剪，避免同一份资料多次恢复时随机丢失不同字段。

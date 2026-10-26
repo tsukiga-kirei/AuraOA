@@ -117,21 +117,11 @@ func TestQueryBindingsTypedAndOffset(t *testing.T) {
 	}
 }
 
-func TestQueryEvidenceAndGuards(t *testing.T) {
+func TestQueryEvidenceDistinguishesIncompleteFailedAndEmptyResults(t *testing.T) {
 	e := QueryEvidence{Name: "历史报销", RuleContent: "不得拆单", Status: "success", Result: &oa.AuditQueryResult{Columns: []oa.QueryColumn{{Key: "col_1", Label: "金额"}}, Rows: []map[string]interface{}{{"col_1": 100}}, Truncated: true}}
 	text := formatQueryEvidence(e)
 	if !strings.Contains(text, `"金额":100`) || !strings.Contains(text, "不能据此计算全量累计") {
 		t.Fatalf("missing evidence semantics: %s", text)
-	}
-	audit := &model.AuditResultJSON{Recommendation: "approve", RuleResults: []model.RuleResultJSON{{RuleContent: "不得拆单", Passed: true}}}
-	GuardQueryEvidence(audit, []QueryEvidence{e})
-	if audit.Recommendation != "review" || audit.RuleResults[0].Passed {
-		t.Fatal("truncated evidence approved")
-	}
-	archive := &model.ArchiveResultJSON{OverallCompliance: "compliant"}
-	GuardArchiveQueryEvidence(archive, []QueryEvidence{e})
-	if archive.OverallCompliance == "compliant" {
-		t.Fatal("archive approved incomplete evidence")
 	}
 	e.Status = "failed"
 	e.Error = "数据库超时"

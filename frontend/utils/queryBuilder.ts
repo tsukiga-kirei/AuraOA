@@ -13,7 +13,7 @@ export function compileQueryBuilder(
   schema: QueryColumn[],
   archive?: WorkflowArchiveRule | null,
 ) {
-  const fail = (code: string): never => {
+  const fail: (code: string) => never = (code) => {
     throw new Error(code)
   }
   const identifier = (value: string) => {

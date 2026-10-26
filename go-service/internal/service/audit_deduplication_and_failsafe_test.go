@@ -108,8 +108,10 @@ func TestParseArchiveReviewResult_FailSafe(t *testing.T) {
 			}
 		],
 		"flow_audit": {
-			"is_complete": true
+			"is_complete": true, "missing_nodes": [], "node_results": []
 		},
+		"field_audit": [],
+		"ai_summary": "核验完成",
 		"rule_audit": [
 			{
 				"rule_name": "完工验收单检查",
