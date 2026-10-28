@@ -4368,7 +4368,7 @@ paths:
                   message:
                     type: string
                     example: success
-  /api/tenant/settings/processes/{processType}:
+  /api/tenant/settings/processes/detail:
     get:
       summary: 获取流程个人配置
       tags:
@@ -4390,8 +4390,8 @@ paths:
                     type: string
                     example: success
       parameters:
-      - name: processType
-        in: path
+      - name: process_type
+        in: query
         required: true
         schema:
           type: string
@@ -4419,8 +4419,8 @@ paths:
           description: 租户基础版本或个人配置版本已变化
           $ref: '#/components/responses/ErrorResponse'
       parameters:
-      - name: processType
-        in: path
+      - name: process_type
+        in: query
         required: true
         schema:
           type: string
@@ -4430,7 +4430,7 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/UserProcessConfigRequest'
-  /api/tenant/settings/processes/{processType}/full:
+  /api/tenant/settings/processes/full:
     get:
       summary: 获取完整审核配置（租户+个人合并）
       tags:
@@ -4452,8 +4452,8 @@ paths:
                     type: string
                     example: success
       parameters:
-      - name: processType
-        in: path
+      - name: process_type
+        in: query
         required: true
         schema:
           type: string
@@ -4528,7 +4528,7 @@ paths:
                   message:
                     type: string
                     example: success
-  /api/tenant/settings/archive-configs/{processType}/full:
+  /api/tenant/settings/archive-configs/full:
     get:
       summary: 获取完整归档配置合并视图
       tags:
@@ -4550,12 +4550,12 @@ paths:
                     type: string
                     example: success
       parameters:
-      - name: processType
-        in: path
+      - name: process_type
+        in: query
         required: true
         schema:
           type: string
-  /api/tenant/settings/archive-configs/{processType}:
+  /api/tenant/settings/archive-configs:
     put:
       summary: 更新归档个人配置
       tags:
@@ -4580,8 +4580,8 @@ paths:
           description: 租户基础版本或个人配置版本已变化
           $ref: '#/components/responses/ErrorResponse'
       parameters:
-      - name: processType
-        in: path
+      - name: process_type
+        in: query
         required: true
         schema:
           type: string
@@ -4624,7 +4624,7 @@ paths:
                           type: string
                         process_type_label:
                           type: string
-  /api/tenant/settings/summary-configs/{processType}/full:
+  /api/tenant/settings/summary-configs/full:
     get:
       summary: 获取流程总结个人展示偏好
       tags:
@@ -4632,8 +4632,8 @@ paths:
       security:
       - bearerAuth: []
       parameters:
-      - name: processType
-        in: path
+      - name: process_type
+        in: query
         required: true
         schema:
           type: string
@@ -4674,7 +4674,7 @@ paths:
                               type: boolean
                             enable_thinking:
                               type: boolean
-  /api/tenant/settings/summary-configs/{processType}:
+  /api/tenant/settings/summary-configs:
     put:
       summary: 更新流程总结个人展示偏好
       tags:
@@ -4682,8 +4682,8 @@ paths:
       security:
       - bearerAuth: []
       parameters:
-      - name: processType
-        in: path
+      - name: process_type
+        in: query
         required: true
         schema:
           type: string
