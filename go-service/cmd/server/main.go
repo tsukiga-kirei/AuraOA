@@ -378,6 +378,8 @@ func main() {
 
 	// 第八步：配置 Gin 路由及中间件
 	r := gin.New()
+	r.UseRawPath = true
+	r.UnescapePathValues = true
 	r.SetTrustedProxies(nil)
 	r.ForwardedByClientIP = true
 	allowedOrigins := viper.GetStringSlice("cors.allowed_origins")

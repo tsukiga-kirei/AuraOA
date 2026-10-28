@@ -71,8 +71,9 @@ export const useSettingsApi = () => {
    * @param processType 流程类型编码
    */
   async function getFullProcessConfig(processType: string): Promise<FullAuditProcessConfig> {
+    const params = new URLSearchParams({ process_type: processType })
     return await authFetch<FullAuditProcessConfig>(
-      `/api/tenant/settings/processes/${encodeURIComponent(processType)}/full`,
+      `/api/tenant/settings/processes/full?${params.toString()}`,
     )
   }
 
@@ -82,7 +83,8 @@ export const useSettingsApi = () => {
    * @param config 个人配置内容
    */
   async function updateProcessConfig(processType: string, config: UpdatePersonalConfigRequest): Promise<void> {
-    await authFetch<null>(`/api/tenant/settings/processes/${encodeURIComponent(processType)}`, {
+    const params = new URLSearchParams({ process_type: processType })
+    await authFetch<null>(`/api/tenant/settings/processes?${params.toString()}`, {
       method: 'PUT',
       body: config,
     })
@@ -126,8 +128,9 @@ export const useSettingsApi = () => {
    * @param processType 归档流程类型编码
    */
   async function getFullArchiveConfig(processType: string): Promise<FullArchiveConfig> {
+    const params = new URLSearchParams({ process_type: processType })
     return await authFetch<FullArchiveConfig>(
-      `/api/tenant/settings/archive-configs/${encodeURIComponent(processType)}/full`,
+      `/api/tenant/settings/archive-configs/full?${params.toString()}`,
     )
   }
 
@@ -137,7 +140,8 @@ export const useSettingsApi = () => {
    * @param config 个人配置内容
    */
   async function updateArchiveConfig(processType: string, config: UpdatePersonalConfigRequest): Promise<void> {
-    await authFetch<null>(`/api/tenant/settings/archive-configs/${encodeURIComponent(processType)}`, {
+    const params = new URLSearchParams({ process_type: processType })
+    await authFetch<null>(`/api/tenant/settings/archive-configs?${params.toString()}`, {
       method: 'PUT',
       body: config,
     })
@@ -152,13 +156,15 @@ export const useSettingsApi = () => {
   }
 
   async function getFullSummaryPreference(processType: string): Promise<FullSummaryPreference> {
+    const params = new URLSearchParams({ process_type: processType })
     return await authFetch<FullSummaryPreference>(
-      `/api/tenant/settings/summary-configs/${encodeURIComponent(processType)}/full`,
+      `/api/tenant/settings/summary-configs/full?${params.toString()}`,
     )
   }
 
   async function updateSummaryPreference(processType: string, configId: string, visibleBlockIds: string[]): Promise<void> {
-    await authFetch<null>(`/api/tenant/settings/summary-configs/${encodeURIComponent(processType)}`, {
+    const params = new URLSearchParams({ process_type: processType })
+    await authFetch<null>(`/api/tenant/settings/summary-configs?${params.toString()}`, {
       method: 'PUT',
       body: { config_id: configId, visible_block_ids: visibleBlockIds },
     })
@@ -218,12 +224,11 @@ export const useSettingsApi = () => {
     fromVersion?: number,
     toVersion?: number,
   ): Promise<BaselineVersionDiffResponse> {
-    const params = new URLSearchParams()
+    const params = new URLSearchParams({ process_type: processType })
     if (fromVersion !== undefined) params.set('from_version', String(fromVersion))
     if (toVersion !== undefined) params.set('to_version', String(toVersion))
-    const query = params.toString() ? `?${params.toString()}` : ''
     return await authFetch<BaselineVersionDiffResponse>(
-      `/api/tenant/settings/processes/${encodeURIComponent(processType)}/version-diff${query}`,
+      `/api/tenant/settings/processes/version-diff?${params.toString()}`,
     )
   }
 
@@ -233,12 +238,11 @@ export const useSettingsApi = () => {
     fromVersion?: number,
     toVersion?: number,
   ): Promise<BaselineVersionDiffResponse> {
-    const params = new URLSearchParams()
+    const params = new URLSearchParams({ process_type: processType })
     if (fromVersion !== undefined) params.set('from_version', String(fromVersion))
     if (toVersion !== undefined) params.set('to_version', String(toVersion))
-    const query = params.toString() ? `?${params.toString()}` : ''
     return await authFetch<BaselineVersionDiffResponse>(
-      `/api/tenant/settings/archive-configs/${encodeURIComponent(processType)}/version-diff${query}`,
+      `/api/tenant/settings/archive-configs/version-diff?${params.toString()}`,
     )
   }
 

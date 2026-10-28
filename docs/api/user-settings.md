@@ -19,7 +19,7 @@ GET /api/tenant/settings/processes
 ### 获取流程个人配置
 
 ```
-GET /api/tenant/settings/processes/:processType
+GET /api/tenant/settings/processes/detail?process_type=...
 ```
 
 返回指定流程类型的用户个人配置（字段覆盖、规则开关、AI 尺度偏好）。
@@ -29,7 +29,7 @@ GET /api/tenant/settings/processes/:processType
 ### 更新流程个人配置
 
 ```
-PUT /api/tenant/settings/processes/:processType
+PUT /api/tenant/settings/processes?process_type=...
 ```
 
 **请求体**：
@@ -50,7 +50,8 @@ PUT /api/tenant/settings/processes/:processType
 ### 获取完整流程配置（合并视图）
 
 ```
-GET /api/tenant/settings/processes/:processType/full
+GET /api/tenant/settings/processes/full?process_type=...
+GET /api/tenant/settings/processes/full?process_type=...
 ```
 
 返回租户配置 + 用户覆盖合并后的完整配置，包括：
@@ -74,7 +75,7 @@ GET /api/tenant/settings/processes/:processType/full
 ### 获取审核流程基线版本差异（Diff）
 
 ```
-GET /api/tenant/settings/processes/:processType/version-diff?from_version=1&to_version=2
+GET /api/tenant/settings/processes/version-diff?process_type=...&from_version=1&to_version=2
 ```
 
 对比租户配置在两个版本之间的基准变更（新增规则、删除规则、修改规则、新增/删除字段、审核尺度调整等）。若不提供参数，默认对比用户当前基于版本 `base_config_version` 与租户最新版本 `current_base_config_version`。
@@ -150,7 +151,7 @@ GET /api/tenant/settings/archive-configs
 ### 获取完整归档配置（合并视图）
 
 ```
-GET /api/tenant/settings/archive-configs/:processType/full
+GET /api/tenant/settings/archive-configs/full?process_type=...
 ```
 
 返回租户归档配置 + 用户覆盖合并后的完整配置。
@@ -160,7 +161,7 @@ GET /api/tenant/settings/archive-configs/:processType/full
 ### 更新归档个人配置
 
 ```
-PUT /api/tenant/settings/archive-configs/:processType
+PUT /api/tenant/settings/archive-configs?process_type=...
 ```
 
 请求和版本冲突语义与审核工作台一致；个人复核尺度也只有在管理员允许时才会进入最终执行快照。
@@ -183,7 +184,7 @@ GET /api/tenant/settings/summary-configs
 ### 获取完整个人展示偏好
 
 ```
-GET /api/tenant/settings/summary-configs/:processType/full
+GET /api/tenant/settings/summary-configs/full?process_type=...
 ```
 
 返回流程配置 ID、流程类型、流程名称和启用的总结块。每个块包含 `id`、`title`、
@@ -192,7 +193,7 @@ GET /api/tenant/settings/summary-configs/:processType/full
 ### 更新个人展示偏好
 
 ```
-PUT /api/tenant/settings/summary-configs/:processType
+PUT /api/tenant/settings/summary-configs?process_type=...
 ```
 
 **请求体**：

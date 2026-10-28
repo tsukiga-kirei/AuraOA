@@ -192,10 +192,18 @@ func (s *UserPersonalConfigService) GetByProcessType(c *gin.Context, userID uuid
 	if err != nil {
 		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
 	}
-	processCfg, err := s.configRepo.GetByProcessType(c, processType)
-	if err != nil {
-		return nil, newServiceError(errcode.ErrConfigNotFound, "流程审核配置不存在")
+	var processCfg *model.ProcessAuditConfig
+	if parsedID, parseErr := uuid.Parse(processType); parseErr == nil {
+		processCfg, _ = s.configRepo.GetByID(c, parsedID)
 	}
+	if processCfg == nil {
+		var cfgErr error
+		processCfg, cfgErr = s.configRepo.GetByProcessType(c, processType)
+		if cfgErr != nil {
+			return nil, newServiceError(errcode.ErrConfigNotFound, "流程审核配置不存在")
+		}
+	}
+	processType = processCfg.ProcessType
 	if !s.userCanAccess(c, tenantID, userID, processCfg.AccessControl) {
 		return nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权访问该审核流程")
 	}
@@ -232,10 +240,23 @@ func (s *UserPersonalConfigService) UpdateByProcessType(c *gin.Context, userID u
 	}
 
 	// 获取流程审核配置，检查权限锁定
-	processCfg, err := s.configRepo.GetByProcessType(c, processType)
-	if err != nil {
-		return newServiceError(errcode.ErrConfigNotFound, "流程审核配置不存在")
+	var processCfg *model.ProcessAuditConfig
+	if parsedID, parseErr := uuid.Parse(processType); parseErr == nil {
+		processCfg, _ = s.configRepo.GetByID(c, parsedID)
 	}
+	if processCfg == nil && req.ConfigID != "" {
+		if reqID, parseErr := uuid.Parse(req.ConfigID); parseErr == nil {
+			processCfg, _ = s.configRepo.GetByID(c, reqID)
+		}
+	}
+	if processCfg == nil {
+		var cfgErr error
+		processCfg, cfgErr = s.configRepo.GetByProcessType(c, processType)
+		if cfgErr != nil {
+			return newServiceError(errcode.ErrConfigNotFound, "流程审核配置不存在")
+		}
+	}
+	processType = processCfg.ProcessType
 	if !s.userCanAccess(c, tenantID, userID, processCfg.AccessControl) {
 		return newServiceError(errcode.ErrPermissionDenied, "当前用户无权修改该审核流程配置")
 	}
@@ -369,10 +390,18 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 	}
 
 	// 获取租户流程审核配置
-	tenantCfg, err := s.configRepo.GetByProcessType(c, processType)
-	if err != nil {
-		return nil, newServiceError(errcode.ErrConfigNotFound, "流程审核配置不存在")
+	var tenantCfg *model.ProcessAuditConfig
+	if parsedID, parseErr := uuid.Parse(processType); parseErr == nil {
+		tenantCfg, _ = s.configRepo.GetByID(c, parsedID)
 	}
+	if tenantCfg == nil {
+		var cfgErr error
+		tenantCfg, cfgErr = s.configRepo.GetByProcessType(c, processType)
+		if cfgErr != nil {
+			return nil, newServiceError(errcode.ErrConfigNotFound, "流程审核配置不存在")
+		}
+	}
+	processType = tenantCfg.ProcessType
 	if !s.userCanAccess(c, tenantID, userID, tenantCfg.AccessControl) {
 		return nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权访问该审核流程")
 	}
@@ -623,7 +652,7 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 	}
 	var tenantCfg *model.ProcessArchiveConfig
 	for i := range allCfgs {
-		if allCfgs[i].ProcessType == processType {
+		if allCfgs[i].ProcessType == processType || allCfgs[i].ID.String() == processType {
 			tenantCfg = &allCfgs[i]
 			break
 		}
@@ -631,6 +660,7 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 	if tenantCfg == nil {
 		return nil, newServiceError(errcode.ErrConfigNotFound, "归档复盘配置不存在")
 	}
+	processType = tenantCfg.ProcessType
 	if !s.userCanAccess(c, tenantID, userID, tenantCfg.AccessControl) {
 		return nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权访问该归档复盘")
 	}
@@ -790,7 +820,7 @@ func (s *UserPersonalConfigService) UpdateArchiveConfig(c *gin.Context, userID u
 	}
 	var tenantCfg *model.ProcessArchiveConfig
 	for i := range allCfgs {
-		if allCfgs[i].ProcessType == processType {
+		if allCfgs[i].ProcessType == processType || allCfgs[i].ID.String() == processType || (req.ConfigID != "" && allCfgs[i].ID.String() == req.ConfigID) {
 			tenantCfg = &allCfgs[i]
 			break
 		}
@@ -798,6 +828,7 @@ func (s *UserPersonalConfigService) UpdateArchiveConfig(c *gin.Context, userID u
 	if tenantCfg == nil {
 		return newServiceError(errcode.ErrConfigNotFound, "归档复盘配置不存在")
 	}
+	processType = tenantCfg.ProcessType
 	if !s.userCanAccess(c, tenantID, userID, tenantCfg.AccessControl) {
 		return newServiceError(errcode.ErrPermissionDenied, "当前用户无权修改该归档复盘配置")
 	}
@@ -945,10 +976,17 @@ func (s *UserPersonalConfigService) GetFullSummaryPreference(c *gin.Context, use
 	if err != nil {
 		return nil, newServiceError(errcode.ErrParamValidation, "租户ID无效")
 	}
-	config, err := s.summaryConfigRepo.GetByProcessType(c, processType)
-	if err != nil || config.Status != "active" {
+	var config *model.ProcessSummaryConfig
+	if parsedID, parseErr := uuid.Parse(processType); parseErr == nil {
+		config, _ = s.summaryConfigRepo.GetByID(c, parsedID)
+	}
+	if config == nil {
+		config, err = s.summaryConfigRepo.GetByProcessType(c, processType)
+	}
+	if err != nil || config == nil || config.Status != "active" {
 		return nil, newServiceError(errcode.ErrConfigNotFound, "流程总结配置不存在或已停用")
 	}
+	processType = config.ProcessType
 	if err := loadPublishedConfig(c.Request.Context(), s.versions, tenantID, model.ExecutionConfigModuleSummary, config.ID, config, nil); err != nil {
 		if errors.Is(err, errConfigNotPublished) {
 			return nil, newServiceError(errcode.ErrConfigNotFound, "流程总结配置尚处于草稿状态，请先发布首个版本")
@@ -999,10 +1037,22 @@ func (s *UserPersonalConfigService) UpdateSummaryPreference(c *gin.Context, user
 	if err != nil {
 		return newServiceError(errcode.ErrParamValidation, "租户ID无效")
 	}
-	config, err := s.summaryConfigRepo.GetByProcessType(c, processType)
-	if err != nil || config.Status != "active" {
+	var config *model.ProcessSummaryConfig
+	if parsedID, parseErr := uuid.Parse(processType); parseErr == nil {
+		config, _ = s.summaryConfigRepo.GetByID(c, parsedID)
+	}
+	if config == nil && req.ConfigID != "" {
+		if reqID, parseErr := uuid.Parse(req.ConfigID); parseErr == nil {
+			config, _ = s.summaryConfigRepo.GetByID(c, reqID)
+		}
+	}
+	if config == nil {
+		config, err = s.summaryConfigRepo.GetByProcessType(c, processType)
+	}
+	if err != nil || config == nil || config.Status != "active" {
 		return newServiceError(errcode.ErrConfigNotFound, "流程总结配置不存在或已停用")
 	}
+	processType = config.ProcessType
 	if err := loadPublishedConfig(c.Request.Context(), s.versions, tenantID, model.ExecutionConfigModuleSummary, config.ID, config, nil); err != nil {
 		if errors.Is(err, errConfigNotPublished) {
 			return newServiceError(errcode.ErrConfigNotFound, "流程总结配置尚处于草稿状态，请先发布首个版本")

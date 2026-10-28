@@ -47,6 +47,14 @@ func getUserID(c *gin.Context) (uuid.UUID, error) {
 	return uuid.Parse(claims.Sub)
 }
 
+// getProcessIdentifier 从 Query 参数中提取流程标识（支持 process_type 或 config_id）。
+func getProcessIdentifier(c *gin.Context) string {
+	if pt := c.Query("process_type"); pt != "" {
+		return pt
+	}
+	return c.Query("config_id")
+}
+
 // dashboardPrefsTenantScope 确定仪表盘偏好的租户维度：
 // system_admin 使用平台维度（数据库 tenant_id 为 NULL），其他角色必须携带租户上下文。
 func dashboardPrefsTenantScope(c *gin.Context) (*uuid.UUID, error) {
@@ -109,8 +117,8 @@ func (h *UserPersonalConfigHandler) GetProcessList(c *gin.Context) {
 }
 
 // GetByProcessType 获取当前用户指定流程类型的个人配置详情。
-// GET /api/tenant/settings/processes/:processType
-// 路径参数：processType（流程类型标识）
+// GET /api/tenant/settings/processes/detail?process_type=...
+// 查询参数：process_type 或 config_id
 // 返回：该流程的个人配置对象（AI 严格度、规则开关、字段覆盖等）。
 func (h *UserPersonalConfigHandler) GetByProcessType(c *gin.Context) {
 	userID, err := getUserID(c)
@@ -118,9 +126,9 @@ func (h *UserPersonalConfigHandler) GetByProcessType(c *gin.Context) {
 		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
 		return
 	}
-	processType := c.Param("processType")
+	processType := getProcessIdentifier(c)
 	if processType == "" {
-		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "process_type 不能为空")
 		return
 	}
 	detail, err := h.userConfigService.GetByProcessType(c, userID, processType)
@@ -132,8 +140,8 @@ func (h *UserPersonalConfigHandler) GetByProcessType(c *gin.Context) {
 }
 
 // UpdateByProcessType 更新当前用户指定流程类型的个人配置。
-// PUT /api/tenant/settings/processes/:processType
-// 路径参数：processType（流程类型标识）
+// PUT /api/tenant/settings/processes?process_type=...
+// 查询参数：process_type 或 config_id
 // 请求体：UpdateUserProcessConfigRequest
 // 返回：null（成功时）。
 func (h *UserPersonalConfigHandler) UpdateByProcessType(c *gin.Context) {
@@ -142,14 +150,17 @@ func (h *UserPersonalConfigHandler) UpdateByProcessType(c *gin.Context) {
 		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
 		return
 	}
-	processType := c.Param("processType")
-	if processType == "" {
-		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
-		return
-	}
+	processType := getProcessIdentifier(c)
 	var req dto.UpdateUserProcessConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	if processType == "" {
+		processType = req.ConfigID
+	}
+	if processType == "" {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "process_type 不能为空")
 		return
 	}
 	if err := h.userConfigService.UpdateByProcessType(c, userID, processType, &req); err != nil {
@@ -237,8 +248,8 @@ func (h *UserPersonalConfigHandler) UpdateDashboardPrefs(c *gin.Context) {
 }
 
 // GetFullProcessConfig 获取当前用户指定流程类型的完整审核配置（含租户规则、字段等合并结果）。
-// GET /api/tenant/settings/processes/:processType/full
-// 路径参数：processType（流程类型标识）
+// GET /api/tenant/settings/processes/full?process_type=...
+// 查询参数：process_type 或 config_id
 // 返回：合并后的完整流程配置对象，供审核工作台使用。
 func (h *UserPersonalConfigHandler) GetFullProcessConfig(c *gin.Context) {
 	userID, err := getUserID(c)
@@ -246,9 +257,9 @@ func (h *UserPersonalConfigHandler) GetFullProcessConfig(c *gin.Context) {
 		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
 		return
 	}
-	processType := c.Param("processType")
+	processType := getProcessIdentifier(c)
 	if processType == "" {
-		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "process_type 不能为空")
 		return
 	}
 	result, err := h.userConfigService.GetFullAuditProcessConfig(c, userID, processType)
@@ -260,11 +271,11 @@ func (h *UserPersonalConfigHandler) GetFullProcessConfig(c *gin.Context) {
 }
 
 // GetAuditBaselineVersionDiff 获取审核流程在两个基线版本之间的差异概览。
-// GET /api/tenant/settings/processes/:processType/version-diff?from=1&to=2
+// GET /api/tenant/settings/processes/version-diff?process_type=...&from=1&to=2
 func (h *UserPersonalConfigHandler) GetAuditBaselineVersionDiff(c *gin.Context) {
-	processType := c.Param("processType")
+	processType := getProcessIdentifier(c)
 	if processType == "" {
-		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "processType 不能为空")
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "process_type 不能为空")
 		return
 	}
 	fromNo := parseIntQuery(c, "from", 0)
@@ -278,11 +289,11 @@ func (h *UserPersonalConfigHandler) GetAuditBaselineVersionDiff(c *gin.Context) 
 }
 
 // GetArchiveBaselineVersionDiff 获取归档复盘在两个基线版本之间的差异概览。
-// GET /api/tenant/settings/archive-configs/:processType/version-diff?from=1&to=2
+// GET /api/tenant/settings/archive-configs/version-diff?process_type=...&from=1&to=2
 func (h *UserPersonalConfigHandler) GetArchiveBaselineVersionDiff(c *gin.Context) {
-	processType := c.Param("processType")
+	processType := getProcessIdentifier(c)
 	if processType == "" {
-		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "processType 不能为空")
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "process_type 不能为空")
 		return
 	}
 	fromNo := parseIntQuery(c, "from", 0)
@@ -352,8 +363,8 @@ func (h *UserPersonalConfigHandler) GetArchiveConfigList(c *gin.Context) {
 }
 
 // GetFullArchiveConfig 获取当前用户指定归档流程类型的完整配置（含规则、字段等合并结果）。
-// GET /api/tenant/settings/archive-configs/:processType/full
-// 路径参数：processType（归档流程类型标识）
+// GET /api/tenant/settings/archive-configs/full?process_type=...
+// 查询参数：process_type 或 config_id
 // 返回：合并后的完整归档配置对象，供归档复盘工作台使用。
 func (h *UserPersonalConfigHandler) GetFullArchiveConfig(c *gin.Context) {
 	userID, err := getUserID(c)
@@ -361,9 +372,9 @@ func (h *UserPersonalConfigHandler) GetFullArchiveConfig(c *gin.Context) {
 		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
 		return
 	}
-	processType := c.Param("processType")
+	processType := getProcessIdentifier(c)
 	if processType == "" {
-		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "process_type 不能为空")
 		return
 	}
 	result, err := h.userConfigService.GetFullArchiveConfig(c, userID, processType)
@@ -375,8 +386,8 @@ func (h *UserPersonalConfigHandler) GetFullArchiveConfig(c *gin.Context) {
 }
 
 // UpdateArchiveConfig 更新当前用户指定归档流程类型的个人配置。
-// PUT /api/tenant/settings/archive-configs/:processType
-// 路径参数：processType（归档流程类型标识）
+// PUT /api/tenant/settings/archive-configs?process_type=...
+// 查询参数：process_type 或 config_id
 // 请求体：UpdateArchiveConfigRequest
 // 返回：null（成功时）。
 func (h *UserPersonalConfigHandler) UpdateArchiveConfig(c *gin.Context) {
@@ -385,14 +396,17 @@ func (h *UserPersonalConfigHandler) UpdateArchiveConfig(c *gin.Context) {
 		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
 		return
 	}
-	processType := c.Param("processType")
-	if processType == "" {
-		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
-		return
-	}
+	processType := getProcessIdentifier(c)
 	var req dto.UpdateArchiveConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	if processType == "" {
+		processType = req.ConfigID
+	}
+	if processType == "" {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "process_type 不能为空")
 		return
 	}
 	if err := h.userConfigService.UpdateArchiveConfig(c, userID, processType, &req); err != nil {
@@ -418,16 +432,17 @@ func (h *UserPersonalConfigHandler) GetSummaryConfigList(c *gin.Context) {
 }
 
 // GetFullSummaryPreference 获取指定流程总结配置与个人展示偏好的合并视图。
-// GET /api/tenant/settings/summary-configs/:processType/full
+// GET /api/tenant/settings/summary-configs/full?process_type=...
+// 查询参数：process_type 或 config_id
 func (h *UserPersonalConfigHandler) GetFullSummaryPreference(c *gin.Context) {
 	userID, err := getUserID(c)
 	if err != nil {
 		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
 		return
 	}
-	processType := c.Param("processType")
+	processType := getProcessIdentifier(c)
 	if processType == "" {
-		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "process_type 不能为空")
 		return
 	}
 	result, err := h.userConfigService.GetFullSummaryPreference(c, userID, processType)
@@ -439,21 +454,25 @@ func (h *UserPersonalConfigHandler) GetFullSummaryPreference(c *gin.Context) {
 }
 
 // UpdateSummaryPreference 更新指定流程的个人总结块展示偏好。
-// PUT /api/tenant/settings/summary-configs/:processType
+// PUT /api/tenant/settings/summary-configs?process_type=...
+// 查询参数：process_type 或 config_id
 func (h *UserPersonalConfigHandler) UpdateSummaryPreference(c *gin.Context) {
 	userID, err := getUserID(c)
 	if err != nil {
 		response.Error(c, http.StatusUnauthorized, errcode.ErrNoAuthToken, "未提供认证令牌")
 		return
 	}
-	processType := c.Param("processType")
-	if processType == "" {
-		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
-		return
-	}
+	processType := getProcessIdentifier(c)
 	var req dto.UpdateSummaryPreferenceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败")
+		return
+	}
+	if processType == "" {
+		processType = req.ConfigID
+	}
+	if processType == "" {
+		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "process_type 不能为空")
 		return
 	}
 	if err := h.userConfigService.UpdateSummaryPreference(c, userID, processType, &req); err != nil {

@@ -345,27 +345,27 @@ func SetupRouter(
 	tenantSettings := r.Group("/api/tenant/settings")
 	tenantSettings.Use(middleware.JWT(rdb), middleware.TenantContext())
 	{
-		// 审核工作台个人配置
+		// 审核工作台个人配置（统一采用 Query 参数）
 		tenantSettings.GET("/processes", userConfigHandler.GetProcessList)
-		tenantSettings.GET("/processes/:processType", userConfigHandler.GetByProcessType)
-		tenantSettings.PUT("/processes/:processType", userConfigHandler.UpdateByProcessType)
-		tenantSettings.GET("/processes/:processType/full", userConfigHandler.GetFullProcessConfig)
-		tenantSettings.GET("/processes/:processType/version-diff", userConfigHandler.GetAuditBaselineVersionDiff)
+		tenantSettings.GET("/processes/detail", userConfigHandler.GetByProcessType)
+		tenantSettings.PUT("/processes", userConfigHandler.UpdateByProcessType)
+		tenantSettings.GET("/processes/full", userConfigHandler.GetFullProcessConfig)
+		tenantSettings.GET("/processes/version-diff", userConfigHandler.GetAuditBaselineVersionDiff)
 
 		// 定时任务个人偏好（默认邮箱等）
 		tenantSettings.GET("/cron-prefs", userConfigHandler.GetCronPrefs)
 		tenantSettings.PUT("/cron-prefs", userConfigHandler.UpdateCronPrefs)
 
-		// 归档复盘个人配置
+		// 归档复盘个人配置（统一采用 Query 参数）
 		tenantSettings.GET("/archive-configs", userConfigHandler.GetArchiveConfigList)
-		tenantSettings.GET("/archive-configs/:processType/full", userConfigHandler.GetFullArchiveConfig)
-		tenantSettings.PUT("/archive-configs/:processType", userConfigHandler.UpdateArchiveConfig)
-		tenantSettings.GET("/archive-configs/:processType/version-diff", userConfigHandler.GetArchiveBaselineVersionDiff)
+		tenantSettings.GET("/archive-configs/full", userConfigHandler.GetFullArchiveConfig)
+		tenantSettings.PUT("/archive-configs", userConfigHandler.UpdateArchiveConfig)
+		tenantSettings.GET("/archive-configs/version-diff", userConfigHandler.GetArchiveBaselineVersionDiff)
 
-		// 流程总结个人展示偏好
+		// 流程总结个人展示偏好（统一采用 Query 参数）
 		tenantSettings.GET("/summary-configs", userConfigHandler.GetSummaryConfigList)
-		tenantSettings.GET("/summary-configs/:processType/full", userConfigHandler.GetFullSummaryPreference)
-		tenantSettings.PUT("/summary-configs/:processType", userConfigHandler.UpdateSummaryPreference)
+		tenantSettings.GET("/summary-configs/full", userConfigHandler.GetFullSummaryPreference)
+		tenantSettings.PUT("/summary-configs", userConfigHandler.UpdateSummaryPreference)
 
 		// 仪表板偏好
 		tenantSettings.GET("/dashboard-prefs", userConfigHandler.GetDashboardPrefs)
