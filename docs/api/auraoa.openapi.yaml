@@ -5451,7 +5451,7 @@ paths:
       - bearerAuth: []
       responses:
         '200':
-          description: SSE 流式输出（text/event-stream）
+          description: SSE 流式输出（text/event-stream）；message 与 thinking 的 data 均为当前尝试累计全文，直接覆盖，空快照表示重试清空；重连重放快照，终态以轮询结果为准。需同步升级前后端。
           content:
             text/event-stream:
               schema:
@@ -6631,7 +6631,7 @@ paths:
       - bearerAuth: []
       responses:
         '200':
-          description: SSE 流式输出（text/event-stream）
+          description: SSE 流式输出（text/event-stream）；message 与 thinking 的 data 均为当前尝试累计全文，直接覆盖，空快照表示重试清空；重连重放快照，终态以轮询结果为准。需同步升级前后端。
           content:
             text/event-stream:
               schema:
@@ -7221,7 +7221,7 @@ paths:
       - embedToken: []
       responses:
         '200':
-          description: SSE 流式输出（text/event-stream）
+          description: SSE 流式输出（text/event-stream）；message 与 thinking 的 data 均为当前尝试累计全文，直接覆盖，空快照表示重试清空；重连重放快照，终态以轮询结果为准。需同步升级前后端。
           content:
             text/event-stream:
               schema:

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isReviewRunning, mergeReviewProgress } from '~/utils/reviewProgress'
 import { marked } from 'marked'
 import {
   SearchOutlined,
@@ -429,11 +430,11 @@ const updateLiveResult = (processId: string, result: Partial<ArchiveReviewResult
   if (!normalized) return
   syncResultToList(processId, normalized)
   if (selectedProcess.value?.process_id === processId) {
-    const oldReasoning = currentResult.value?.ai_reasoning || ''
-    currentResult.value = { ...currentResult.value, ...normalized, structured_output: normalized.structured_output ?? currentResult.value?.structured_output, recheck_output: normalized.recheck_output ?? currentResult.value?.recheck_output }
-    if (oldReasoning.length > (normalized.ai_reasoning?.length || 0) && currentResult.value) {
-      currentResult.value.ai_reasoning = oldReasoning
-    }
+    currentResult.value = mergeReviewProgress(currentResult.value, {
+      ...normalized,
+      structured_output: normalized.structured_output ?? currentResult.value?.structured_output,
+      recheck_output: normalized.recheck_output ?? currentResult.value?.recheck_output,
+    })
   }
 }
 
@@ -511,13 +512,8 @@ const startSSE = (archiveLogId: string, processId: string) => {
   eventSourceStream.value = new EventSource(url)
   eventSourceStream.value.addEventListener('thinking', (event: any) => {
     if (selectedProcess.value?.process_id !== processId || !currentResult.value) return
-    const chunk = event.data || ''
-    const existing = currentResult.value.deep_thinking || ''
-    if (!existing || chunk.startsWith(existing)) {
-      currentResult.value.deep_thinking = chunk
-    } else {
-      currentResult.value.deep_thinking = existing + chunk
-    }
+    if (!isReviewRunning(currentResult.value.status)) return
+    currentResult.value.deep_thinking = event.data || ''
   })
   for (const [eventName, field] of [['structured', 'structured_output'], ['recheck', 'recheck_output']] as const) {
     eventSourceStream.value.addEventListener(eventName, (event: MessageEvent) => {
@@ -531,13 +527,8 @@ const startSSE = (archiveLogId: string, processId: string) => {
   }
   eventSourceStream.value.onmessage = (event) => {
     if (selectedProcess.value?.process_id !== processId || !currentResult.value) return
-    const chunk = event.data || ''
-    const existing = currentResult.value.ai_reasoning || ''
-    if (!existing || chunk.startsWith(existing)) {
-      currentResult.value.ai_reasoning = chunk
-    } else {
-      currentResult.value.ai_reasoning = existing + chunk
-    }
+    if (!isReviewRunning(currentResult.value.status)) return
+    currentResult.value.ai_reasoning = event.data || ''
   }
   eventSourceStream.value.onerror = () => {
     disconnectStream()

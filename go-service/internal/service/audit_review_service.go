@@ -672,21 +672,8 @@ func (s *AuditExecuteService) processAuditJob(
 		reasoningReq.EnableThinking = true
 	}
 
-	// 注入流式回调，将增量写入 Redis 并通过 PubSub 广播
-	reasoningReq.StreamReasoningChunkFunc = func(chunk string) {
-		key := "audit:thinking:" + auditLogID.String()
-		s.rdb.Append(context.Background(), key, chunk)
-		s.rdb.Expire(context.Background(), key, 24*time.Hour)
-		payload, _ := json.Marshal(JobStreamEvent{Event: "thinking", Data: chunk})
-		s.rdb.Publish(context.Background(), "audit:stream:"+auditLogID.String(), string(payload))
-	}
-	reasoningReq.StreamChunkFunc = func(chunk string) {
-		key := "audit:reasoning:" + auditLogID.String()
-		s.rdb.Append(context.Background(), key, chunk)
-		s.rdb.Expire(context.Background(), key, 24*time.Hour)
-		payload, _ := json.Marshal(JobStreamEvent{Event: "message", Data: chunk})
-		s.rdb.Publish(context.Background(), "audit:stream:"+auditLogID.String(), string(payload))
-	}
+	// 注入累计快照回调，重试时清空上一轮推理与思考内容。
+	bindReviewReasoningStream(reasoningReq, s.rdb, "audit", auditLogID, s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled())
 	bindLLMProcessContext(reasoningReq, req.ProcessID, req.Title, auditLogID)
 
 	n, err = s.updateAuditLogIfNotCancelled(tenantID, auditLogID, map[string]interface{}{
@@ -711,6 +698,9 @@ func (s *AuditExecuteService) processAuditJob(
 		)
 		return err
 	}
+	// 刷新节流窗口内尚未广播的末尾内容。
+	reasoningReq.StreamChunkFunc("")
+	reasoningReq.StreamReasoningChunkFunc("")
 	aiReasoning := reasoningResp.Content
 	deepThinking := reasoningResp.ReasoningContent
 	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {

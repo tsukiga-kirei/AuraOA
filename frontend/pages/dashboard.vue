@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isReviewRunning, mergeReviewProgress } from '~/utils/reviewProgress'
 import {
   SearchOutlined,
   ThunderboltOutlined,
@@ -340,13 +341,8 @@ const startSSE = (auditResultId: string, processId: string) => {
   
   eventSourceStream.value.addEventListener('thinking', (e: any) => {
     if (selectedProcess.value === processId && currentResult.value) {
-      const chunk = e.data || ''
-      const existing = currentResult.value.deep_thinking || ''
-      if (!existing || chunk.startsWith(existing)) {
-        currentResult.value.deep_thinking = chunk
-      } else {
-        currentResult.value.deep_thinking = existing + chunk
-      }
+      if (!isReviewRunning(currentResult.value.status)) return
+      currentResult.value.deep_thinking = e.data || ''
     }
   })
 
@@ -362,13 +358,8 @@ const startSSE = (auditResultId: string, processId: string) => {
   }
   eventSourceStream.value.onmessage = (e) => {
     if (selectedProcess.value === processId && currentResult.value) {
-      const chunk = e.data || ''
-      const existing = currentResult.value.ai_reasoning || ''
-      if (!existing || chunk.startsWith(existing)) {
-        currentResult.value.ai_reasoning = chunk
-      } else {
-        currentResult.value.ai_reasoning = existing + chunk
-      }
+      if (!isReviewRunning(currentResult.value.status)) return
+      currentResult.value.ai_reasoning = e.data || ''
     }
   }
   
@@ -543,22 +534,14 @@ const handleSelectProcess = (processId: string) => {
           startSSE(item.audit_result.id, processId)
           waitAuditJob(item.audit_result.id, (st: any) => {
              if (selectedProcess.value === processId) {
-                 const oldReasoning = currentResult.value?.ai_reasoning || ''
-                 currentResult.value = { ...currentResult.value, ...st } as any
-                 if (oldReasoning.length > (st.ai_reasoning?.length || 0)) {
-                     if (currentResult.value) currentResult.value.ai_reasoning = oldReasoning
-                 }
+                 currentResult.value = mergeReviewProgress(currentResult.value, st) as any
              }
              item.audit_status = st.status as any
              item.audit_result = st as any
           }).then((st: any) => {
              if (pollProcessId.value === processId) pollProcessId.value = null
              if (selectedProcess.value === processId) {
-                 const oldReasoning = currentResult.value?.ai_reasoning || ''
-                 currentResult.value = { ...currentResult.value, ...st } as any
-                 if (oldReasoning.length > (st.ai_reasoning?.length || 0)) {
-                     if (currentResult.value) currentResult.value.ai_reasoning = oldReasoning
-                 }
+                 currentResult.value = mergeReviewProgress(currentResult.value, st) as any
                  disconnectStream()
              }
              item.audit_status = st.status as any
@@ -617,22 +600,14 @@ const handleAudit = async (processId: string, useLatestConfig = false) => {
          }
       }
       if (selectedProcess.value === processId) {
-         const oldReasoning = currentResult.value?.ai_reasoning || ''
-         currentResult.value = { ...currentResult.value, ...st } as any
-         if (oldReasoning.length > (st.ai_reasoning?.length || 0)) {
-             if (currentResult.value) currentResult.value.ai_reasoning = oldReasoning
-         }
+         currentResult.value = mergeReviewProgress(currentResult.value, st) as any
       }
       item.audit_status = st.status as any
       item.audit_result = { ...st } as any
     })
     
     if (selectedProcess.value === processId) {
-      const oldReasoning = currentResult.value?.ai_reasoning || ''
-      currentResult.value = result as any
-      if (oldReasoning.length > (result.ai_reasoning?.length || 0)) {
-          if (currentResult.value) currentResult.value.ai_reasoning = oldReasoning
-      }
+      currentResult.value = mergeReviewProgress(currentResult.value, result) as any
       disconnectStream()
     }
     item.audit_status = result.status as any
@@ -755,11 +730,7 @@ async function runDashboardBatchLoop(ids: string[], queueMeta: DashboardBatchMet
           }
         }
         if (selectedProcess.value === id) {
-          const oldReasoning = currentResult.value?.ai_reasoning || ''
-          currentResult.value = { ...currentResult.value, ...st } as any
-          if (oldReasoning.length > (st.ai_reasoning?.length || 0)) {
-            if (currentResult.value) currentResult.value.ai_reasoning = oldReasoning
-          }
+          currentResult.value = mergeReviewProgress(currentResult.value, st) as any
         }
         if (item) {
           item.audit_status = st.status as any
@@ -772,11 +743,7 @@ async function runDashboardBatchLoop(ids: string[], queueMeta: DashboardBatchMet
         item.has_audit = result.status === 'completed'
       }
       if (selectedProcess.value === id) {
-        const oldReasoning = currentResult.value?.ai_reasoning || ''
-        currentResult.value = result as any
-        if (oldReasoning.length > (result.ai_reasoning?.length || 0)) {
-          if (currentResult.value) currentResult.value.ai_reasoning = oldReasoning
-        }
+        currentResult.value = mergeReviewProgress(currentResult.value, result) as any
         disconnectStream()
       }
     } catch {}

@@ -76,6 +76,7 @@ type AIModelCaller interface {
 3. **思考过程解析与落库**：
    - AI 调用器兼容解析 vLLM 新版 `reasoning` 字段以及 DeepSeek / 阿里百炼 / 历史 vLLM `reasoning_content` 字段。
    - 流式请求时支持独立分发思考增量（`StreamReasoningChunkFunc`）与回答增量（`StreamChunkFunc`）。
+   - 审核与归档把模型增量累积后，以完整快照发送 SSE 的 `message`（推理）和 `thinking`（思考）事件；重连覆盖、重试清空，完成后以持久化结果为准，避免重复拼接。
    - 深度思考内容自动落库至 `tenant_llm_message_payloads.reasoning_content`、`audit_logs.deep_thinking`、`archive_logs.deep_thinking` 以及总结块结果，并在前端数据管理、审核工作台、归档复盘和 OA 嵌入页完整展示。
 
 ## 两阶段审核流程

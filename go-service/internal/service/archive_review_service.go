@@ -1519,20 +1519,7 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	if modelCfg.SupportsThinking && aiConfig.EnableThinking {
 		reasoningReq.EnableThinking = true
 	}
-	reasoningReq.StreamReasoningChunkFunc = func(chunk string) {
-		key := "archive:thinking:" + archiveLogID.String()
-		s.rdb.Append(context.Background(), key, chunk)
-		s.rdb.Expire(context.Background(), key, 24*time.Hour)
-		payload, _ := json.Marshal(JobStreamEvent{Event: "thinking", Data: chunk})
-		s.rdb.Publish(context.Background(), "archive:stream:"+archiveLogID.String(), string(payload))
-	}
-	reasoningReq.StreamChunkFunc = func(chunk string) {
-		key := "archive:reasoning:" + archiveLogID.String()
-		s.rdb.Append(context.Background(), key, chunk)
-		s.rdb.Expire(context.Background(), key, 24*time.Hour)
-		payload, _ := json.Marshal(JobStreamEvent{Event: "message", Data: chunk})
-		s.rdb.Publish(context.Background(), "archive:stream:"+archiveLogID.String(), string(payload))
-	}
+	bindReviewReasoningStream(reasoningReq, s.rdb, "archive", archiveLogID, s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled())
 	bindLLMProcessContext(reasoningReq, logEntry.ProcessID, logEntry.Title, archiveLogID)
 
 	if rows, saveErr := s.archiveLogRepo.UpdateActiveFields(c, archiveLogID, map[string]interface{}{
@@ -1551,6 +1538,9 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 		tlog.Warn("归档复盘任务执行失败", zap.String("archiveLogID", archiveLogID.String()), zap.Error(err))
 		return err
 	}
+	// 刷新节流窗口内尚未广播的末尾内容。
+	reasoningReq.StreamChunkFunc("")
+	reasoningReq.StreamReasoningChunkFunc("")
 	aiReasoning := reasoningResp.Content
 	deepThinking := reasoningResp.ReasoningContent
 	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {

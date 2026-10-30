@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/ai"
 	"auraoa/go-service/internal/pkg/sanitize"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -23,7 +24,11 @@ func newReviewStageStream(rdb *redis.Client, module string, id uuid.UUID, stage 
 		if rdb != nil {
 			ctx := context.Background()
 			rdb.Set(ctx, module+":"+stage+":"+id.String(), value, 24*time.Hour)
-			payload, _ := json.Marshal(JobStreamEvent{Event: stage, Data: value})
+			event := stage
+			if stage == "reasoning" {
+				event = "message"
+			}
+			payload, _ := json.Marshal(JobStreamEvent{Event: event, Data: value})
 			rdb.Publish(ctx, module+":stream:"+id.String(), string(payload))
 		}
 	})
@@ -75,4 +80,13 @@ func pendingAIRecheck(version *model.ExecutionConfigVersion) datatypes.JSON {
 		return datatypes.JSON(`{"enabled":true}`)
 	}
 	return datatypes.JSON(`{}`)
+}
+
+// bindReviewReasoningStream 推理与思考均发送累计快照，重试或切换模型时同步清空旧尝试。
+func bindReviewReasoningStream(req *ai.ChatRequest, rdb *redis.Client, module string, id uuid.UUID, scrub bool) {
+	contentChunk, contentReset := newReviewStageStream(rdb, module, id, "reasoning", scrub)
+	thinkingChunk, thinkingReset := newReviewStageStream(rdb, module, id, "thinking", scrub)
+	req.StreamChunkFunc = contentChunk
+	req.StreamReasoningChunkFunc = thinkingChunk
+	req.StreamResetFunc = func() { contentReset(); thinkingReset() }
 }

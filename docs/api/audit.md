@@ -117,6 +117,12 @@ GET /api/audit/stream/:id
 
 通过 SSE（Server-Sent Events）实时获取 AI 推理过程的流式输出。
 
+`message`（`ai_reasoning`）与 `thinking`（`deep_thinking`）事件的 `data` 均为当前尝试的累计全文，
+与 `structured`、`recheck` 阶段相同，前端直接覆盖对应内容，不追加。重连会重放累计快照；
+重试或切换备用模型时发送空快照，清空上一轮内容。轮询仍未提供正文时保留当前流式展示，
+一旦返回已保存的正文或任务终态，则以轮询结果为准，忽略终态后迟到的推理/思考事件。
+更新此协议时需同时更新 Go 服务与前端。
+
 ---
 
 ### 批量提交审核

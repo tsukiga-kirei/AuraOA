@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isReviewRunning, mergeReviewProgress } from '~/utils/reviewProgress'
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -192,18 +193,8 @@ const processMetaRows = computed(() => {
 })
 
 const mergeAuditProgress = (st: Partial<AuditResult>) => {
-  const oldReasoning = currentResult.value?.ai_reasoning || ''
-  const oldThinking = currentResult.value?.deep_thinking || ''
-  currentResult.value = { ...currentResult.value, ...st } as AuditResult
+  currentResult.value = mergeReviewProgress(currentResult.value, st) as AuditResult
   if (isRecheckOnlyRunning.value && isResultAsyncRunning(currentResult.value)) currentResult.value.status = 'rechecking'
-  const nextReasoning = currentResult.value?.ai_reasoning || ''
-  const nextThinking = currentResult.value?.deep_thinking || ''
-  if (oldReasoning.length > nextReasoning.length && currentResult.value) {
-    currentResult.value.ai_reasoning = oldReasoning
-  }
-  if (oldThinking.length > nextThinking.length && currentResult.value) {
-    currentResult.value.deep_thinking = oldThinking
-  }
 }
 
 const disconnectStream = () => {
@@ -224,13 +215,8 @@ const startSSE = (auditResultId?: string) => {
   )
   eventSourceStream.value.addEventListener('thinking', (event: any) => {
     if (!currentResult.value) return
-    const chunk = event.data || ''
-    const existing = currentResult.value.deep_thinking || ''
-    if (!existing || chunk.startsWith(existing)) {
-      currentResult.value.deep_thinking = chunk
-    } else {
-      currentResult.value.deep_thinking = existing + chunk
-    }
+    if (!isReviewRunning(currentResult.value.status)) return
+    currentResult.value.deep_thinking = event.data || ''
   })
   for (const [eventName, field] of [['structured', 'structured_output'], ['recheck', 'recheck_output']] as const) {
     eventSourceStream.value.addEventListener(eventName, (event: MessageEvent) => {
@@ -244,13 +230,8 @@ const startSSE = (auditResultId?: string) => {
   }
   eventSourceStream.value.onmessage = (event) => {
     if (!currentResult.value) return
-    const chunk = event.data || ''
-    const existing = currentResult.value.ai_reasoning || ''
-    if (!existing || chunk.startsWith(existing)) {
-      currentResult.value.ai_reasoning = chunk
-    } else {
-      currentResult.value.ai_reasoning = existing + chunk
-    }
+    if (!isReviewRunning(currentResult.value.status)) return
+    currentResult.value.ai_reasoning = event.data || ''
   }
   eventSourceStream.value.onerror = () => {
     disconnectStream()
@@ -809,7 +790,7 @@ onBeforeUnmount(() => {
               max-height="320px"
             ><template #icon><ExperimentOutlined /></template></ResultReasoningPanel>
 
-            <ResultRecheckPanel v-if="currentResult.ai_recheck?.status" :record="currentResult.ai_recheck" :output="currentResult.recheck_output" :retrying="retryingRecheck" :expanded="activePanelExpansion.recheck ?? false" @update:expanded="value => setPanelExpansion('recheck', value)" @retry="runRecheck" />
+            <ResultRecheckPanel v-if="currentResult.ai_recheck?.status" :record="currentResult.ai_recheck" :output="currentResult.recheck_output" :retrying="retryingRecheck" :expanded="activePanelExpansion.recheck ?? false" @update:expanded="(value: boolean) => setPanelExpansion('recheck', value)" @retry="runRecheck" />
           </div>
         </template>
 
