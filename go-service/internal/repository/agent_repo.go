@@ -132,7 +132,7 @@ func (r *AgentRepo) GetTenantAllocation(tenantID uuid.UUID) (*model.TenantChatAl
 		// 自动初始化默认配额
 		defaultAlloc := model.TenantChatAllocation{
 			TenantID:          tenantID,
-			AgentCodes:        datatypes.JSON([]byte(`["oa_query", "oa_assist"]`)),
+			AgentCodes:        datatypes.JSON([]byte(`["oa_assist"]`)),
 			ToolCodes:         datatypes.JSON([]byte(`["list_my_todos", "get_process", "get_approval_flow", "get_latest_audit", "get_latest_summary", "draft_comment", "run_audit", "run_summary", "resolve_oa_url"]`)),
 			SkillCodes:        datatypes.JSON([]byte(`[]`)),
 			AllowCustomSkills: false,

@@ -124,7 +124,7 @@ var BuiltinTools = map[string]ToolSpec{
 	"get_latest_audit": {
 		Code:        "get_latest_audit",
 		Name:        "获取最新审核结果",
-		Description: "获取 AuraOA 平台对该流程最近一次 AI 审核的结论、风险点与建议（若已进行过审核）。",
+		Description: "获取 AuraOA 平台对流程最近一次 AI 审核的结论、风险点与建议。支持单条流程（process_id）或批量多条流程（process_ids）。【特别注意】当待办/流程列表有多条且需要查询审核结果时，严禁多次循环调用，必须将全部 ID 组装在 process_ids 数组中一次性调用完成！",
 		UIKind:      "audit_result",
 		OARequired:  true,
 		Risk:        "read",
@@ -133,16 +133,22 @@ var BuiltinTools = map[string]ToolSpec{
 			"properties": map[string]interface{}{
 				"process_id": map[string]interface{}{
 					"type":        "string",
-					"description": "OA 流程实例 ID (requestid)",
+					"description": "单个 OA 流程实例 ID (requestid)，单条查询时使用",
+				},
+				"process_ids": map[string]interface{}{
+					"type": "array",
+					"items": map[string]interface{}{
+						"type": "string",
+					},
+					"description": "OA 流程实例 ID 列表 (requestid 数组)。当存在多个流程时，务必使用此参数一次性批量查询，禁止多次单条循环调用！",
 				},
 			},
-			"required": []string{"process_id"},
 		},
 	},
 	"get_latest_summary": {
 		Code:        "get_latest_summary",
 		Name:        "获取最新流程总结",
-		Description: "获取 AuraOA 平台对该流程最近一次生成的 AI 流程总结要点（若已进行过总结）。",
+		Description: "获取 AuraOA 平台对流程最近一次生成的 AI 流程总结要点。支持单条流程（process_id）或批量多条流程（process_ids）。【特别注意】当待办/流程列表有多条且需要查询流程总结时，严禁多次循环调用，必须将全部 ID 组装在 process_ids 数组中一次性调用完成！",
 		UIKind:      "summary_result",
 		OARequired:  true,
 		Risk:        "read",
@@ -151,10 +157,16 @@ var BuiltinTools = map[string]ToolSpec{
 			"properties": map[string]interface{}{
 				"process_id": map[string]interface{}{
 					"type":        "string",
-					"description": "OA 流程实例 ID (requestid)",
+					"description": "单个 OA 流程实例 ID (requestid)，单条查询时使用",
+				},
+				"process_ids": map[string]interface{}{
+					"type": "array",
+					"items": map[string]interface{}{
+						"type": "string",
+					},
+					"description": "OA 流程实例 ID 列表 (requestid 数组)。当存在多个流程时，务必使用此参数一次性批量查询，禁止多次单条循环调用！",
 				},
 			},
-			"required": []string{"process_id"},
 		},
 	},
 	"draft_comment": {

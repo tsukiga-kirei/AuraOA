@@ -63,6 +63,51 @@ func CompactToolPayload(toolCode string, payload interface{}) string {
 }
 
 func compactMapPayload(toolCode string, m map[string]interface{}) string {
+	// 针对审核/总结结果 (优先处理，支持单条或批量 items 数组)
+	if toolCode == "get_latest_audit" || toolCode == "get_latest_summary" {
+		if rawItems, ok := m["items"].([]interface{}); ok {
+			compactItems := make([]map[string]interface{}, 0, len(rawItems))
+			for _, itemRaw := range rawItems {
+				itemMap, ok := itemRaw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				cItem := make(map[string]interface{})
+				for _, k := range []string{"process_id", "has_audit", "has_summary", "message", "recommendation", "score", "created_at", "conclusion", "status", "summary", "risk_level", "risk_count"} {
+					if v, ok := itemMap[k]; ok && v != nil && v != "" {
+						cItem[k] = v
+					}
+				}
+				for _, key := range []string{"audit_result", "summary_result"} {
+					if value, ok := itemMap[key]; ok {
+						cItem[key] = cleanGenericValue(value, 0)
+					}
+				}
+				compactItems = append(compactItems, cItem)
+			}
+			out, _ := json.Marshal(map[string]interface{}{
+				"items": compactItems,
+				"total": m["total"],
+			})
+			return string(out)
+		}
+
+		resMap := make(map[string]interface{})
+		for _, k := range []string{"process_id", "has_audit", "has_summary", "message", "recommendation", "score", "created_at", "conclusion", "status", "summary", "risk_level", "risk_count"} {
+			if v, ok := m[k]; ok && v != nil && v != "" {
+				resMap[k] = v
+			}
+		}
+		// 审核与总结正文位于独立结果对象内，保留评估依据及分块正文。
+		for _, key := range []string{"audit_result", "summary_result"} {
+			if value, ok := m[key]; ok {
+				resMap[key] = cleanGenericValue(value, 0)
+			}
+		}
+		out, _ := json.Marshal(resMap)
+		return string(out)
+	}
+
 	// 针对列表类工具 (待办、我发起的流程、搜索结果等)
 	if itemsRaw, ok := m["items"]; ok {
 		if itemsList, ok := itemsRaw.([]interface{}); ok {
@@ -231,24 +276,6 @@ func compactMapPayload(toolCode string, m map[string]interface{}) string {
 				}
 			}
 			resMap["approval_history"] = cleanedSteps
-		}
-		out, _ := json.Marshal(resMap)
-		return string(out)
-	}
-
-	// 针对审核/总结结果
-	if toolCode == "get_latest_audit" || toolCode == "get_latest_summary" {
-		resMap := make(map[string]interface{})
-		for _, k := range []string{"process_id", "has_audit", "has_summary", "message", "recommendation", "score", "created_at", "conclusion", "status", "summary", "risk_level", "risk_count"} {
-			if v, ok := m[k]; ok && v != nil && v != "" {
-				resMap[k] = v
-			}
-		}
-		// 审核与总结正文位于独立结果对象内，保留评估依据及分块正文。
-		for _, key := range []string{"audit_result", "summary_result"} {
-			if value, ok := m[key]; ok {
-				resMap[key] = cleanGenericValue(value, 0)
-			}
 		}
 		out, _ := json.Marshal(resMap)
 		return string(out)

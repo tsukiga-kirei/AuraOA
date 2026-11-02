@@ -93,16 +93,19 @@ func TestCompactToolPayload_GenericMCP(t *testing.T) {
 // TestCompactToolPayloadRealContracts 使用系统工具实际返回的字段和附件形态，避免模拟另一套接口掩盖信息丢失。
 func TestCompactToolPayloadRealContracts(t *testing.T) {
 	for _, tc := range []struct {
+		name    string
 		tool    string
 		payload map[string]interface{}
 		want    []string
 	}{
-		{"get_process", map[string]interface{}{"process_id": "p1", "title": "采购申请", "applicant": "申请人甲", "main_fields": []map[string]interface{}{{"field": "amount", "value": "58000"}}, "attachments": []string{"报价单.pdf"}}, []string{"采购申请", "申请人甲", "58000", "报价单.pdf"}},
-		{"get_latest_audit", map[string]interface{}{"process_id": "p1", "has_audit": true, "status": "completed", "recommendation": "return", "score": 40, "audit_result": map[string]interface{}{"risk_points": []string{"金额不一致"}}}, []string{"return", "40", "金额不一致", "has_audit"}},
-		{"get_latest_summary", map[string]interface{}{"process_id": "p1", "has_summary": true, "status": "completed", "summary_result": map[string]interface{}{"blocks": []map[string]interface{}{{"content": "采购金额58000元"}}}}, []string{"采购金额58000元", "has_summary"}},
-		{"get_approval_flow", map[string]interface{}{"process_id": "p1", "nodes": []map[string]interface{}{{"node_name": "财务", "operated_at": "2026-10-26 10:00:00"}}}, []string{"财务", "2026-10-26 10:00:00"}},
+		{"get_process", "get_process", map[string]interface{}{"process_id": "p1", "title": "采购申请", "applicant": "申请人甲", "main_fields": []map[string]interface{}{{"field": "amount", "value": "58000"}}, "attachments": []string{"报价单.pdf"}}, []string{"采购申请", "申请人甲", "58000", "报价单.pdf"}},
+		{"get_latest_audit", "get_latest_audit", map[string]interface{}{"process_id": "p1", "has_audit": true, "status": "completed", "recommendation": "return", "score": 40, "audit_result": map[string]interface{}{"risk_points": []string{"金额不一致"}}}, []string{"return", "40", "金额不一致", "has_audit"}},
+		{"get_latest_audit_batch", "get_latest_audit", map[string]interface{}{"total": 1, "items": []interface{}{map[string]interface{}{"process_id": "p1", "has_audit": true, "score": 85, "recommendation": "pass"}}}, []string{"items", "p1", "85", "pass"}},
+		{"get_latest_summary", "get_latest_summary", map[string]interface{}{"process_id": "p1", "has_summary": true, "status": "completed", "summary_result": map[string]interface{}{"blocks": []map[string]interface{}{{"content": "采购金额58000元"}}}}, []string{"采购金额58000元", "has_summary"}},
+		{"get_latest_summary_batch", "get_latest_summary", map[string]interface{}{"total": 1, "items": []interface{}{map[string]interface{}{"process_id": "p1", "has_summary": true, "summary_result": map[string]interface{}{"blocks": []map[string]interface{}{{"content": "批量总结要点"}}}}}}, []string{"items", "p1", "批量总结要点"}},
+		{"get_approval_flow", "get_approval_flow", map[string]interface{}{"process_id": "p1", "nodes": []map[string]interface{}{{"node_name": "财务", "operated_at": "2026-10-26 10:00:00"}}}, []string{"财务", "2026-10-26 10:00:00"}},
 	} {
-		t.Run(tc.tool, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			compact := CompactToolPayload(tc.tool, tc.payload)
 			if !json.Valid([]byte(compact)) {
 				t.Fatalf("工具结果结构损坏：%s", compact)

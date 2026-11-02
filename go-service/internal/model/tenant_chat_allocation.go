@@ -11,7 +11,7 @@ import (
 type TenantChatAllocation struct {
 	ID                uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	TenantID          uuid.UUID      `gorm:"type:uuid;not null;uniqueIndex" json:"tenant_id"`
-	AgentCodes        datatypes.JSON `gorm:"type:jsonb;not null;default:'[\"oa_query\",\"oa_assist\"]'" json:"agent_codes"`
+	AgentCodes        datatypes.JSON `gorm:"type:jsonb;not null;default:'[\"oa_assist\"]'" json:"agent_codes"`
 	ToolCodes         datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"tool_codes"`
 	SkillCodes        datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"skill_codes"`
 	AllowCustomSkills bool           `gorm:"not null;default:false" json:"allow_custom_skills"`

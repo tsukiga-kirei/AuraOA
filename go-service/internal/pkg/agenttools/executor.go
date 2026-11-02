@@ -458,39 +458,91 @@ func (e *SystemToolExecutor) executeGetApprovalFlow(
 	return resp, "approval_flow", nil
 }
 
-// 4. 获取最新审核结果
+// 4. 获取最新审核结果 (支持单条 process_id 或批量 process_ids)
 func (e *SystemToolExecutor) executeGetLatestAudit(
 	argsJSON string,
 	execCtx *ExecutionContext,
 	adapter oa.OAAdapter,
 ) (interface{}, string, error) {
 	var args struct {
-		ProcessID string `json:"process_id"`
+		ProcessID  string   `json:"process_id"`
+		ProcessIDs []string `json:"process_ids"`
 	}
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil || args.ProcessID == "" {
-		return nil, "audit_result", fmt.Errorf("缺少必填参数 process_id")
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return nil, "audit_result", fmt.Errorf("解析参数失败: %w", err)
+	}
+
+	// 收集待查询的目标流程 ID
+	targetIDs := make([]string, 0)
+	if strings.TrimSpace(args.ProcessID) != "" {
+		targetIDs = append(targetIDs, strings.TrimSpace(args.ProcessID))
+	}
+	for _, pid := range args.ProcessIDs {
+		pid = strings.TrimSpace(pid)
+		if pid != "" && !containsString(targetIDs, pid) {
+			targetIDs = append(targetIDs, pid)
+		}
+	}
+	if len(targetIDs) == 0 {
+		return nil, "audit_result", fmt.Errorf("缺少必填参数 process_id 或 process_ids")
 	}
 
 	if adapter == nil {
 		return nil, "audit_result", fmt.Errorf("无法校验 OA 流程访问权限")
 	}
-	visible, err := adapter.CheckProcessVisibility(execCtx.Ctx, execCtx.Username, args.ProcessID)
-	if err != nil || !visible {
-		return nil, "audit_result", fmt.Errorf("无权访问流程 %s 或流程不存在", args.ProcessID)
+
+	// 限制单次批量最大查询 50 条，防止超载
+	if len(targetIDs) > 50 {
+		targetIDs = targetIDs[:50]
 	}
 
+	// 单条流程查询，保持与之前完全一致的 DTO 结构，向后兼容
+	if len(targetIDs) == 1 {
+		pid := targetIDs[0]
+		visible, err := adapter.CheckProcessVisibility(execCtx.Ctx, execCtx.Username, pid)
+		if err != nil || !visible {
+			return nil, "audit_result", fmt.Errorf("无权访问流程 %s 或流程不存在", pid)
+		}
+		return e.querySingleLatestAudit(execCtx, pid)
+	}
+
+	// 多条流程批量查询，直接用 IN (?) 批量一次性捞取审核记录
+	items := make([]map[string]interface{}, 0, len(targetIDs))
+	for _, pid := range targetIDs {
+		visible, err := adapter.CheckProcessVisibility(execCtx.Ctx, execCtx.Username, pid)
+		if err != nil || !visible {
+			continue // 忽略无权访问或不存在的流程
+		}
+		single, _, err := e.querySingleLatestAudit(execCtx, pid)
+		if err == nil && single != nil {
+			if m, ok := single.(map[string]interface{}); ok {
+				items = append(items, m)
+			}
+		}
+	}
+
+	return map[string]interface{}{
+		"items": items,
+		"total": len(items),
+	}, "audit_result", nil
+}
+
+func (e *SystemToolExecutor) querySingleLatestAudit(
+	execCtx *ExecutionContext,
+	pid string,
+) (interface{}, string, error) {
 	var log model.AuditLog
 	// 1. 优先查询当前用户的个人视角定制审核结论
-	err = e.db.WithContext(execCtx.Ctx).
+	err := e.db.WithContext(execCtx.Ctx).
 		Where("tenant_id = ? AND process_id = ? AND user_id = ? AND trigger_detail = 'personal_embed_manual' AND status = ? AND COALESCE(parse_error, '') = ''",
-			execCtx.TenantID, args.ProcessID, execCtx.UserID, model.JobStatusCompleted).
+			execCtx.TenantID, pid, execCtx.UserID, model.JobStatusCompleted).
 		Order("created_at DESC").
 		First(&log).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		// 2. 其次查询当前用户在工作台执行的审核结论
 		err = e.db.WithContext(execCtx.Ctx).
 			Where("tenant_id = ? AND process_id = ? AND user_id = ? AND trigger_source NOT IN ('embed_auto', 'embed_manual') AND COALESCE(trigger_detail, '') != 'personal_embed_manual' AND status = ? AND COALESCE(parse_error, '') = ''",
-				execCtx.TenantID, args.ProcessID, execCtx.UserID, model.JobStatusCompleted).
+				execCtx.TenantID, pid, execCtx.UserID, model.JobStatusCompleted).
 			Order("created_at DESC").
 			First(&log).Error
 	}
@@ -498,13 +550,13 @@ func (e *SystemToolExecutor) executeGetLatestAudit(
 		// 3. 兜底查询公共/通用嵌入审核结论（排除任何人的私有定制结论）
 		err = e.db.WithContext(execCtx.Ctx).
 			Where("tenant_id = ? AND process_id = ? AND trigger_source IN ('embed_auto', 'embed_manual') AND COALESCE(trigger_detail, '') != 'personal_embed_manual' AND status = ? AND COALESCE(parse_error, '') = ''",
-				execCtx.TenantID, args.ProcessID, model.JobStatusCompleted).
+				execCtx.TenantID, pid, model.JobStatusCompleted).
 			Order("created_at DESC").
 			First(&log).Error
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return map[string]interface{}{
-			"process_id": args.ProcessID,
+			"process_id": pid,
 			"has_audit":  false,
 			"message":    "该流程暂无历史 AI 审核记录",
 		}, "audit_result", nil
@@ -514,7 +566,7 @@ func (e *SystemToolExecutor) executeGetLatestAudit(
 	}
 
 	return map[string]interface{}{
-		"process_id":     args.ProcessID,
+		"process_id":     pid,
 		"has_audit":      true,
 		"status":         log.Status,
 		"recommendation": log.Recommendation,
@@ -524,55 +576,105 @@ func (e *SystemToolExecutor) executeGetLatestAudit(
 	}, "audit_result", nil
 }
 
-// 5. 获取最新流程总结
+// 5. 获取最新流程总结 (支持单条 process_id 或批量 process_ids)
 func (e *SystemToolExecutor) executeGetLatestSummary(
 	argsJSON string,
 	execCtx *ExecutionContext,
 	adapter oa.OAAdapter,
 ) (interface{}, string, error) {
 	var args struct {
-		ProcessID string `json:"process_id"`
+		ProcessID  string   `json:"process_id"`
+		ProcessIDs []string `json:"process_ids"`
 	}
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil || args.ProcessID == "" {
-		return nil, "summary_result", fmt.Errorf("缺少必填参数 process_id")
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return nil, "summary_result", fmt.Errorf("解析参数失败: %w", err)
+	}
+
+	// 收集待查询的目标流程 ID
+	targetIDs := make([]string, 0)
+	if strings.TrimSpace(args.ProcessID) != "" {
+		targetIDs = append(targetIDs, strings.TrimSpace(args.ProcessID))
+	}
+	for _, pid := range args.ProcessIDs {
+		pid = strings.TrimSpace(pid)
+		if pid != "" && !containsString(targetIDs, pid) {
+			targetIDs = append(targetIDs, pid)
+		}
+	}
+	if len(targetIDs) == 0 {
+		return nil, "summary_result", fmt.Errorf("缺少必填参数 process_id 或 process_ids")
 	}
 
 	if adapter == nil {
 		return nil, "summary_result", fmt.Errorf("无法校验 OA 流程访问权限")
 	}
-	visible, err := adapter.CheckProcessVisibility(execCtx.Ctx, execCtx.Username, args.ProcessID)
-	if err != nil || !visible {
-		return nil, "summary_result", fmt.Errorf("无权访问流程 %s 或流程不存在", args.ProcessID)
+
+	if len(targetIDs) > 50 {
+		targetIDs = targetIDs[:50]
 	}
 
+	if len(targetIDs) == 1 {
+		pid := targetIDs[0]
+		visible, err := adapter.CheckProcessVisibility(execCtx.Ctx, execCtx.Username, pid)
+		if err != nil || !visible {
+			return nil, "summary_result", fmt.Errorf("无权访问流程 %s 或流程不存在", pid)
+		}
+		return e.querySingleLatestSummary(execCtx, pid)
+	}
+
+	// 批量查询
+	items := make([]map[string]interface{}, 0, len(targetIDs))
+	for _, pid := range targetIDs {
+		visible, err := adapter.CheckProcessVisibility(execCtx.Ctx, execCtx.Username, pid)
+		if err != nil || !visible {
+			continue
+		}
+		single, _, err := e.querySingleLatestSummary(execCtx, pid)
+		if err == nil && single != nil {
+			if m, ok := single.(map[string]interface{}); ok {
+				items = append(items, m)
+			}
+		}
+	}
+
+	return map[string]interface{}{
+		"items": items,
+		"total": len(items),
+	}, "summary_result", nil
+}
+
+func (e *SystemToolExecutor) querySingleLatestSummary(
+	execCtx *ExecutionContext,
+	pid string,
+) (interface{}, string, error) {
 	var summary model.ProcessSummaryLog
 	// 1. 优先查询当前用户针对该流程的总结记录
-	err = e.db.WithContext(execCtx.Ctx).
+	err := e.db.WithContext(execCtx.Ctx).
 		Where("tenant_id = ? AND process_id = ? AND user_id = ? AND trigger_source = 'summary_workbench' AND status = ? AND COALESCE(parse_error, '') = ''",
-			execCtx.TenantID, args.ProcessID, execCtx.UserID, model.JobStatusCompleted).
+			execCtx.TenantID, pid, execCtx.UserID, model.JobStatusCompleted).
 		Order("created_at DESC").
 		First(&summary).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		// 2. 兜底查询租户通用总结记录
 		err = e.db.WithContext(execCtx.Ctx).
 			Where("tenant_id = ? AND process_id = ? AND trigger_source IN ('summary_embed_auto', 'summary_embed_manual') AND status = ? AND COALESCE(parse_error, '') = ''",
-				execCtx.TenantID, args.ProcessID, model.JobStatusCompleted).
+				execCtx.TenantID, pid, model.JobStatusCompleted).
 			Order("created_at DESC").
 			First(&summary).Error
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return map[string]interface{}{
-			"process_id":  args.ProcessID,
+			"process_id":  pid,
 			"has_summary": false,
 			"message":     "该流程暂无历史总结记录",
 		}, "summary_result", nil
 	}
 	if err != nil {
-		return nil, "summary_result", fmt.Errorf("查询总结记录失败: %w", err)
+		return nil, "summary_result", fmt.Errorf("查询流程总结记录失败: %w", err)
 	}
 
 	return map[string]interface{}{
-		"process_id":     args.ProcessID,
+		"process_id":     pid,
 		"has_summary":    true,
 		"status":         summary.Status,
 		"summary_result": summary.SummaryResult,
@@ -751,4 +853,13 @@ func (e *SystemToolExecutor) executeResolveOAURL(
 		"oa_url":     oaURL,
 		"label":      "去 OA 办理",
 	}, "oa_link", nil
+}
+
+func containsString(slice []string, val string) bool {
+	for _, item := range slice {
+		if item == val {
+			return true
+		}
+	}
+	return false
 }
