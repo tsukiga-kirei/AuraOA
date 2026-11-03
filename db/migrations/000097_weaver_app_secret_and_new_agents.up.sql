@@ -68,7 +68,8 @@ VALUES
 2. 严禁在 SQL 中使用注释符号（-- 或 /* */）。
 3. 严禁查询密码、Token、Secret 等敏感凭证字段。
 4. 调用 execute_safe_query 工具执行查询，系统会自动限制条数并进行五层安全拦截。
-5. 获取数据后，结合业务背景为用户清晰解读指标、数据趋势或关键发现。',
+5. 获取数据后，结合业务背景为用户清晰解读指标、数据趋势或关键发现。
+6. 可视化图表生成（Generative UI）：当结果涉及对比排名（bar）、时间走势（line）、分类占比（pie）或多维画像（radar）时，在回复末尾主动输出 :::chart 块，自动渲染交互式 ECharts 图表。',
     TRUE,
     TRUE,
     3,
@@ -154,7 +155,14 @@ VALUES
 - 查询张三当前未读待办的 SQL 示例：
   SELECT count(1) AS todo_count FROM workflow_currentoperator o JOIN hrmresource h ON o.userid = h.id WHERE h.lastname = ''张三'' AND o.isremark IN (''0'',''1'',''8'',''9'');
 - 查询部门流程发起排行的 SQL 示例：
-  SELECT d.departmentname, count(r.requestid) AS process_count FROM workflow_requestbase r JOIN hrmdepartment d ON r.createrdepartmentid = d.id GROUP BY d.departmentname ORDER BY process_count DESC LIMIT 10;',
+  SELECT d.departmentname, count(r.requestid) AS process_count FROM workflow_requestbase r JOIN hrmdepartment d ON r.createrdepartmentid = d.id GROUP BY d.departmentname ORDER BY process_count DESC LIMIT 10;
+
+## 3. 可视化图表生成指南（:::chart）
+当查询获取到多维数据后，在回复末尾附带 :::chart 块，支持以下类型：
+- 柱状图（bar）：用于排行与部门对比，如各部门流程数量、积压待办数
+- 折线图（line）：用于月份/时间走势
+- 饼图（pie）：用于流程类型、办结状态占比
+- 雷达图（radar）：用于多指标综合评分',
     TRUE
 )
 ON CONFLICT (COALESCE(tenant_id, '00000000-0000-0000-0000-000000000000'::uuid), skill_code) DO NOTHING;

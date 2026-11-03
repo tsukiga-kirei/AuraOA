@@ -29,3 +29,48 @@ agent: oa_analyst
   JOIN hrmdepartment d ON r.createrdepartmentid = d.id 
   GROUP BY d.departmentname ORDER BY process_count DESC LIMIT 10;
   ```
+
+## 3. 可视化图表生成规范（Generative UI :::chart）
+当查询获取到多维数据后，在回复最后输出 `:::chart` 块，前端将自动渲染为可交互、支持图表/表格双模切换的 ECharts 视觉卡片。
+
+### 柱状图示例（部门对比与排行榜）
+```
+:::chart
+{
+  "title": "各部门流程发起量 Top 5",
+  "type": "bar",
+  "categories": ["市场部", "研发部", "供应链", "财务部", "人事部"],
+  "series": [
+    { "name": "流程数量", "data": [142, 98, 76, 55, 32] }
+  ]
+}
+:::
+```
+
+### 饼图/环形图示例（占比结构）
+```
+:::chart
+{
+  "title": "流程办结状态占比",
+  "type": "pie",
+  "categories": ["流转中", "已归档", "已退回"],
+  "series": [
+    { "name": "状态占比", "data": [430, 850, 42] }
+  ]
+}
+:::
+```
+
+### 折线图示例（趋势走势）
+```
+:::chart
+{
+  "title": "2026年流程发起月度走势",
+  "type": "line",
+  "categories": ["1月", "2月", "3月", "4月", "5月"],
+  "series": [
+    { "name": "发起数量", "data": [120, 190, 150, 260, 310] }
+  ]
+}
+:::
+```

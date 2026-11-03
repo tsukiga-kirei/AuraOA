@@ -10,6 +10,7 @@ import {
 } from '@ant-design/icons-vue'
 import TodoListCard from './TodoListCard.vue'
 import FormConfirmCard from './FormConfirmCard.vue'
+import ChartCard from './ChartCard.vue'
 
 const props = defineProps<{
   toolCode: string
@@ -49,7 +50,14 @@ const isExpanded = ref(true)
     </template>
 
     <template v-else-if="toolCode === 'execute_safe_query' && result && !error">
-      <FormConfirmCard :data="{ variant: 'data_table', title: result.title, columns: result.columns, rows: result.rows }" />
+      <ChartCard
+        :data="{
+          title: result.title,
+          type: 'bar',
+          columns: result.columns,
+          rows: result.rows,
+        }"
+      />
     </template>
 
     <template v-else-if="toolCode === 'get_workflow_schema' && result && !error">

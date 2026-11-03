@@ -22,20 +22,21 @@ import { useChatSession } from '~/composables/useChatSession'
 import { formatDateTimeInAppZone } from '~/utils/appTime'
 import ChatProcessTimeline from './ChatProcessTimeline.vue'
 import FormConfirmCard from './Cards/FormConfirmCard.vue'
+import ChartCard from './Cards/ChartCard.vue'
 
 defineProps<{ messages: ChatMessageItem[]; agentEmoji?: string; agentName?: string; retryDisabled?: boolean }>()
 const emit = defineEmits<{ (e: 'retry', msg: ChatMessageItem): void; (e: 'send', text: string): void }>()
 const { t, locale } = useI18n()
 
 interface MessageContentChunk {
-  type: 'markdown' | 'form-confirm'
+  type: 'markdown' | 'form-confirm' | 'chart'
   content: string
   data?: any
 }
 
 function parseMessageChunks(content: string): MessageContentChunk[] {
   if (!content) return []
-  const regex = /:::form-confirm\s*\n([\s\S]*?)\n:::/g
+  const regex = /:::(form-confirm|chart)\s*\n([\s\S]*?)\n:::/g
   const chunks: MessageContentChunk[] = []
   let lastIndex = 0
   let match: RegExpExecArray | null
@@ -48,10 +49,11 @@ function parseMessageChunks(content: string): MessageContentChunk[] {
       }
     }
 
-    const jsonStr = match[1].trim()
+    const blockType = match[1] as 'form-confirm' | 'chart'
+    const jsonStr = match[2].trim()
     try {
       const parsed = JSON.parse(jsonStr)
-      chunks.push({ type: 'form-confirm', content: jsonStr, data: parsed })
+      chunks.push({ type: blockType, content: jsonStr, data: parsed })
     } catch {
       chunks.push({ type: 'markdown', content: '```json\n' + jsonStr + '\n```' })
     }
@@ -213,6 +215,10 @@ function formatMsgTime(isoString?: string): string {
               :data="chunk.data"
               :disabled="msg.streaming"
               @send="text => emit('send', text)"
+            />
+            <ChartCard
+              v-else-if="chunk.type === 'chart'"
+              :data="chunk.data"
             />
           </template>
         </div>
