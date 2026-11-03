@@ -135,9 +135,16 @@ test('unchanged and reused results show no final recheck card; actual modificati
   const view = mountReadOnlyComponent('AIRecheckResult', { record: { status: 'completed', changed: false, reuse_original: true } })
   try {
     assert.equal(view.find('section').length, 0)
-    view.props.record = { status: 'completed', changed: true, original_result: { overall_score: 80, recommendation: 'approve' }, final_result: { overall_score: 75, recommendation: 'review' }, reason: '纠正对应关系' }
+    view.props.record = { status: 'completed', changed: true, original_result: { overall_score: 95, recommendation: 'approve' }, final_result: { overall_score: 75, recommendation: 'review' }, reason: '纠正对应关系' }
     await vue.nextTick()
     assert.equal(view.find('section').length, 1)
+    const labels = view.find('strong')
+    const scores = view.find('b')
+    assert.ok(labels[0].props.class.includes('recheck-result__label--success'))
+    assert.ok(scores[0].props.class.includes('recheck-result__score--success'))
+    assert.ok(labels[1].props.class.includes('recheck-result__label--warning'))
+    assert.ok(scores[1].props.class.includes('recheck-result__score--warning'))
+
     view.props.record = { status: 'completed', changed: false, original_result: {}, final_result: {} }
     await vue.nextTick()
     assert.equal(view.find('section').length, 0)
@@ -206,12 +213,15 @@ test('uncontrolled result panels still toggle, while controlled panels follow sa
     const view = mountReadOnlyComponent(name, props)
     try {
       assert.equal(view.find('button')[0].props['aria-expanded'], false)
+      assert.ok(!view.find('section')[0].props.class?.includes(`${name.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase()}--expanded`))
       view.find('button')[0].props.onClick(); await vue.nextTick()
       assert.equal(view.find('button')[0].props['aria-expanded'], true)
+      assert.ok(view.find('section')[0].props.class?.includes(`${name.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase()}--expanded`))
       view.find('button')[0].props.onClick(); await vue.nextTick()
       assert.equal(view.find('button')[0].props['aria-expanded'], false)
       view.props.expanded = true; await vue.nextTick()
       assert.equal(view.find('button')[0].props['aria-expanded'], true)
+      assert.ok(view.find('section')[0].props.class?.includes(`${name.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase()}--expanded`))
       view.props.expanded = false; await vue.nextTick()
       assert.equal(view.find('button')[0].props['aria-expanded'], false)
     } finally { view.app.unmount() }

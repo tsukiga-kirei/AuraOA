@@ -1169,11 +1169,13 @@ onBeforeUnmount(() => {
 .embed-audit :deep(.result-rule-details__item) { border-radius: 10px; }
 .audit-result-content :deep(.result-rule-details) { margin-bottom: 18px; }
 .audit-result-content :deep(.result-rule-details__title) { font-family: inherit; font-weight: 600; }
-.embed-audit :deep(.result-reasoning-panel__toggle) { min-height: 50px; }
+.embed-audit :deep(.result-reasoning-panel__toggle),
+.embed-audit :deep(.result-recheck-panel__toggle) { min-height: 50px; }
 .embed-audit :deep(.markdown-body table) { display: block; max-width: 100%; overflow-x: auto; }
 .embed-audit :deep(.markdown-body pre) { max-width: 100%; }
 .embed-audit :deep(button:focus-visible) { outline: 2px solid var(--color-primary); outline-offset: 2px; }
-.embed-audit :deep(.result-reasoning-panel__toggle:focus-visible) { outline-offset: -3px; }
+.embed-audit :deep(.result-reasoning-panel__toggle:focus-visible),
+.embed-audit :deep(.result-recheck-panel__toggle:focus-visible) { outline-offset: -3px; }
 @media (max-width: 640px) {
   .embed-audit { padding: 12px 12px 24px; }
   .embed-header { align-items: flex-start; flex-direction: column; gap: 5px; }
