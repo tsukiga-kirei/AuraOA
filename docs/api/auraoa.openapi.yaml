@@ -10131,6 +10131,12 @@ components:
         weaver_appid:
           type: string
           description: 泛微应用 appid；仅在配置附件接口 URL 时必填
+        weaver_app_secret:
+          type: string
+          description: 泛微应用 secret 密钥；AES 加密存储
+        weaver_app_secret_configured:
+          type: boolean
+          description: 泛微应用 secret 密钥是否已配置
         weaver_default_user:
           type: string
           description: 默认调用用户 loginid；仅在配置附件接口 URL 时必填

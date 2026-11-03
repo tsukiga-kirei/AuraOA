@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -95,6 +97,12 @@ func (e *SystemToolExecutor) Execute(toolCode string, argumentsJSON string, exec
 			}
 			oaConn.Password = decrypted
 		}
+		if oaConn.WeaverAppSecret != "" {
+			decryptedSecret, decryptErr := crypto.Decrypt(oaConn.WeaverAppSecret)
+			if decryptErr == nil {
+				oaConn.WeaverAppSecret = decryptedSecret
+			}
+		}
 		if spec.OARequired {
 			adapter, err = e.oaConnections.GetAdapter(execCtx.Ctx, oaConn.OAType, oaConn)
 			if err != nil {
@@ -125,6 +133,12 @@ func (e *SystemToolExecutor) Execute(toolCode string, argumentsJSON string, exec
 		return e.executeRunSummary(argumentsJSON, execCtx, adapter)
 	case "resolve_oa_url":
 		return e.executeResolveOAURL(argumentsJSON, execCtx, oaConn)
+	case "create_oa_draft":
+		return e.executeCreateOADraft(argumentsJSON, execCtx, oaConn, adapter)
+	case "execute_safe_query":
+		return e.executeSafeQuery(argumentsJSON, execCtx, oaConn)
+	case "get_workflow_schema":
+		return e.executeGetWorkflowSchema(argumentsJSON, execCtx, adapter)
 	default:
 		return nil, spec.UIKind, fmt.Errorf("工具 %s 暂未实现", toolCode)
 	}
@@ -862,4 +876,242 @@ func containsString(slice []string, val string) bool {
 		}
 	}
 	return false
+}
+
+var (
+	forbiddenDMLRegex   = regexp.MustCompile(`(?i)\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|EXEC|EXECUTE|GRANT|REVOKE|MERGE|CREATE|REPLACE)\b`)
+	sensitiveWordsRegex = regexp.MustCompile(`(?i)\b(password|license|token|secret|key|passwd|pwd)\b`)
+)
+
+// 11. 创建 OA 流程草稿
+func (e *SystemToolExecutor) executeCreateOADraft(
+	argsJSON string,
+	execCtx *ExecutionContext,
+	oaConn *model.OADatabaseConnection,
+	adapter oa.OAAdapter,
+) (interface{}, string, error) {
+	creator, ok := adapter.(oa.WorkflowDraftCreator)
+	if !ok {
+		return nil, "create_workflow_draft", fmt.Errorf("当前 OA 适配器不支持自动创建流程草稿")
+	}
+
+	var args struct {
+		WorkflowID   string                 `json:"workflow_id"`
+		WorkflowName string                 `json:"workflow_name"`
+		RequestName  string                 `json:"request_name"`
+		RequestLevel string                 `json:"request_level"`
+		MainData     map[string]interface{} `json:"main_data"`
+		DetailData   []interface{}          `json:"detail_data"`
+	}
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return nil, "create_workflow_draft", fmt.Errorf("解析参数失败: %w", err)
+	}
+
+	if strings.TrimSpace(args.WorkflowID) == "" {
+		return nil, "create_workflow_draft", fmt.Errorf("缺少流程定义 ID (workflow_id)")
+	}
+
+	loginID := strings.TrimSpace(execCtx.Username)
+	if loginID == "" && oaConn != nil {
+		loginID = strings.TrimSpace(oaConn.WeaverDefaultUser)
+	}
+
+	input := &oa.CreateWorkflowDraftInput{
+		WorkflowID:   strings.TrimSpace(args.WorkflowID),
+		WorkflowName: strings.TrimSpace(args.WorkflowName),
+		RequestName:  strings.TrimSpace(args.RequestName),
+		RequestLevel: strings.TrimSpace(args.RequestLevel),
+		MainData:     args.MainData,
+		DetailData:   args.DetailData,
+	}
+
+	out, err := creator.CreateWorkflowDraft(execCtx.Ctx, loginID, input)
+	if err != nil {
+		return nil, "create_workflow_draft", fmt.Errorf("创建流程草稿失败: %w", err)
+	}
+
+	result := map[string]interface{}{
+		"request_id":   out.RequestID,
+		"request_name": out.RequestName,
+		"process_url":  out.ProcessURL,
+		"workflow_id":  input.WorkflowID,
+		"status":       "draft_created",
+		"message":      "流程草稿创建成功，请点击链接前往 OA 确认并提交",
+	}
+
+	return result, "create_workflow_draft", nil
+}
+
+// 12. 执行安全数据查询
+func (e *SystemToolExecutor) executeSafeQuery(
+	argsJSON string,
+	execCtx *ExecutionContext,
+	oaConn *model.OADatabaseConnection,
+) (interface{}, string, error) {
+	if oaConn == nil {
+		return nil, "data_query_table", fmt.Errorf("当前租户尚未配置 OA 连接，无法执行查数分析")
+	}
+
+	var args struct {
+		SQL   string `json:"sql"`
+		Title string `json:"title"`
+	}
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return nil, "data_query_table", fmt.Errorf("解析参数失败: %w", err)
+	}
+
+	rawSQL := strings.TrimSpace(args.SQL)
+	if rawSQL == "" {
+		return nil, "data_query_table", fmt.Errorf("SQL 查询语句不能为空")
+	}
+
+	// 1. 五层安全拦截
+	// 层级一：去除首尾分号后检查是否以 SELECT 开头
+	cleanSQL := strings.TrimRight(rawSQL, ";")
+	cleanSQL = strings.TrimSpace(cleanSQL)
+
+	upper := strings.ToUpper(cleanSQL)
+	if !strings.HasPrefix(upper, "SELECT") || (len(upper) > 6 && upper[6] != ' ' && upper[6] != '\t' && upper[6] != '\n') {
+		return nil, "data_query_table", fmt.Errorf("安全守卫拦截：仅允许执行 SELECT 只读查询语句")
+	}
+
+	// 层级二：严禁包含增删改查以外的 DML/DDL 关键字
+	if forbiddenDMLRegex.MatchString(cleanSQL) {
+		return nil, "data_query_table", fmt.Errorf("安全守卫拦截：查询语句中包含禁止的 DDL/DML 关键字")
+	}
+
+	// 层级三：严禁包含 SQL 注释符（防绕过注入）
+	if strings.Contains(cleanSQL, "--") || strings.Contains(cleanSQL, "/*") || strings.Contains(cleanSQL, "*/") {
+		return nil, "data_query_table", fmt.Errorf("安全守卫拦截：禁止在 SQL 查询中使用注释符号（-- 或 /* */）")
+	}
+
+	// 层级四：敏感凭证表与字段黑名单
+	if sensitiveWordsRegex.MatchString(cleanSQL) {
+		return nil, "data_query_table", fmt.Errorf("安全守卫拦截：禁止查询包含密码、令牌或密钥等敏感字段")
+	}
+
+	// 层级五：强制行数限制（100 行截断保护）
+	// 根据数据库方言使用子查询包裹，杜绝全表扫描与巨量输出
+	var wrappedSQL string
+	if oaConn.Driver == "oracle" {
+		wrappedSQL = fmt.Sprintf("SELECT * FROM (%s) safe_sub WHERE ROWNUM <= 100", cleanSQL)
+	} else {
+		wrappedSQL = fmt.Sprintf("SELECT * FROM (%s) AS safe_sub LIMIT 100", cleanSQL)
+	}
+
+	db, err := e.oaConnections.GetDB(execCtx.Ctx, oaConn.OAType, oaConn)
+	if err != nil {
+		return nil, "data_query_table", fmt.Errorf("获取 OA 数据库连接失败: %w", err)
+	}
+
+	// 执行只读查询，超时时间 10 秒
+	queryCtx, cancel := context.WithTimeout(execCtx.Ctx, 10*time.Second)
+	defer cancel()
+
+	rows, err := db.WithContext(queryCtx).Raw(wrappedSQL).Rows()
+	if err != nil {
+		return nil, "data_query_table", fmt.Errorf("执行 SQL 查询失败: %w", err)
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, "data_query_table", fmt.Errorf("读取列信息失败: %w", err)
+	}
+
+	var results []map[string]interface{}
+	for rows.Next() {
+		// 创建动态切片承载列值
+		values := make([]interface{}, len(cols))
+		valuePtrs := make([]interface{}, len(cols))
+		for i := range cols {
+			valuePtrs[i] = &values[i]
+		}
+		if scanErr := rows.Scan(valuePtrs...); scanErr != nil {
+			return nil, "data_query_table", fmt.Errorf("扫描查询数据行失败: %w", scanErr)
+		}
+
+		rowMap := make(map[string]interface{})
+		for i, colName := range cols {
+			val := values[i]
+			// 如果是字节数组转成字符串，便于 JSON 序列化
+			if b, ok := val.([]byte); ok {
+				rowMap[colName] = string(b)
+			} else {
+				rowMap[colName] = val
+			}
+		}
+		results = append(results, rowMap)
+	}
+
+	title := strings.TrimSpace(args.Title)
+	if title == "" {
+		title = "OA 业务数据查询结果"
+	}
+
+	res := map[string]interface{}{
+		"title":      title,
+		"columns":    cols,
+		"rows":       results,
+		"total_rows": len(results),
+		"sql":        cleanSQL,
+		"truncated":  len(results) >= 100,
+	}
+
+	return res, "data_query_table", nil
+}
+
+// 13. 获取流程表单定义与字段选项（支持自动匹配 workflow_id 或名称搜索）
+func (e *SystemToolExecutor) executeGetWorkflowSchema(
+	argsJSON string,
+	execCtx *ExecutionContext,
+	adapter oa.OAAdapter,
+) (interface{}, string, error) {
+	var args struct {
+		WorkflowID   string `json:"workflow_id"`
+		WorkflowName string `json:"workflow_name"`
+	}
+	_ = json.Unmarshal([]byte(argsJSON), &args)
+
+	targetID := strings.TrimSpace(args.WorkflowID)
+	targetName := strings.TrimSpace(args.WorkflowName)
+
+	selector, ok := adapter.(oa.WorkflowDefinitionSelector)
+	if !ok {
+		return nil, "workflow_schema", fmt.Errorf("当前 OA 适配器不支持检索流程定义与表单字段")
+	}
+
+	ctx := context.Background()
+	if targetID == "" {
+		if targetName == "" {
+			return nil, "workflow_schema", fmt.Errorf("请提供流程定义 ID (workflow_id) 或流程名称关键词 (workflow_name)")
+		}
+		// 检索流程定义
+		defs, err := selector.SearchWorkflowDefinitions(ctx, targetName)
+		if err != nil {
+			return nil, "workflow_schema", fmt.Errorf("检索流程定义失败: %w", err)
+		}
+		if len(defs) == 0 {
+			return map[string]interface{}{
+				"matched":   false,
+				"message":   fmt.Sprintf("未在 OA 系统中检索到包含关键词 '%s' 的流程定义", targetName),
+				"workflows": []interface{}{},
+			}, "workflow_schema", nil
+		}
+		targetID = defs[0].WorkflowID
+		targetName = defs[0].ProcessName
+	}
+
+	fields, err := selector.FetchFieldsByWorkflowID(ctx, targetID)
+	if err != nil {
+		return nil, "workflow_schema", fmt.Errorf("获取流程字段结构失败: %w", err)
+	}
+
+	return map[string]interface{}{
+		"matched":       true,
+		"workflow_id":   targetID,
+		"workflow_name": targetName,
+		"main_fields":   fields.MainFields,
+		"detail_tables": fields.DetailTables,
+	}, "workflow_schema", nil
 }

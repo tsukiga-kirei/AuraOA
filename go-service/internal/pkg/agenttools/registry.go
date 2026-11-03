@@ -250,6 +250,89 @@ var BuiltinTools = map[string]ToolSpec{
 			"required": []string{"process_id"},
 		},
 	},
+	"create_oa_draft": {
+		Code:        "create_oa_draft",
+		Name:        "创建 OA 流程草稿",
+		Description: "在泛微 OA 中创建一条指定流程类型的草稿单据（草稿状态，不自动流转，需申请人在 OA 中确认提交）。调用成功后返回创建的流程 ID 与直达办理的 Web 链接。",
+		UIKind:      "create_workflow_draft",
+		OARequired:  true,
+		Risk:        "write",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"workflow_id": map[string]interface{}{
+					"type":        "string",
+					"description": "泛微流程定义 ID (workflowId)，如 '102'",
+				},
+				"workflow_name": map[string]interface{}{
+					"type":        "string",
+					"description": "流程名称（如 '物品领用申请'，用于辅助生成单据标题）",
+				},
+				"request_name": map[string]interface{}{
+					"type":        "string",
+					"description": "单据标题（可选，留空时系统自动按 申请人-流程名-日期 规则生成）",
+				},
+				"request_level": map[string]interface{}{
+					"type":        "string",
+					"enum":        []string{"0", "1", "2"},
+					"description": "紧急程度：0 (正常，默认)，1 (重要)，2 (紧急)",
+					"default":     "0",
+				},
+				"main_data": map[string]interface{}{
+					"type":        "object",
+					"description": "主表字段数据键值对映射，如 {\"sqrq\": \"2026-11-02\", \"wp_type\": \"文具\", \"reason\": \"日常办公用品\"}",
+				},
+				"detail_data": map[string]interface{}{
+					"type":        "array",
+					"description": "明细表数据数组，无明细时固定为空数组 []",
+				},
+			},
+			"required": []string{"workflow_id", "main_data"},
+		},
+	},
+	"execute_safe_query": {
+		Code:        "execute_safe_query",
+		Name:        "执行安全数据查询",
+		Description: "在 OA 数据库中执行只读的数据统计与分析 SELECT SQL 查询。系统内置五层安全守卫拦截（仅限 SELECT、严禁增删改与注释符、敏感表黑名单、强制 LIMIT 100 截断），返回二维结构化数据供分析及表格渲染。",
+		UIKind:      "data_query_table",
+		OARequired:  true,
+		Risk:        "read",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"sql": map[string]interface{}{
+					"type":        "string",
+					"description": "待执行的只读 SELECT SQL 查询语句（严禁包含 INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE 等写入或变更语句，严禁使用注释符）",
+				},
+				"title": map[string]interface{}{
+					"type":        "string",
+					"description": "查询主题或统计指标说明（可选，如 '本月各部门流程发起数量统计'）",
+				},
+			},
+			"required": []string{"sql"},
+		},
+	},
+	"get_workflow_schema": {
+		Code:        "get_workflow_schema",
+		Name:        "获取流程表单定义与字段选项",
+		Description: "查询指定流程（workflow_id 或流程名称关键词）的表单字段结构、中文标签、字段类型以及下拉选择框（Select）的完整候选项列表。在填单前用于主动了解表单字段并为用户匹配合适选项。",
+		UIKind:      "workflow_schema",
+		OARequired:  true,
+		Risk:        "read",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"workflow_id": map[string]interface{}{
+					"type":        "string",
+					"description": "泛微流程定义 ID (workflow_id)，如 '102'（与 workflow_name 二选一）",
+				},
+				"workflow_name": map[string]interface{}{
+					"type":        "string",
+					"description": "流程名称模糊搜索关键词，如 '领用'、'请假'（当不知道具体 workflow_id 时使用）",
+				},
+			},
+		},
+	},
 }
 
 // ToToolDefinition 将 ToolSpec 转为 AI 统一工具定义
@@ -277,6 +360,8 @@ func GetAllToolSpecs() []ToolSpec {
 		"run_audit",
 		"run_summary",
 		"resolve_oa_url",
+		"create_oa_draft",
+		"execute_safe_query",
 	}
 	specs := make([]ToolSpec, 0, len(orderedCodes))
 	for _, code := range orderedCodes {

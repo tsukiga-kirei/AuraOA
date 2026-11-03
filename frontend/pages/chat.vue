@@ -274,7 +274,13 @@ const jump = (id: string) => {
           <p v-if="!effectiveAgents.length" class="no-agents">{{ t('chat.noAgents') }}</p>
         </div>
         <div v-else class="chat-thread-container">
-          <ChatThread :messages="messages" :agent-name="agent?.name" :retry-disabled="streaming || detailLoading || !agent" @retry="handleRetryMessage" />
+          <ChatThread
+            :messages="messages"
+            :agent-name="agent?.name"
+            :retry-disabled="streaming || detailLoading || !agent"
+            @retry="handleRetryMessage"
+            @send="submit"
+          />
         </div>
       </div>
     </div>

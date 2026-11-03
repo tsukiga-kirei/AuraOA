@@ -61,6 +61,7 @@ interface OADbConnection {
   description: string; created_at: string; updated_at: string;
   weaver_api_url?: string;
   weaver_appid_configured?: boolean;
+  weaver_app_secret_configured?: boolean;
   weaver_default_user?: string;
   oa_base_url?: string;
   process_url_template?: string;
@@ -68,6 +69,7 @@ interface OADbConnection {
 
 /** 编辑已配置连接时，输入框内展示的掩码（非真实值） */
 const WEAVER_APPID_MASK = '••••••••••••••••••••••••'
+const WEAVER_APP_SECRET_MASK = '••••••••••••••••••••••••'
 interface AIModel {
   id: string; provider: string; provider_label: string; model_name: string; display_name: string;
   deploy_type: string; endpoint: string; api_key_configured: boolean;
@@ -317,6 +319,7 @@ onMounted(async () => {
 const showAddOADb = ref(false)
 const editingOADb = ref<OADbConnection | null>(null)
 const weaverAppidConfigured = ref(false)
+const weaverAppSecretConfigured = ref(false)
 const testingOADbId = ref<string | null>(null)
 
 const getDriverPort = (driver: string) => {
@@ -328,7 +331,7 @@ const newOADb = ref<Record<string, any>>({
   name: '', oa_type: '', oa_type_label: '', description: '', sync_interval: 60,
   driver: 'mysql', host: '', port: 3306, database_name: '',
   username: '', password: '', pool_size: 10, connection_timeout: 30, test_on_borrow: true,
-  weaver_api_url: '', weaver_appid: '', weaver_default_user: '',
+  weaver_api_url: '', weaver_appid: '', weaver_app_secret: '', weaver_default_user: '',
   oa_base_url: '', process_url_template: '',
 })
 
@@ -339,7 +342,7 @@ const resetNewOADb = () => {
     description: '', sync_interval: 60,
     driver: 'mysql', host: '', port: 3306, database_name: '',
     username: '', password: '', pool_size: 10, connection_timeout: 30, test_on_borrow: true,
-    weaver_api_url: '', weaver_appid: '', weaver_default_user: '',
+    weaver_api_url: '', weaver_appid: '', weaver_app_secret: '', weaver_default_user: '',
     oa_base_url: '', process_url_template: '',
   }
 }
@@ -347,6 +350,7 @@ const resetNewOADb = () => {
 const openAddOADb = () => {
   editingOADb.value = null
   weaverAppidConfigured.value = false
+  weaverAppSecretConfigured.value = false
   resetNewOADb()
   showAddOADb.value = true
 }
@@ -354,7 +358,9 @@ const openAddOADb = () => {
 const openEditOADb = (conn: OADbConnection) => {
   editingOADb.value = conn
   const appidConfigured = !!conn.weaver_appid_configured
+  const secretConfigured = !!conn.weaver_app_secret_configured
   weaverAppidConfigured.value = appidConfigured
+  weaverAppSecretConfigured.value = secretConfigured
   newOADb.value = {
     name: conn.name, oa_type: conn.oa_type, oa_type_label: conn.oa_type_label,
     description: conn.description, sync_interval: conn.sync_interval,
@@ -363,6 +369,7 @@ const openEditOADb = (conn: OADbConnection) => {
     connection_timeout: conn.connection_timeout, test_on_borrow: conn.test_on_borrow,
     weaver_api_url: conn.weaver_api_url || '',
     weaver_appid: appidConfigured ? WEAVER_APPID_MASK : '',
+    weaver_app_secret: secretConfigured ? WEAVER_APP_SECRET_MASK : '',
     weaver_default_user: conn.weaver_default_user || '',
     oa_base_url: conn.oa_base_url || '',
     process_url_template: conn.process_url_template || '',
@@ -382,18 +389,32 @@ const onWeaverAppidFocus = () => {
   }
 }
 
+/** 点击 app_secret 输入框时清除掩码 */
+const onWeaverAppSecretFocus = () => {
+  if (newOADb.value.weaver_app_secret === WEAVER_APP_SECRET_MASK) {
+    newOADb.value.weaver_app_secret = ''
+  }
+}
+
 const buildOADbPayload = () => {
   const payload = { ...newOADb.value }
   if (!payload.password?.trim()) {
     delete payload.password
   }
   const appid = String(payload.weaver_appid ?? '').trim()
-  // 掩码或未填写：编辑时不提交（保留库内原值）；新建时由校验拦截
   if (appid === WEAVER_APPID_MASK || !appid) {
     delete payload.weaver_appid
   } else {
     payload.weaver_appid = appid
   }
+
+  const secret = String(payload.weaver_app_secret ?? '').trim()
+  if (secret === WEAVER_APP_SECRET_MASK || !secret) {
+    delete payload.weaver_app_secret
+  } else {
+    payload.weaver_app_secret = secret
+  }
+
   return payload
 }
 
@@ -1831,11 +1852,27 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
               </a-form-item>
             </a-col>
             <a-col :span="12">
-              <a-form-item :label="t('admin.settings.weaverDefaultUser', '默认调用用户（loginid）')">
-                <a-input v-model:value="newOADb.weaver_default_user" size="large" placeholder="1" />
+              <a-form-item>
+                <template #label>
+                  {{ t('admin.settings.weaverAppSecret', '应用密钥（secret）') }}
+                  <a-tag v-if="weaverAppSecretConfigured" color="success" style="margin-left: 8px; vertical-align: middle;">
+                    {{ t('admin.settings.weaverAppSecretConfigured', '已配置') }}
+                  </a-tag>
+                </template>
+                <a-input-password
+                  v-model:value="newOADb.weaver_app_secret"
+                  size="large"
+                  @focus="onWeaverAppSecretFocus"
+                  :placeholder="weaverAppSecretConfigured
+                    ? t('admin.settings.weaverAppSecretKeepCurrent', '已配置，点击可修改')
+                    : t('admin.settings.weaverAppSecretPlaceholder', '输入泛微应用 secret 密钥')"
+                />
               </a-form-item>
             </a-col>
           </a-row>
+          <a-form-item :label="t('admin.settings.weaverDefaultUser', '默认调用用户（loginid）')">
+            <a-input v-model:value="newOADb.weaver_default_user" size="large" placeholder="1" />
+          </a-form-item>
         </template>
       </a-form>
       <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 16px; border-top: 1px solid var(--color-border-light); margin-top: 8px;">

@@ -76,9 +76,19 @@ func (s *OAConnectionService) Create(req *dto.CreateOAConnectionRequest) (*dto.O
 		Description:        req.Description,
 		WeaverAPIURL:       req.WeaverAPIURL,
 		WeaverAppID:        req.WeaverAppID,
+		WeaverAppSecret:    req.WeaverAppSecret,
 		WeaverDefaultUser:  req.WeaverDefaultUser,
 		OABaseURL:          strings.TrimSpace(req.OABaseURL),
 		ProcessURLTemplate: strings.TrimSpace(req.ProcessURLTemplate),
+	}
+
+	// 加密泛微 E9 密钥
+	if req.WeaverAppSecret != "" {
+		encrypted, err := crypto.Encrypt(req.WeaverAppSecret)
+		if err != nil {
+			return nil, newServiceError(errcode.ErrInternalServer, "泛微应用密钥加密失败")
+		}
+		conn.WeaverAppSecret = encrypted
 	}
 
 	// 加密密码
@@ -216,6 +226,13 @@ func (s *OAConnectionService) Update(id uuid.UUID, req *dto.UpdateOAConnectionRe
 	if req.WeaverAppID != "" {
 		fields["weaver_appid"] = req.WeaverAppID
 	}
+	if req.WeaverAppSecret != "" {
+		encrypted, err := crypto.Encrypt(req.WeaverAppSecret)
+		if err != nil {
+			return nil, newServiceError(errcode.ErrInternalServer, "泛微应用密钥加密失败")
+		}
+		fields["weaver_app_secret"] = encrypted
+	}
 	if req.WeaverDefaultUser != "" {
 		fields["weaver_default_user"] = req.WeaverDefaultUser
 	}
@@ -299,9 +316,10 @@ func toOAConnectionResponse(c *model.OADatabaseConnection) dto.OAConnectionRespo
 		SyncInterval:          c.SyncInterval,
 		Enabled:               c.Enabled,
 		Description:           c.Description,
-		WeaverAPIURL:          c.WeaverAPIURL,
-		WeaverAppIDConfigured: strings.TrimSpace(c.WeaverAppID) != "",
-		WeaverDefaultUser:     c.WeaverDefaultUser,
+		WeaverAPIURL:              c.WeaverAPIURL,
+		WeaverAppIDConfigured:     strings.TrimSpace(c.WeaverAppID) != "",
+		WeaverAppSecretConfigured: strings.TrimSpace(c.WeaverAppSecret) != "",
+		WeaverDefaultUser:         c.WeaverDefaultUser,
 		OABaseURL:             c.OABaseURL,
 		ProcessURLTemplate:    c.ProcessURLTemplate,
 		CreatedAt:             c.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),

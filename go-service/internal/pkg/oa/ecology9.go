@@ -20,6 +20,7 @@ import (
 	"gorm.io/gorm/schema"
 
 	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/apptime"
 	pkglogger "auraoa/go-service/internal/pkg/logger"
 	"auraoa/go-service/internal/pkg/oa/dm"
 	"auraoa/go-service/internal/pkg/oa/oracle"
@@ -33,7 +34,10 @@ type Ecology9Adapter struct {
 	attachmentRecognitionSvc AttachmentRecognitionService // 附件识别服务接口
 	weaverAPIURL             string
 	weaverAppID              string
+	weaverAppSecret          string
 	weaverLoginID            string
+	oaBaseURL                string
+	processURLTemplate       string
 	httpClient               *http.Client
 }
 
@@ -187,7 +191,10 @@ func newEcology9AdapterWithDB(
 		attachmentRecognitionSvc: attachmentSvc,
 		weaverAPIURL:             strings.TrimSpace(conn.WeaverAPIURL),
 		weaverAppID:              strings.TrimSpace(conn.WeaverAppID),
+		weaverAppSecret:          strings.TrimSpace(conn.WeaverAppSecret),
 		weaverLoginID:            strings.TrimSpace(conn.WeaverDefaultUser),
+		oaBaseURL:                strings.TrimSpace(conn.OABaseURL),
+		processURLTemplate:       strings.TrimSpace(conn.ProcessURLTemplate),
 		httpClient: &http.Client{
 			Timeout: 60 * time.Second,
 		},
@@ -442,11 +449,53 @@ func (a *Ecology9Adapter) SearchWorkflowDefinitions(ctx context.Context, keyword
 	return out, nil
 }
 
+// fetchChoiceFieldOptionsList 批量查询流程表单下拉选择框的选项列表定义（保持展示顺序）。
+func (a *Ecology9Adapter) fetchChoiceFieldOptionsList(ctx context.Context, fieldIDs []int) map[int][]FieldChoiceOption {
+	result := map[int][]FieldChoiceOption{}
+	if len(fieldIDs) == 0 {
+		return result
+	}
+	var rows []map[string]interface{}
+	err := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_selectitem")).
+		Select(strings.Join([]string{
+			a.col("fieldid") + " AS fieldid",
+			a.col("selectvalue") + " AS option_value",
+			a.col("selectname") + " AS option_display",
+		}, ", ")).
+		Where(a.col("fieldid")+" IN ?", fieldIDs).
+		Order(a.col("fieldid") + " ASC, " + a.col("selectvalue") + " ASC").
+		Find(&rows).Error
+	if err != nil {
+		return result
+	}
+	for _, row := range rows {
+		fid := mapGetInt(row, "fieldid")
+		val := strings.TrimSpace(mapGet(row, "option_value"))
+		disp := normalizeChoiceDisplayName(mapGet(row, "option_display"))
+		if fid == 0 || val == "" || disp == "" {
+			continue
+		}
+		result[fid] = append(result[fid], FieldChoiceOption{
+			Value: val,
+			Label: disp,
+		})
+	}
+	return result
+}
+
 func (a *Ecology9Adapter) fetchFieldsByForm(ctx context.Context, formID int, mainTableName string) (*ProcessFields, error) {
 	var rawFields []map[string]interface{}
 	err := a.db.WithContext(ctx).
 		Table(a.tableName("workflow_billfield")+" "+a.col("t1")).
-		Select(a.col("t1.fieldname")+" AS fieldkey, "+a.col("t2.labelname")+" AS fieldname, "+a.col("t1.fieldhtmltype")+" AS fieldhtmltype, "+a.col("t1.detailtable")+" AS detailtable").
+		Select(strings.Join([]string{
+			a.col("t1.id") + " AS fieldid",
+			a.col("t1.fieldname") + " AS fieldkey",
+			a.col("t2.labelname") + " AS fieldname",
+			a.col("t1.fieldhtmltype") + " AS fieldhtmltype",
+			a.col("t1.type") + " AS type",
+			a.col("t1.detailtable") + " AS detailtable",
+		}, ", ")).
 		Joins("JOIN "+a.tableName("htmllabelinfo")+" "+a.col("t2")+" ON "+a.col("t1.fieldlabel")+" = "+a.col("t2.indexid")).
 		Where(a.col("t1.billid")+" = ? AND "+a.col("t2.languageid")+" = 7", formID).
 		Order(a.col("t1.detailtable") + " ASC, " + a.col("t1.id") + " ASC").
@@ -454,6 +503,15 @@ func (a *Ecology9Adapter) fetchFieldsByForm(ctx context.Context, formID int, mai
 	if err != nil {
 		return nil, fmt.Errorf("查询流程字段失败: %w", err)
 	}
+
+	// 收集所有选择框字段 ID
+	var choiceFieldIDs []int
+	for _, row := range rawFields {
+		if mapGet(row, "fieldhtmltype") == "5" {
+			choiceFieldIDs = append(choiceFieldIDs, mapGetInt(row, "fieldid"))
+		}
+	}
+	choiceOptionsMap := a.fetchChoiceFieldOptionsList(ctx, choiceFieldIDs)
 
 	result := &ProcessFields{
 		MainFields:   make([]FieldDef, 0),
@@ -463,11 +521,35 @@ func (a *Ecology9Adapter) fetchFieldsByForm(ctx context.Context, formID int, mai
 	var detailTableKeys []string
 
 	for _, row := range rawFields {
+		fieldID := mapGetInt(row, "fieldid")
+		htmlType := mapGet(row, "fieldhtmltype")
+		typeID := mapGetInt(row, "type")
+
 		fd := FieldDef{
 			FieldKey:  mapGet(row, "fieldkey"),
 			FieldName: mapGet(row, "fieldname"),
-			FieldType: a.mapFieldType(mapGet(row, "fieldhtmltype")),
+			FieldType: a.mapFieldType(htmlType),
 		}
+
+		if htmlType == "5" {
+			if opts, ok := choiceOptionsMap[fieldID]; ok {
+				fd.Options = opts
+			}
+		} else if htmlType == "3" {
+			switch typeID {
+			case 1, 17:
+				fd.BrowserType = "person"
+			case 4, 57:
+				fd.BrowserType = "department"
+			case 164:
+				fd.BrowserType = "subcompany"
+			case 16:
+				fd.BrowserType = "workflow"
+			default:
+				fd.BrowserType = "custom"
+			}
+		}
+
 		dt := strings.TrimSpace(mapGet(row, "detailtable"))
 
 		// E9 中 detailtable 可能为 NULL(解析为空字符串)、"主表" 或对应主表表名
@@ -4463,3 +4545,432 @@ func (a *Ecology9Adapter) FetchWorkflowCodes(ctx context.Context, processIDs []s
 
 	return result, nil
 }
+
+// normalizeMainDataForE9 在流程草稿提交 OA 前，将浏览按钮（fieldhtmltype=3）和选择框（fieldhtmltype=5）的文本标签/显示名称归一化为泛微底层实际 ID。
+// 若字段值已是合法数字 ID 或选项编码，则保持原值不变；若 a.db 未连接或查询无果，则优雅降级保留原始值。
+func (a *Ecology9Adapter) normalizeMainDataForE9(ctx context.Context, workflowID string, mainData map[string]interface{}) map[string]interface{} {
+	if a == nil || a.db == nil || len(mainData) == 0 || strings.TrimSpace(workflowID) == "" {
+		return mainData
+	}
+
+	// 1. 查询流程关联的表单 ID (formid)
+	var formID int
+	err := a.db.WithContext(ctx).
+		Table(a.tableName("workflow_base")).
+		Select(a.col("formid")).
+		Where(a.col("id")+" = ?", workflowID).
+		Row().Scan(&formID)
+	if err != nil || formID == 0 {
+		return mainData
+	}
+
+	// 2. 查询该表单主表字段定义（fieldhtmltype in ('3', '5')）
+	var rawFields []map[string]interface{}
+	err = a.db.WithContext(ctx).
+		Table(a.tableName("workflow_billfield")).
+		Select(strings.Join([]string{
+			a.col("id") + " AS fieldid",
+			a.col("fieldname") + " AS fieldname",
+			a.col("fieldhtmltype") + " AS fieldhtmltype",
+			a.col("type") + " AS type",
+			a.col("fielddbtype") + " AS fielddbtype",
+			a.col("detailtable") + " AS detailtable",
+		}, ", ")).
+		Where(a.col("billid")+" = ? AND ("+a.col("fieldhtmltype")+" = '3' OR "+a.col("fieldhtmltype")+" = '5')", formID).
+		Find(&rawFields).Error
+	if err != nil || len(rawFields) == 0 {
+		return mainData
+	}
+
+	// 建立 fieldname 小写索引
+	type fieldMeta struct {
+		FieldID       int
+		FieldName     string
+		FieldHTMLType string
+		Type          int
+		FieldDBType   string
+	}
+	fieldMap := make(map[string]fieldMeta)
+	for _, row := range rawFields {
+		dt := strings.TrimSpace(mapGet(row, "detailtable"))
+		if dt != "" && dt != "0" {
+			// 只处理主表字段
+			continue
+		}
+		fn := strings.TrimSpace(mapGet(row, "fieldname"))
+		if fn == "" {
+			continue
+		}
+		fieldMap[strings.ToLower(fn)] = fieldMeta{
+			FieldID:       mapGetInt(row, "fieldid"),
+			FieldName:     fn,
+			FieldHTMLType: strings.TrimSpace(mapGet(row, "fieldhtmltype")),
+			Type:          mapGetInt(row, "type"),
+			FieldDBType:   strings.TrimSpace(mapGet(row, "fielddbtype")),
+		}
+	}
+
+	normalized := make(map[string]interface{}, len(mainData))
+	for k, v := range mainData {
+		meta, exists := fieldMap[strings.ToLower(strings.TrimSpace(k))]
+		if !exists || v == nil {
+			normalized[k] = v
+			continue
+		}
+
+		strVal := strings.TrimSpace(fmt.Sprint(v))
+		if strVal == "" {
+			normalized[k] = v
+			continue
+		}
+
+		switch meta.FieldHTMLType {
+		case "5": // 下拉框 / 选择框 (Choice / Select)
+			var selRows []map[string]interface{}
+			_ = a.db.WithContext(ctx).
+				Table(a.tableName("workflow_selectitem")).
+				Select(strings.Join([]string{
+					a.col("selectvalue") + " AS selectvalue",
+					a.col("selectname") + " AS selectname",
+				}, ", ")).
+				Where(a.col("fieldid")+" = ?", meta.FieldID).
+				Find(&selRows).Error
+
+			mapped := false
+			// 首先检查是否已直接匹配 selectvalue
+			for _, sr := range selRows {
+				sv := strings.TrimSpace(mapGet(sr, "selectvalue"))
+				if sv == strVal {
+					normalized[k] = sv
+					mapped = true
+					break
+				}
+			}
+			if !mapped {
+				// 2. 按 selectname（选项中文文本）精确匹配
+				for _, sr := range selRows {
+					sn := normalizeChoiceDisplayName(mapGet(sr, "selectname"))
+					if sn != "" && (strings.EqualFold(sn, strVal) || strings.EqualFold(mapGet(sr, "selectname"), strVal)) {
+						normalized[k] = strings.TrimSpace(mapGet(sr, "selectvalue"))
+						mapped = true
+						break
+					}
+				}
+			}
+			if !mapped {
+				// 3. 智能模糊与双向包含匹配（如用户输入 "文具" 匹配 "办公文具"，或输入 "数码配件" 匹配 "数码耗材及配件"）
+				for _, sr := range selRows {
+					sn := normalizeChoiceDisplayName(mapGet(sr, "selectname"))
+					rawSn := strings.TrimSpace(mapGet(sr, "selectname"))
+					if (sn != "" && (strings.Contains(sn, strVal) || strings.Contains(strVal, sn))) ||
+						(rawSn != "" && (strings.Contains(rawSn, strVal) || strings.Contains(strVal, rawSn))) {
+						normalized[k] = strings.TrimSpace(mapGet(sr, "selectvalue"))
+						mapped = true
+						break
+					}
+				}
+			}
+			if !mapped {
+				// 4. 常见语义近义词词根推断匹配（针对高频办公场景：如输入 "中性笔/订书机" 自动归类匹配至 "办公文具"）
+				if inferredVal := inferChoiceValueBySynonyms(strVal, selRows); inferredVal != "" {
+					normalized[k] = inferredVal
+					mapped = true
+				}
+			}
+			if !mapped {
+				normalized[k] = v
+			}
+
+		case "3": // 浏览按钮 (Browse button)
+			targetID := a.resolveBrowseValueToID(ctx, meta.Type, meta.FieldDBType, strVal)
+			if targetID != "" {
+				normalized[k] = targetID
+			} else {
+				normalized[k] = v
+			}
+
+		default:
+			normalized[k] = v
+		}
+	}
+
+	return normalized
+}
+
+// inferChoiceValueBySynonyms 根据办公场景常见语义近义词词根推断最贴近的选项 selectvalue。
+// 用户输入例如 "中性笔" / "鼠标" 等具体品名时，推断映射至 "办公文具" / "数码配件" 等标准选项。
+func inferChoiceValueBySynonyms(strVal string, selRows []map[string]interface{}) string {
+	lower := strings.ToLower(strVal)
+
+	type synonymGroup struct {
+		keywords []string // 用户可能输入的具体品名/词根
+		targets  []string // 期望匹配的选项名称关键字
+	}
+
+	groups := []synonymGroup{
+		{
+			keywords: []string{"笔", "本", "纸", "订书", "剪刀", "文件夹", "档案袋", "便签", "胶水", "回形针", "修正带", "记号笔", "荧光笔", "笔记本"},
+			targets:  []string{"文具", "办公用品", "办公文具", "日用文具"},
+		},
+		{
+			keywords: []string{"鼠标", "键盘", "显示器", "耳机", "充电器", "扩展坞", "数据线", "固态", "u盘", "移动硬盘", "转接头", "排插", "插座", "电源"},
+			targets:  []string{"数码", "电子", "IT", "设备", "数码配件", "电脑配件"},
+		},
+		{
+			keywords: []string{"硒鼓", "墨盒", "碳粉", "色带", "打印纸", "复印纸"},
+			targets:  []string{"耗材", "打印耗材", "办公耗材"},
+		},
+		{
+			keywords: []string{"纸巾", "抽纸", "垃圾袋", "洗手液", "抹布", "水杯", "茶叶", "咖啡", "消毒液", "扫把", "拖把"},
+			targets:  []string{"日用品", "杂品", "清洁", "日常消耗", "生活用品"},
+		},
+		{
+			keywords: []string{"年假", "年休假"},
+			targets:  []string{"年假", "年休"},
+		},
+		{
+			keywords: []string{"事假", "私人事务"},
+			targets:  []string{"事假"},
+		},
+		{
+			keywords: []string{"病假", "看病", "就医", "住院"},
+			targets:  []string{"病假"},
+		},
+		{
+			keywords: []string{"调休", "加班调休"},
+			targets:  []string{"调休"},
+		},
+	}
+
+	for _, g := range groups {
+		matchedKeyword := false
+		for _, kw := range g.keywords {
+			if strings.Contains(lower, kw) {
+				matchedKeyword = true
+				break
+			}
+		}
+		if !matchedKeyword {
+			continue
+		}
+
+		// 检查当前选项列表中是否包含 target 关键词
+		for _, target := range g.targets {
+			for _, sr := range selRows {
+				sn := normalizeChoiceDisplayName(mapGet(sr, "selectname"))
+				rawSn := strings.TrimSpace(mapGet(sr, "selectname"))
+				if strings.Contains(sn, target) || strings.Contains(rawSn, target) {
+					return strings.TrimSpace(mapGet(sr, "selectvalue"))
+				}
+			}
+		}
+	}
+
+	return ""
+}
+
+// resolveBrowseValueToID 将浏览按钮的人员姓名、部门名称等展示文本解析转换为底层数字主键 ID。
+func (a *Ecology9Adapter) resolveBrowseValueToID(ctx context.Context, browserType int, fieldDBType string, rawValue string) string {
+	raw := strings.TrimSpace(rawValue)
+	if raw == "" {
+		return ""
+	}
+
+	// 处理多选（逗号分隔）场景，如 type=17 或 type=57
+	if strings.Contains(raw, ",") {
+		parts := strings.Split(raw, ",")
+		var resolvedParts []string
+		for _, part := range parts {
+			trimmed := strings.TrimSpace(part)
+			if trimmed == "" {
+				continue
+			}
+			res := a.resolveSingleBrowseValueToID(ctx, browserType, fieldDBType, trimmed)
+			if res != "" {
+				resolvedParts = append(resolvedParts, res)
+			} else {
+				resolvedParts = append(resolvedParts, trimmed)
+			}
+		}
+		if len(resolvedParts) > 0 {
+			return strings.Join(resolvedParts, ",")
+		}
+		return raw
+	}
+
+	return a.resolveSingleBrowseValueToID(ctx, browserType, fieldDBType, raw)
+}
+
+// resolveSingleBrowseValueToID 将单个浏览按钮文本项解析为对应表的主键 ID。
+func (a *Ecology9Adapter) resolveSingleBrowseValueToID(ctx context.Context, browserType int, fieldDBType string, raw string) string {
+	if a == nil || a.db == nil || raw == "" {
+		return raw
+	}
+
+	switch browserType {
+	case 1, 17: // HrmResource 人力资源（单人/多人）
+		var id int
+		// 先尝试匹配工号/登录名/姓名（优先匹配在职状态）
+		err := a.db.WithContext(ctx).
+			Table(a.tableName("hrmresource")).
+			Select(a.col("id")).
+			Where(a.col("lastname")+" = ? OR "+a.col("loginid")+" = ? OR "+a.col("workcode")+" = ?", raw, raw, raw).
+			Order(a.col("status") + " ASC, " + a.col("id") + " ASC").
+			Row().Scan(&id)
+		if err == nil && id > 0 {
+			return strconv.Itoa(id)
+		}
+		// 若传的本身就是纯数字 ID，校验是否有效
+		if _, numErr := strconv.Atoi(raw); numErr == nil {
+			var existsID int
+			if chkErr := a.db.WithContext(ctx).Table(a.tableName("hrmresource")).Select(a.col("id")).Where(a.col("id")+" = ?", raw).Row().Scan(&existsID); chkErr == nil && existsID > 0 {
+				return raw
+			}
+		}
+
+	case 4, 57: // HrmDepartment 部门（单部门/多部门）
+		var id int
+		err := a.db.WithContext(ctx).
+			Table(a.tableName("hrmdepartment")).
+			Select(a.col("id")).
+			Where(a.col("departmentname")+" = ? OR "+a.col("departmentcode")+" = ?", raw, raw).
+			Order(a.col("id") + " ASC").
+			Row().Scan(&id)
+		if err == nil && id > 0 {
+			return strconv.Itoa(id)
+		}
+		if _, numErr := strconv.Atoi(raw); numErr == nil {
+			var existsID int
+			if chkErr := a.db.WithContext(ctx).Table(a.tableName("hrmdepartment")).Select(a.col("id")).Where(a.col("id")+" = ?", raw).Row().Scan(&existsID); chkErr == nil && existsID > 0 {
+				return raw
+			}
+		}
+
+	case 164: // HrmSubCompany 分部
+		var id int
+		err := a.db.WithContext(ctx).
+			Table(a.tableName("hrmsubcompany")).
+			Select(a.col("id")).
+			Where(a.col("subcompanyname")+" = ? OR "+a.col("subcompanycode")+" = ?", raw, raw).
+			Order(a.col("id") + " ASC").
+			Row().Scan(&id)
+		if err == nil && id > 0 {
+			return strconv.Itoa(id)
+		}
+
+	case 16: // WorkflowRequestBase 相关流程
+		var reqID int
+		err := a.db.WithContext(ctx).
+			Table(a.tableName("workflow_requestbase")).
+			Select(a.col("requestid")).
+			Where(a.col("requestname")+" = ?", raw).
+			Order(a.col("requestid") + " DESC").
+			Row().Scan(&reqID)
+		if err == nil && reqID > 0 {
+			return strconv.Itoa(reqID)
+		}
+
+	default:
+		// 通用/自定义浏览按钮反查
+		if target, ok := a.resolveBrowseTarget(ctx, e9BrowseField{Type: browserType, FieldDBType: fieldDBType}); ok {
+			if target.Table != "" && target.IDColumn != "" && target.DisplayColumn != "" && !target.DisplayExpression {
+				var targetID string
+				err := a.db.WithContext(ctx).
+					Table(a.tableName(target.Table)).
+					Select(a.col(target.IDColumn)).
+					Where(a.col(target.DisplayColumn)+" = ?", raw).
+					Order(a.col(target.IDColumn) + " ASC").
+					Row().Scan(&targetID)
+				if err == nil && strings.TrimSpace(targetID) != "" {
+					return targetID
+				}
+			}
+		}
+	}
+
+	return raw
+}
+
+// CreateWorkflowDraft 在泛微 OA 中创建流程草稿（实现 WorkflowDraftCreator 接口）
+func (a *Ecology9Adapter) CreateWorkflowDraft(
+	ctx context.Context,
+	loginID string,
+	draft *CreateWorkflowDraftInput,
+) (*CreateWorkflowDraftOutput, error) {
+	if a.weaverAPIURL == "" {
+		return nil, fmt.Errorf("未配置泛微接口地址（weaver_api_url）")
+	}
+	if a.weaverAppID == "" {
+		return nil, fmt.Errorf("未配置泛微 appid（weaver_appid）")
+	}
+
+	effectiveLoginID := strings.TrimSpace(loginID)
+	if effectiveLoginID == "" {
+		effectiveLoginID = a.weaverLoginID
+	}
+	if effectiveLoginID == "" {
+		effectiveLoginID = "sysadmin"
+	}
+
+	if draft == nil || strings.TrimSpace(draft.WorkflowID) == "" {
+		return nil, fmt.Errorf("流程定义 ID (workflow_id) 不能为空")
+	}
+
+	// 标题规范：{申请人}+{流程名称}+{YYYY-MM-DD}
+	reqName := strings.TrimSpace(draft.RequestName)
+	if reqName == "" {
+		wfName := strings.TrimSpace(draft.WorkflowName)
+		if wfName == "" {
+			wfName = "新流程申请"
+		}
+		reqName = fmt.Sprintf("%s-%s-%s", effectiveLoginID, wfName, apptime.Now().Format("2006-01-02"))
+	}
+
+	// 归一化主表字段：将浏览按钮和下拉框的文本标签解析映射到底层 OA 真实 ID
+	normalizedMainData := a.normalizeMainDataForE9(ctx, strings.TrimSpace(draft.WorkflowID), draft.MainData)
+
+	// 组装主表数据
+	var mainFields []map[string]interface{}
+	for k, v := range normalizedMainData {
+		mainFields = append(mainFields, map[string]interface{}{
+			"fieldName":  k,
+			"fieldValue": fmt.Sprint(v),
+		})
+	}
+	mainDataBytes, err := json.Marshal(mainFields)
+	if err != nil {
+		return nil, fmt.Errorf("序列化主表数据失败: %w", err)
+	}
+
+	// 组装明细表数据
+	detailDataStr := "[]"
+	if len(draft.DetailData) > 0 {
+		detailBytes, err := json.Marshal(draft.DetailData)
+		if err != nil {
+			return nil, fmt.Errorf("序列化明细表数据失败: %w", err)
+		}
+		detailDataStr = string(detailBytes)
+	}
+
+	authSvc := GetEcologyOfficialAuthService()
+	reqID, err := authSvc.DoCreateRequest(ctx, a.weaverAPIURL, a.weaverAppID, a.weaverAppSecret, effectiveLoginID, &CreateRequestInput{
+		WorkflowID:     strings.TrimSpace(draft.WorkflowID),
+		RequestName:    reqName,
+		RequestLevel:   draft.RequestLevel,
+		IsNextFlow:     "0", // 固定 0 为草稿
+		MainDataJSON:   string(mainDataBytes),
+		DetailDataJSON: detailDataStr,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	processURL := BuildProcessURL(a.oaBaseURL, a.processURLTemplate, oaTypeWeaverE9, reqID)
+
+	return &CreateWorkflowDraftOutput{
+		RequestID:   reqID,
+		RequestName: reqName,
+		ProcessURL:  processURL,
+	}, nil
+}
+

@@ -21,10 +21,55 @@ import { safeCopyText } from '~/utils/clipboard'
 import { useChatSession } from '~/composables/useChatSession'
 import { formatDateTimeInAppZone } from '~/utils/appTime'
 import ChatProcessTimeline from './ChatProcessTimeline.vue'
+import FormConfirmCard from './Cards/FormConfirmCard.vue'
 
 defineProps<{ messages: ChatMessageItem[]; agentEmoji?: string; agentName?: string; retryDisabled?: boolean }>()
-const emit = defineEmits<{ (e: 'retry', msg: ChatMessageItem): void }>()
+const emit = defineEmits<{ (e: 'retry', msg: ChatMessageItem): void; (e: 'send', text: string): void }>()
 const { t, locale } = useI18n()
+
+interface MessageContentChunk {
+  type: 'markdown' | 'form-confirm'
+  content: string
+  data?: any
+}
+
+function parseMessageChunks(content: string): MessageContentChunk[] {
+  if (!content) return []
+  const regex = /:::form-confirm\s*\n([\s\S]*?)\n:::/g
+  const chunks: MessageContentChunk[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = regex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      const text = content.slice(lastIndex, match.index).trim()
+      if (text) {
+        chunks.push({ type: 'markdown', content: text })
+      }
+    }
+
+    const jsonStr = match[1].trim()
+    try {
+      const parsed = JSON.parse(jsonStr)
+      chunks.push({ type: 'form-confirm', content: jsonStr, data: parsed })
+    } catch {
+      chunks.push({ type: 'markdown', content: '```json\n' + jsonStr + '\n```' })
+    }
+    lastIndex = regex.lastIndex
+  }
+
+  if (lastIndex < content.length) {
+    const tail = content.slice(lastIndex).trim()
+    if (tail) {
+      chunks.push({ type: 'markdown', content: tail })
+    }
+  }
+
+  if (chunks.length === 0) {
+    return [{ type: 'markdown', content }]
+  }
+  return chunks
+}
 const { updateMessageFeedback } = useChatSession()
 const copied = ref('')
 
@@ -155,9 +200,21 @@ function formatMsgTime(isoString?: string): string {
         <!-- 思考过程与工具调用时间线 -->
         <ChatProcessTimeline :message="msg" />
 
-        <!-- 回答正文：流式过程中也实时渲染安全 Markdown -->
+        <!-- 回答正文：流式过程中也实时渲染安全 Markdown 与 Generative UI 卡片 -->
         <div v-if="msg.content" class="answer-document">
-          <div :class="{ 'answer-streaming': msg.streaming }" v-html="renderSafeMarkdown(msg.content)" />
+          <template v-for="(chunk, cIdx) in parseMessageChunks(msg.content)" :key="cIdx">
+            <div
+              v-if="chunk.type === 'markdown'"
+              :class="{ 'answer-streaming': msg.streaming && cIdx === parseMessageChunks(msg.content).length - 1 }"
+              v-html="renderSafeMarkdown(chunk.content)"
+            />
+            <FormConfirmCard
+              v-else-if="chunk.type === 'form-confirm'"
+              :data="chunk.data"
+              :disabled="msg.streaming"
+              @send="text => emit('send', text)"
+            />
+          </template>
         </div>
 
         <div v-if="msg.streaming" class="generation-status" role="status">

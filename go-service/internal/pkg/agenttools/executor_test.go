@@ -1,9 +1,11 @@
 package agenttools
 
 import (
-	"auraoa/go-service/internal/pkg/oa"
 	"context"
 	"testing"
+
+	"auraoa/go-service/internal/model"
+	"auraoa/go-service/internal/pkg/oa"
 )
 
 type executionAdapter struct {
@@ -135,5 +137,162 @@ func TestExecuteGetProcessWithWorkflowCode(t *testing.T) {
 	m2 := res2.(map[string]interface{})
 	if _, exists := m2["workflow_code"]; exists {
 		t.Fatalf("expected no workflow_code field when empty, got %v", m2["workflow_code"])
+	}
+}
+
+type draftCreatorAdapter struct {
+	oa.OAAdapter
+	calledDraft *oa.CreateWorkflowDraftInput
+}
+
+func (d *draftCreatorAdapter) CreateWorkflowDraft(ctx context.Context, loginID string, draft *oa.CreateWorkflowDraftInput) (*oa.CreateWorkflowDraftOutput, error) {
+	d.calledDraft = draft
+	return &oa.CreateWorkflowDraftOutput{
+		RequestID:   "8848",
+		RequestName: draft.RequestName,
+		ProcessURL:  "http://oa.example.com/workflow/request/ViewRequestForwardSPA.jsp?requestid=8848",
+	}, nil
+}
+
+func TestExecuteCreateOADraft(t *testing.T) {
+	executor := &SystemToolExecutor{}
+	ctx := &ExecutionContext{Ctx: context.Background(), Username: "zhangsan"}
+	mockAdapter := &draftCreatorAdapter{}
+
+	argsJSON := `{
+		"workflow_id": "102",
+		"workflow_name": "物品领用申请",
+		"request_name": "张三-领用文具-20261103",
+		"request_level": "0",
+		"main_data": {"sqr": "1058", "reason": "日常办公文具"}
+	}`
+
+	res, uiKind, err := executor.executeCreateOADraft(argsJSON, ctx, nil, mockAdapter)
+	if err != nil {
+		t.Fatalf("executeCreateOADraft failed: %v", err)
+	}
+	if uiKind != "create_workflow_draft" {
+		t.Fatalf("expected uiKind create_workflow_draft, got %s", uiKind)
+	}
+	m := res.(map[string]interface{})
+	if m["request_id"] != "8848" {
+		t.Fatalf("expected request_id 8848, got %v", m["request_id"])
+	}
+	if m["process_url"] == "" {
+		t.Fatalf("expected non-empty process_url")
+	}
+	if mockAdapter.calledDraft == nil || mockAdapter.calledDraft.WorkflowID != "102" {
+		t.Fatalf("mock adapter did not receive expected workflow_id 102")
+	}
+}
+
+func TestExecuteSafeQuerySecurityGuards(t *testing.T) {
+	executor := &SystemToolExecutor{}
+	ctx := &ExecutionContext{Ctx: context.Background(), Username: "user"}
+	conn := &model.OADatabaseConnection{
+		Driver: "mysql",
+		OAType: "weaver_e9",
+	}
+
+	// 1. 非 SELECT 语句拦截
+	badSQLs := []string{
+		"UPDATE hrmresource SET lastname='hacked'",
+		"DELETE FROM workflow_requestbase",
+		"DROP TABLE hrmdepartment",
+		"INSERT INTO workflow_requestbase (requestid) VALUES (1)",
+		"ALTER TABLE hrmresource DROP COLUMN password",
+		"TRUNCATE TABLE hrmresource",
+	}
+	for _, sql := range badSQLs {
+		_, _, err := executor.executeSafeQuery(`{"sql":"`+sql+`"}`, ctx, conn)
+		if err == nil {
+			t.Fatalf("SQL %s 应被拦截，但未报错", sql)
+		}
+	}
+
+	// 2. 注入注释符拦截
+	commentSQLs := []string{
+		"SELECT * FROM hrmresource WHERE 1=1 -- 注释绕过",
+		"SELECT * FROM hrmresource /* 多行注释 */ WHERE 1=1",
+	}
+	for _, sql := range commentSQLs {
+		_, _, err := executor.executeSafeQuery(`{"sql":"`+sql+`"}`, ctx, conn)
+		if err == nil {
+			t.Fatalf("包含注释符的 SQL %s 应被拦截，但未报错", sql)
+		}
+	}
+
+	// 3. 敏感凭证字段拦截
+	sensitiveSQLs := []string{
+		"SELECT password FROM hrmresource",
+		"SELECT user_token FROM sys_tokens",
+		"SELECT secret FROM ecology_biz_ec",
+		"SELECT license_key FROM sys_license",
+	}
+	for _, sql := range sensitiveSQLs {
+		_, _, err := executor.executeSafeQuery(`{"sql":"`+sql+`"}`, ctx, conn)
+		if err == nil {
+			t.Fatalf("包含敏感词的 SQL %s 应被拦截，但未报错", sql)
+		}
+	}
+}
+
+type mockSchemaAdapter struct {
+	oa.OAAdapter
+}
+
+func (m *mockSchemaAdapter) SearchWorkflowDefinitions(ctx context.Context, keyword string) ([]oa.ProcessInfo, error) {
+	return []oa.ProcessInfo{
+		{
+			WorkflowID:  "102",
+			ProcessName: "物品领用申请",
+		},
+	}, nil
+}
+
+func (m *mockSchemaAdapter) FetchFieldsByWorkflowID(ctx context.Context, workflowID string) (*oa.ProcessFields, error) {
+	return &oa.ProcessFields{
+		MainFields: []oa.FieldDef{
+			{
+				FieldKey:  "sqr",
+				FieldName: "申请人",
+				FieldType: "browser",
+			},
+			{
+				FieldKey:  "wplx",
+				FieldName: "物品类型",
+				FieldType: "select",
+				Options: []oa.FieldChoiceOption{
+					{Value: "0", Label: "办公文具"},
+					{Value: "1", Label: "数码耗材"},
+				},
+			},
+		},
+	}, nil
+}
+
+func TestExecuteGetWorkflowSchema(t *testing.T) {
+	executor := &SystemToolExecutor{}
+	ctx := &ExecutionContext{Ctx: context.Background(), Username: "zhangsan"}
+	mockAdapter := &mockSchemaAdapter{}
+
+	// 按流程名称搜索并拉取表单选项
+	res, uiKind, err := executor.executeGetWorkflowSchema(`{"workflow_name":"领用"}`, ctx, mockAdapter)
+	if err != nil {
+		t.Fatalf("executeGetWorkflowSchema failed: %v", err)
+	}
+	if uiKind != "workflow_schema" {
+		t.Fatalf("expected uiKind workflow_schema, got %s", uiKind)
+	}
+	m := res.(map[string]interface{})
+	if m["workflow_id"] != "102" {
+		t.Fatalf("expected workflow_id 102, got %v", m["workflow_id"])
+	}
+	mainFields := m["main_fields"].([]oa.FieldDef)
+	if len(mainFields) != 2 {
+		t.Fatalf("expected 2 main fields, got %d", len(mainFields))
+	}
+	if mainFields[1].FieldKey != "wplx" || len(mainFields[1].Options) != 2 {
+		t.Fatalf("wplx options not populated properly: %+v", mainFields[1])
 	}
 }

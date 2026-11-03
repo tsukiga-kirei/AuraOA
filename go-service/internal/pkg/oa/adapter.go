@@ -170,6 +170,28 @@ type WorkflowDefinitionSelector interface {
 	FetchFieldsByWorkflowID(ctx context.Context, workflowID string) (*ProcessFields, error)
 }
 
+// CreateWorkflowDraftInput 流程草稿创建入参
+type CreateWorkflowDraftInput struct {
+	WorkflowID   string                 `json:"workflow_id"`
+	WorkflowName string                 `json:"workflow_name"`
+	RequestName  string                 `json:"request_name"`
+	RequestLevel string                 `json:"request_level"` // "0": 正常, "1": 重要, "2": 紧急
+	MainData     map[string]interface{} `json:"main_data"`
+	DetailData   []interface{}          `json:"detail_data"`
+}
+
+// CreateWorkflowDraftOutput 流程草稿创建出参
+type CreateWorkflowDraftOutput struct {
+	RequestID   string `json:"request_id"`
+	RequestName string `json:"request_name"`
+	ProcessURL  string `json:"process_url"`
+}
+
+// WorkflowDraftCreator 由支持创建流程草稿的 OA 适配器实现。
+type WorkflowDraftCreator interface {
+	CreateWorkflowDraft(ctx context.Context, loginID string, draft *CreateWorkflowDraftInput) (*CreateWorkflowDraftOutput, error)
+}
+
 // RecentProcessScanner 由支持流程级定时检查的 OA 适配器实现。
 // since 按业务时区传入，只返回指定流程类型在该时间之后创建的流程。
 type RecentProcessScanner interface {
@@ -232,11 +254,19 @@ type ProcessInfo struct {
 	ExpectedTypeLabel string `json:"expected_type_label,omitempty"` // OA 系统中的正确流程类型（仅 mismatch 时返回）
 }
 
+// FieldChoiceOption 下拉选择框选项定义
+type FieldChoiceOption struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
 // FieldDef 字段定义
 type FieldDef struct {
-	FieldKey  string `json:"field_key"`
-	FieldName string `json:"field_name"`
-	FieldType string `json:"field_type"`
+	FieldKey    string              `json:"field_key"`
+	FieldName   string              `json:"field_name"`
+	FieldType   string              `json:"field_type"`
+	Options     []FieldChoiceOption `json:"options,omitempty"`      // 下拉框候选项列表（仅 choice / select 字段）
+	BrowserType string              `json:"browser_type,omitempty"` // 浏览按钮类型（如 hrm / department 等）
 }
 
 // DetailTableDef 明细表定义

@@ -120,6 +120,36 @@ func (m *ConnectionManager) GetAdapter(
 	return newOAAdapterWithDB(oaType, conn, pool.db, attachmentSvc...)
 }
 
+// GetDB 获取指定 OA 连接的底层 *gorm.DB 实例，供只读安全查询复用共享连接池。
+func (m *ConnectionManager) GetDB(
+	ctx context.Context,
+	oaType string,
+	conn *model.OADatabaseConnection,
+) (*gorm.DB, error) {
+	if m == nil {
+		return nil, fmt.Errorf("OA 连接池管理器未初始化")
+	}
+	if m.isClosed() {
+		return nil, fmt.Errorf("OA 连接池管理器已关闭")
+	}
+	if err := validateOAAdapterConfig(oaType, conn); err != nil {
+		return nil, err
+	}
+	if !conn.Enabled {
+		m.Invalidate(conn.ID)
+		return nil, fmt.Errorf("OA 数据库连接已停用")
+	}
+	if conn.ID == uuid.Nil {
+		return nil, fmt.Errorf("共享 OA 连接缺少配置 ID")
+	}
+
+	pool, err := m.getOrOpenPool(ctx, oaType, conn)
+	if err != nil {
+		return nil, err
+	}
+	return pool.db, nil
+}
+
 // OpenTransientAdapter 创建不进入共享缓存的短生命周期适配器。
 // 连接测试必须使用此方法，并在完成后调用返回的 closeFn。
 func (m *ConnectionManager) OpenTransientAdapter(

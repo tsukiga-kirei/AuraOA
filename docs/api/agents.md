@@ -40,7 +40,26 @@ Skill 字段：skill_code、name、description、content（最多 64 KB）、ena
 
 ## 装配和运行权限
 
-既有能力已封装为九个可独立绑定的系统工具：list_my_todos、get_process、get_approval_flow、get_latest_audit、get_latest_summary、draft_comment、run_audit、run_summary、resolve_oa_url。
+既有能力已封装为系统工具规格清单：
+- `list_my_todos`：查询当前用户待办
+- `list_my_requests`：查询我发起的流程申请
+- `get_process`：读取流程详情
+- `get_approval_flow`：查询审批记录
+- `get_latest_audit`：读取审核结果
+- `get_latest_summary`：读取流程总结
+- `draft_comment`：起草审批意见
+- `run_audit`：执行流程审核
+- `run_summary`：生成流程总结
+- `resolve_oa_url`：获取流程链接
+- `create_oa_draft`：在 OA 中创建流程草稿（固定 isnextflow=0 草稿模式）
+- `execute_safe_query`：在 OA 数据库中执行只读数据统计与分析（五层安全守卫拦截 + LIMIT 100 截断）
+- `get_workflow_schema`：获取流程表单定义与字段选项（支持自动匹配 workflow_id 或名称搜索，提供下拉框候选项列表）
+
+系统种子智能体矩阵：
+- `oa_assist`（OA 辅助办理助手，系统默认启用）：覆盖待办检索、表单详情、审批轨迹、批复意见起草与直达链接
+- `oa_creator`（智能填单助手）：自然语言引导槽位收集、Generative UI 确认卡片、调用泛微 official API 提交草稿
+- `oa_analyst`（智能查数分析专家）：自然语言转只读 SELECT SQL、跨表深度探索与多维数据统计表格展示
+
 其中 run_audit 和 run_summary 经过 OA 可见性检查并提交既有工作台任务，返回真实任务信息；不自动批准 OA 流程。
 
 绑定标识统一放在 tool_codes：

@@ -160,9 +160,10 @@ POST /api/admin/system/oa-connections
 | `connection_timeout` | int | — | 首次建池与连通性检查超时秒数（默认 30，范围 5–300） |
 | `enabled` | boolean | — | 是否启用 |
 | `description` | string | — | 描述 |
-| `weaver_api_url` | string | — | 泛微附件接口 URL。填写后 `weaver_appid`、`weaver_default_user` 必填 |
+| `weaver_api_url` | string | — | 泛微 OpenAPI / 附件接口 URL。填写后 `weaver_appid`、`weaver_default_user` 必填 |
 | `weaver_appid` | string | 条件 | 泛微应用 appid |
-| `weaver_default_user` | string | 条件 | 默认调用用户 loginid（ecology9 中通常为数字用户 ID） |
+| `weaver_app_secret` | string | — | 泛微应用 secret 密钥（AES 加密存储，不回显明文） |
+| `weaver_default_user` | string | 条件 | 默认调用用户 loginid（ecology9 中通常为数字用户 ID 或工号） |
 | `oa_base_url` | string | — | OA 系统的 Web 访问基准域名或 URL（如 `http://oa.example.com:8088`），配置后工作台可直达原流程 |
 | `process_url_template` | string | — | 流程跳转 URL 模板，支持 `{process_id}` 或 `{requestid}` 占位符。留空时使用该 OA 类型档案中的兜底；E9 为 `/workflow/request/ViewRequestForwardSPA.jsp?requestid={process_id}`。没有兜底的类型必须自行填写 |
 

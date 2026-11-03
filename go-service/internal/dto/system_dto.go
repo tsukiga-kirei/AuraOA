@@ -59,6 +59,7 @@ type CreateOAConnectionRequest struct {
 	// 泛微 E9 原生 API 密钥（仅 oa_type=weaver_e9 使用，其他 OA 类型可留空）
 	WeaverAPIURL      string `json:"weaver_api_url"`
 	WeaverAppID       string `json:"weaver_appid"`
+	WeaverAppSecret   string `json:"weaver_app_secret"`
 	WeaverDefaultUser string `json:"weaver_default_user"`
 
 	// OA Web 访问基准地址与流程详情跳转模板
@@ -87,6 +88,7 @@ type UpdateOAConnectionRequest struct {
 	// 泛微 E9 原生 API 密钥（仅 oa_type=weaver_e9 使用）
 	WeaverAPIURL      string `json:"weaver_api_url"`
 	WeaverAppID       string `json:"weaver_appid"`
+	WeaverAppSecret   string `json:"weaver_app_secret"`
 	WeaverDefaultUser string `json:"weaver_default_user"`
 
 	// OA Web 访问基准地址与流程详情跳转模板
@@ -114,9 +116,10 @@ type OAConnectionResponse struct {
 	Description       string `json:"description"`
 
 	// 泛微 E9 原生 API 参数（仅 oa_type=weaver_e9 使用）。
-	WeaverAPIURL          string `json:"weaver_api_url"`
-	WeaverAppIDConfigured bool   `json:"weaver_appid_configured"`
-	WeaverDefaultUser     string `json:"weaver_default_user"`
+	WeaverAPIURL              string `json:"weaver_api_url"`
+	WeaverAppIDConfigured     bool   `json:"weaver_appid_configured"`
+	WeaverAppSecretConfigured bool   `json:"weaver_app_secret_configured"`
+	WeaverDefaultUser         string `json:"weaver_default_user"`
 
 	// OA Web 访问基准地址与流程详情跳转模板
 	OABaseURL          string `json:"oa_base_url"`

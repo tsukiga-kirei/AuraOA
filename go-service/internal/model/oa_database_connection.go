@@ -29,6 +29,7 @@ type OADatabaseConnection struct {
 	// 泛微 E9 原生 API 密钥（仅 oa_type=weaver_e9 使用，其他 OA 类型保持空值）
 	WeaverAPIURL      string    `gorm:"size:500;not null;default:''" json:"weaver_api_url"`
 	WeaverAppID       string    `gorm:"column:weaver_appid;size:200;not null;default:''" json:"weaver_appid"`
+	WeaverAppSecret   string    `gorm:"size:500;not null;default:''" json:"-"` // AES 加密存储，不输出到 JSON
 	WeaverDefaultUser string    `gorm:"size:200;not null;default:''" json:"weaver_default_user"`
 
 	// OA Web 访问基准地址与流程详情跳转模板
