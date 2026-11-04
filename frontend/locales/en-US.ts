@@ -2124,6 +2124,8 @@ export default {
     'admin.ruleConfig.varCurrentTime': 'Current time, e.g. 14:30:00',
     'admin.ruleConfig.varCurrentDatetime': 'Current date and time, e.g. 2026-07-09 14:30:00',
     'admin.ruleConfig.varWeekday': 'Current weekday, e.g. Thursday',
+    'admin.ruleConfig.varFormConfirmProtocol': 'Agent module: keys and field structure of the :::form-confirm card',
+    'admin.ruleConfig.varChartProtocol': 'Agent module: keys and data structure of the :::chart card',
 
     //System Prompt Editor
     'admin.ruleConfig.systemPromptTag': 'System Prompts',
@@ -3408,6 +3410,11 @@ export default {
     'chat.copy': 'Copy',
     'chat.copied': 'Copied',
     'chat.tokenCost': 'Tokens: {0}',
+    'chat.cardPending': 'Generating card…',
+    'chat.cardParseFailed': 'Card payload is malformed; showing the raw block',
+    'chat.chart.noData': 'No data to plot. Switch to the table view for details',
+    'chat.chart.dimensionColumn': 'Dimension / Item',
+    'chat.formConfirm.detailTable': 'Details',
     'chat.emptyGreeting': 'Hello! I am your OA Smart Assistant',
     'chat.emptyDesc': 'Feel free to ask me about OA process progress, check pending tasks, or summarize approval points',
     'chat.quickPill.todos': '📋 Check My Todos',

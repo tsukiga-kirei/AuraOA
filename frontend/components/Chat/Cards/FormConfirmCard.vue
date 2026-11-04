@@ -8,34 +8,15 @@ import {
   TableOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-
-export interface FormConfirmOption {
-  label: string
-  value: string | number
-}
-
-export interface FormConfirmField {
-  name: string
-  label: string
-  type?: 'text' | 'number' | 'date' | 'select' | 'textarea' | 'browser'
-  value?: any
-  display_value?: string // 浏览按钮展示名称（如人员姓名、部门名称），与底层存储 ID 分离
-  disabled?: boolean
-  options?: (string | FormConfirmOption)[]
-}
-
-export interface FormConfirmPayload {
-  variant?: 'summary_confirm' | 'compact_form' | 'data_table'
-  workflow_id?: string
-  workflow_name?: string
-  title?: string
-  fields?: FormConfirmField[]
-  columns?: any[]
-  rows?: Record<string, any>[]
-}
+import {
+  normalizeFormConfirmPayload,
+  type FormConfirmField,
+  type FormConfirmPayload,
+} from '~/utils/chatUiProtocol'
 
 const props = defineProps<{
-  data: FormConfirmPayload
+  // 解析器已归一化；这里仍做一次幂等归一化，保证历史消息与外部直传数据也能正确渲染
+  data: Record<string, any>
   disabled?: boolean
 }>()
 
@@ -45,51 +26,31 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
+const payload = computed<FormConfirmPayload>(() => normalizeFormConfirmPayload(props.data))
+
 const status = ref<'idle' | 'confirmed' | 'cancelled'>('idle')
 const formModel = reactive<Record<string, any>>({})
 const displayModel = reactive<Record<string, string>>({})
 
-// 选项归一化（兼容纯字符串数组与 {label, value} 对象数组）
-const normalizeOptions = (options?: (string | FormConfirmOption)[]) => {
-  if (!options || !Array.isArray(options)) return []
-  return options.map(opt => {
-    if (typeof opt === 'object' && opt !== null) {
-      return {
-        label: opt.label ?? String(opt.value),
-        value: opt.value ?? opt.label,
-      }
-    }
-    return {
-      label: String(opt),
-      value: String(opt),
-    }
+// 初始化表单字段默认值（兼容浏览按钮 display_value 与底值 value）
+const initFormValues = () => {
+  Object.keys(formModel).forEach(key => delete formModel[key])
+  Object.keys(displayModel).forEach(key => delete displayModel[key])
+  payload.value.fields.forEach((field: FormConfirmField) => {
+    const initial = field.value ?? field.display_value ?? ''
+    formModel[field.name] = field.type === 'number' && initial === '' ? undefined : initial
+    displayModel[field.name] = field.display_value ?? (field.value !== undefined ? String(field.value) : '')
   })
 }
 
-// 初始化表单字段默认值（兼容浏览按钮 display_value 与底值 value）
-const initFormValues = () => {
-  if (props.data?.fields && Array.isArray(props.data.fields)) {
-    props.data.fields.forEach(f => {
-      formModel[f.name] = f.value ?? f.display_value ?? ''
-      displayModel[f.name] = f.display_value ?? (f.value !== undefined ? String(f.value) : '')
-    })
-  }
-}
-
-watch(
-  () => props.data,
-  () => {
-    initFormValues()
-  },
-  { immediate: true, deep: true }
-)
+watch(payload, initFormValues, { immediate: true })
 
 const isReadOnly = computed(() => props.disabled || status.value !== 'idle')
 
 const handleConfirm = () => {
   if (isReadOnly.value) return
   status.value = 'confirmed'
-  const wfId = props.data?.workflow_id || ''
+  const wfId = payload.value.workflow_id || ''
   const payloadStr = JSON.stringify(formModel)
   const text = `【用户已确认表单】流程ID: ${wfId}, 数据: ${payloadStr}，请立即调用接口创建草稿。`
   emit('send', text)
@@ -103,36 +64,20 @@ const handleCancel = () => {
 }
 
 // ── 表格与 CSV 导出 ──
-const tableColumns = computed(() => {
-  if (!props.data?.columns || !Array.isArray(props.data.columns)) return []
-  return props.data.columns.map(col => {
-    if (typeof col === 'string') {
-      return {
-        title: col,
-        dataIndex: col,
-        key: col,
-        sorter: (a: any, b: any) => {
-          const valA = a[col] ?? ''
-          const valB = b[col] ?? ''
-          if (typeof valA === 'number' && typeof valB === 'number') return valA - valB
-          return String(valA).localeCompare(String(valB))
-        },
-      }
-    }
-    return col
-  })
-})
+const tableColumns = computed(() => payload.value.columns)
+
+const detailPagination = (rowCount: number) => (rowCount > 5 ? { pageSize: 5, size: 'small' as const } : false)
 
 const exportCsv = () => {
-  const rows = props.data?.rows || []
-  const cols = props.data?.columns || []
+  const rows = payload.value.rows || []
+  const cols = payload.value.columns || []
   if (!rows.length) {
     message.warning(t('common.noData', '暂无可导出的数据'))
     return
   }
 
-  const colHeaders: string[] = cols.map(c => (typeof c === 'string' ? c : c.title || c.dataIndex))
-  const colKeys: string[] = cols.map(c => (typeof c === 'string' ? c : c.dataIndex || c.key))
+  const colHeaders: string[] = cols.map((c: any) => (typeof c === 'string' ? c : c.title || c.dataIndex))
+  const colKeys: string[] = cols.map((c: any) => (typeof c === 'string' ? c : c.dataIndex || c.key))
 
   const escapeCsv = (val: any) => {
     if (val === null || val === undefined) return ''
@@ -150,7 +95,7 @@ const exportCsv = () => {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `${props.data?.title || 'query_result'}_${Date.now()}.csv`
+  link.download = `${payload.value.title || payload.value.workflow_name || 'query_result'}_${Date.now()}.csv`
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
@@ -160,14 +105,14 @@ const exportCsv = () => {
 </script>
 
 <template>
-  <div class="form-confirm-card" :class="[`form-confirm-card--${data.variant || 'summary_confirm'}`]">
+  <div class="form-confirm-card" :class="[`form-confirm-card--${payload.variant}`]">
     <!-- 1. 表格变体 (data_table) -->
-    <template v-if="data.variant === 'data_table'">
+    <template v-if="payload.variant === 'data_table'">
       <div class="card-header">
         <div class="header-left">
           <TableOutlined class="header-icon" />
-          <span class="header-title">{{ data.title || t('chat.formConfirm.title', '数据查询结果') }}</span>
-          <span v-if="data.rows" class="row-count-badge">{{ data.rows.length }} 条记录</span>
+          <span class="header-title">{{ payload.title || payload.workflow_name || t('chat.formConfirm.title', '数据查询结果') }}</span>
+          <span v-if="payload.rows.length" class="row-count-badge">{{ payload.rows.length }} 条记录</span>
         </div>
         <div class="header-right">
           <a-button size="small" @click="exportCsv">
@@ -176,9 +121,10 @@ const exportCsv = () => {
           </a-button>
         </div>
       </div>
+      <p v-if="payload.description" class="card-description">{{ payload.description }}</p>
       <div class="table-container">
         <a-table
-          :data-source="data.rows || []"
+          :data-source="payload.rows"
           :columns="tableColumns"
           size="small"
           :pagination="{ pageSize: 10, size: 'small', showTotal: total => `共 ${total} 条` }"
@@ -193,8 +139,8 @@ const exportCsv = () => {
       <div class="card-header">
         <div class="header-left">
           <FormOutlined class="header-icon" />
-          <span class="header-title">{{ data.workflow_name || t('chat.formConfirm.title', '流程预填信息确认') }}</span>
-          <a-tag v-if="data.workflow_id" color="blue" class="workflow-id-tag">ID: {{ data.workflow_id }}</a-tag>
+          <span class="header-title">{{ payload.workflow_name || payload.title || t('chat.formConfirm.title', '流程预填信息确认') }}</span>
+          <a-tag v-if="payload.workflow_id" color="blue" class="workflow-id-tag">ID: {{ payload.workflow_id }}</a-tag>
         </div>
         <div class="header-right">
           <a-tag v-if="status === 'confirmed'" color="success">
@@ -209,8 +155,10 @@ const exportCsv = () => {
         </div>
       </div>
 
+      <p v-if="payload.description" class="card-description">{{ payload.description }}</p>
+
       <div class="form-body">
-        <div v-for="field in data.fields || []" :key="field.name" class="form-row">
+        <div v-for="field in payload.fields" :key="field.name" class="form-row">
           <div class="field-label">{{ field.label || field.name }}:</div>
           <div class="field-control">
             <a-textarea
@@ -225,7 +173,7 @@ const exportCsv = () => {
               v-model:value="formModel[field.name]"
               :disabled="field.disabled || isReadOnly"
               class="custom-field w-full"
-              :options="normalizeOptions(field.options)"
+              :options="field.options || []"
             />
             <a-date-picker
               v-else-if="field.type === 'date'"
@@ -261,6 +209,19 @@ const exportCsv = () => {
             />
           </div>
         </div>
+      </div>
+
+      <!-- 内嵌明细子表（报销单等带明细的流程），只读展示 -->
+      <div v-for="(table, tIdx) in payload.details" :key="`detail-${tIdx}`" class="detail-block">
+        <div class="detail-title">{{ table.title || t('chat.formConfirm.detailTable', '明细') }}</div>
+        <a-table
+          :data-source="table.rows"
+          :columns="table.columns"
+          size="small"
+          :pagination="detailPagination(table.rows.length)"
+          :scroll="{ x: 'max-content' }"
+          bordered
+        />
       </div>
 
       <div v-if="status === 'idle'" class="form-actions">
@@ -377,5 +338,25 @@ const exportCsv = () => {
 
 .table-container {
   overflow-x: auto;
+}
+
+.card-description {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-text-secondary, #605a54);
+}
+
+.detail-block {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--color-border-subtle, #ebe5df);
+}
+
+.detail-title {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary, #605a54);
 }
 </style>

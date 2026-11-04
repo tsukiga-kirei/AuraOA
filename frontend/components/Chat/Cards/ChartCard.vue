@@ -22,6 +22,7 @@ import {
   DotChartOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
+import { normalizeChartPayload, type ChartPayload } from '~/utils/chatUiProtocol'
 
 use([
   BarChart,
@@ -36,33 +37,10 @@ use([
   CanvasRenderer,
 ])
 
-export interface ChartSeriesItem {
-  name: string
-  data: any[]
-  color?: string
-}
-
-export interface ChartRadarIndicator {
-  name: string
-  max?: number
-}
-
-export interface ChartPayload {
-  title?: string
-  subtitle?: string
-  type?: 'bar' | 'line' | 'pie' | 'radar'
-  categories?: string[]
-  xAxis?: string[]
-  series?: ChartSeriesItem[]
-  indicators?: ChartRadarIndicator[]
-  // 支持直接传入表格二维结构
-  columns?: any[]
-  rows?: Record<string, any>[]
-}
-
 const props = withDefaults(
   defineProps<{
-    data: ChartPayload
+    // 解析器已归一化；这里仍做一次幂等归一化，兼容历史消息与外部直传数据
+    data: Record<string, any>
     height?: string
   }>(),
   {
@@ -73,6 +51,8 @@ const props = withDefaults(
 const { t } = useI18n()
 const { chartColors, isDark } = useThemeColors()
 const vchartRef = ref<any>(null)
+
+const payload = computed<ChartPayload>(() => normalizeChartPayload(props.data))
 
 // 视图模式：'chart' | 'table'
 const viewMode = ref<'chart' | 'table'>('chart')
@@ -89,56 +69,22 @@ const PALETTE = [
   '#14b8a6',
 ]
 
-// 维度与指标数据自适应解析
-const resolvedCategories = computed<string[]>(() => {
-  if (props.data.categories && props.data.categories.length) {
-    return props.data.categories
-  }
-  if (props.data.xAxis && props.data.xAxis.length) {
-    return props.data.xAxis
-  }
-  // 若传入的是 rows 和 columns，第一列默认视为分类维度
-  if (props.data.rows && props.data.rows.length && props.data.columns && props.data.columns.length) {
-    const firstColKey = typeof props.data.columns[0] === 'string'
-      ? props.data.columns[0]
-      : props.data.columns[0].dataIndex || props.data.columns[0].key
-    return props.data.rows.map(r => String(r[firstColKey] ?? ''))
-  }
-  return []
-})
-
-const resolvedSeries = computed<ChartSeriesItem[]>(() => {
-  if (props.data.series && props.data.series.length) {
-    return props.data.series
-  }
-  // 从 rows 和 columns 中抽取数值列
-  if (props.data.rows && props.data.rows.length && props.data.columns && props.data.columns.length > 1) {
-    const cols = props.data.columns.slice(1)
-    const seriesList: ChartSeriesItem[] = []
-    cols.forEach((col: any) => {
-      const colKey = typeof col === 'string' ? col : col.dataIndex || col.key
-      const colTitle = typeof col === 'string' ? col : col.title || colKey
-      const nums = props.data.rows!.map(r => {
-        const val = Number(r[colKey])
-        return isNaN(val) ? 0 : val
-      })
-      seriesList.push({
-        name: colTitle,
-        data: nums,
-      })
-    })
-    return seriesList
-  }
-  return []
-})
+// 维度与指标数据（归一化后已保证 categories / series / indicators 结构一致）
+const resolvedCategories = computed<string[]>(() => payload.value.categories)
+const resolvedSeries = computed(() => payload.value.series)
 
 // 当前图表类型，支持用户点击快速在 bar / line / pie 间切换
-const currentChartType = ref<'bar' | 'line' | 'pie' | 'radar'>(
-  props.data.type || 'bar'
-)
+const currentChartType = ref<'bar' | 'line' | 'pie' | 'radar'>(payload.value.type)
 
-// 若无有效分类或数值且有 rows，默认切为表格视图
-if (!resolvedCategories.value.length && props.data.rows?.length) {
+// 没有可绘制数据时展示空状态，而不是留一块空白画布
+const hasChartData = computed(() => {
+  if (!resolvedSeries.value.length) return false
+  if (currentChartType.value === 'radar') return payload.value.indicators.length > 0
+  return resolvedCategories.value.length > 0
+})
+
+// 无有效分类但带了表格数据时默认切为表格视图
+if (!resolvedCategories.value.length && payload.value.rows.length) {
   viewMode.value = 'table'
 }
 
@@ -286,7 +232,7 @@ const chartOption = computed(() => {
       },
       series: [
         {
-          name: props.data.title || '数据占比',
+          name: payload.value.title || '数据占比',
           type: 'pie',
           radius: ['40%', '68%'],
           center: ['40%', '50%'],
@@ -310,7 +256,9 @@ const chartOption = computed(() => {
 
   // 4. 雷达图
   if (type === 'radar') {
-    const indicators = props.data.indicators || cats.map(c => ({ name: c, max: 100 }))
+    const indicators = payload.value.indicators.length
+      ? payload.value.indicators
+      : cats.map(name => ({ name, max: 100 }))
     return {
       ...baseOption,
       radar: {
@@ -338,7 +286,7 @@ const chartOption = computed(() => {
       },
       series: [
         {
-          name: props.data.title || '多维评估',
+          name: payload.value.title || '多维评估',
           type: 'radar',
           data: seriesItems.map((s, idx) => ({
             name: s.name,
@@ -356,29 +304,14 @@ const chartOption = computed(() => {
 
 // ── 表格视图数据计算 ──
 const tableColumns = computed(() => {
-  if (props.data.columns && props.data.columns.length) {
-    return props.data.columns.map((col: any) => {
-      if (typeof col === 'string') {
-        return {
-          title: col,
-          dataIndex: col,
-          key: col,
-          sorter: (a: any, b: any) => {
-            const vA = a[col] ?? ''
-            const vB = b[col] ?? ''
-            if (typeof vA === 'number' && typeof vB === 'number') return vA - vB
-            return String(vA).localeCompare(String(vB))
-          },
-        }
-      }
-      return col
-    })
+  if (payload.value.columns.length) {
+    return payload.value.columns
   }
 
   // 逆向自 categories & series 生成表格列
   const cols: any[] = [
     {
-      title: '维度 / 项目',
+      title: t('chat.chart.dimensionColumn', '维度 / 项目'),
       dataIndex: 'category',
       key: 'category',
     },
@@ -395,8 +328,8 @@ const tableColumns = computed(() => {
 })
 
 const tableRows = computed(() => {
-  if (props.data.rows && props.data.rows.length) {
-    return props.data.rows
+  if (payload.value.rows.length) {
+    return payload.value.rows
   }
   const cats = resolvedCategories.value
   const seriesItems = resolvedSeries.value
@@ -423,7 +356,7 @@ const exportImage = () => {
     })
     const link = document.createElement('a')
     link.href = url
-    link.download = `${props.data.title || 'analysis_chart'}_${Date.now()}.png`
+    link.download = `${payload.value.title || 'analysis_chart'}_${Date.now()}.png`
     link.click()
     message.success(t('chat.chart.exportedImage', '已成功导出高清图表图片'))
   } catch {
@@ -457,7 +390,7 @@ const exportCsv = () => {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `${props.data.title || 'analysis_data'}_${Date.now()}.csv`
+  link.download = `${payload.value.title || 'analysis_data'}_${Date.now()}.csv`
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
@@ -472,8 +405,8 @@ const exportCsv = () => {
     <div class="chart-header">
       <div class="header-left">
         <DotChartOutlined class="header-icon" />
-        <span class="header-title">{{ data.title || t('chat.chart.defaultTitle', '数据分析与统计') }}</span>
-        <span v-if="data.subtitle" class="header-subtitle">{{ data.subtitle }}</span>
+        <span class="header-title">{{ payload.title || t('chat.chart.defaultTitle', '数据分析与统计') }}</span>
+        <span v-if="payload.subtitle" class="header-subtitle">{{ payload.subtitle }}</span>
       </div>
 
       <div class="header-actions">
@@ -554,11 +487,15 @@ const exportCsv = () => {
     <!-- 1. 图表主体渲染 -->
     <div v-show="viewMode === 'chart'" class="chart-content">
       <VChart
+        v-if="hasChartData"
         ref="vchartRef"
         :option="chartOption"
         :style="{ height, width: '100%' }"
         autoresize
       />
+      <div v-else class="chart-empty" :style="{ height }">
+        {{ t('chat.chart.noData', '暂无可绘制的数据，可切换到表格查看明细') }}
+      </div>
     </div>
 
     <!-- 2. 二维表格渲染 -->
@@ -706,6 +643,17 @@ const exportCsv = () => {
 
 .chart-content {
   width: 100%;
+}
+
+.chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--color-text-tertiary, #8c8680);
+  background: var(--color-bg-subtle, #faf8f5);
+  border: 1px dashed var(--color-border-subtle, #ebe5df);
+  border-radius: 8px;
 }
 
 .table-content {

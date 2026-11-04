@@ -2141,6 +2141,8 @@ export default {
     'admin.ruleConfig.varCurrentTime': '当前时间，如 14:30:00',
     'admin.ruleConfig.varCurrentDatetime': '当前日期时间，如 2026-07-09 14:30:00',
     'admin.ruleConfig.varWeekday': '当前星期，如 星期四',
+    'admin.ruleConfig.varFormConfirmProtocol': '智能体模块：:::form-confirm 表单确认卡片的键名与字段结构',
+    'admin.ruleConfig.varChartProtocol': '智能体模块：:::chart 图表卡片的键名与数据结构',
 
     //系统提示词编辑器
     'admin.ruleConfig.systemPromptTag': '系统提示词',
@@ -3438,6 +3440,11 @@ export default {
     'chat.copy': '复制',
     'chat.copied': '已复制',
     'chat.tokenCost': '消耗 Token: {0}',
+    'chat.cardPending': '卡片生成中…',
+    'chat.cardParseFailed': '卡片数据格式有误，已按原文展示',
+    'chat.chart.noData': '暂无可绘制的数据，可切换到表格查看明细',
+    'chat.chart.dimensionColumn': '维度 / 项目',
+    'chat.formConfirm.detailTable': '明细',
     'chat.emptyGreeting': '您好！我是您的 OA 智能助理',
     'chat.emptyDesc': '可以随时向我询问 OA 流程进度、查询待办、归纳审批要点等',
     'chat.quickPill.todos': '📋 查我的待办',

@@ -34,6 +34,8 @@
 
 模型不得编造流程字段；无工具结果时只能说明缺少数据或引导用户授权。
 
+系统提示词在调模型前统一展开系统变量（`replaceSystemPromptVariables`）：`{{current_date}}`、`{{current_time}}`、`{{current_datetime}}`、`{{weekday}}`，以及两段 Generative UI 卡片协议 `{{form_confirm_protocol}}` / `{{chart_protocol}}`（正文见 `go-service/internal/service/prompt_ui_protocols.go`）。卡片格式因此不必依赖模型主动调用 Skill 才能拿到；Skill 正文经工具回传，不参与变量展开。
+
 ## 4. SSE 事件（拟定）
 
 | `event` | 含义 |

@@ -45,7 +45,10 @@ definePageMeta({
 
 const { authFetch } = useAuth()
 const { t } = useI18n()
-const { systemPromptVariables } = usePromptSystemVariables()
+// 智能体系统提示词编辑器额外暴露 Generative UI 卡片协议变量；
+// Skill 正文是工具回传内容，不会做变量替换，因此仍只提供时间变量。
+const { systemPromptVariables: agentPromptVariables } = usePromptSystemVariables({ includeAgentUiProtocols: true })
+const { systemPromptVariables: skillPromptVariables } = usePromptSystemVariables()
 const activeTab = ref('agents')
 const loading = ref(false)
 
@@ -819,7 +822,7 @@ onMounted(() => {
           </div>
           <PromptVariableBar
             :data-variables="[]"
-            :system-variables="systemPromptVariables"
+            :system-variables="agentPromptVariables"
             @insert="insertAgentPromptVariable"
           />
           <a-form-item style="margin-bottom: 0;">
@@ -1184,7 +1187,7 @@ onMounted(() => {
 
           <PromptVariableBar
             :data-variables="[]"
-            :system-variables="systemPromptVariables"
+            :system-variables="skillPromptVariables"
             @insert="insertSkillPromptVariable"
           />
           <a-form-item :label="t('agentAdmin.form.skillTemplate')" required>
@@ -1226,7 +1229,7 @@ onMounted(() => {
     >
       <PromptVariableBar
         :data-variables="[]"
-        :system-variables="systemPromptVariables"
+        :system-variables="agentPromptVariables"
         @insert="insertAgentPromptVariable"
       />
       <a-textarea

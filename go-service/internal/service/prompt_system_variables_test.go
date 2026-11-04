@@ -33,3 +33,36 @@ func TestReplaceSystemPromptVariablesLeavesUnknownPlaceholders(t *testing.T) {
 		t.Fatalf("expected {{current_date}} to be replaced, got %q", got)
 	}
 }
+
+func TestReplaceSystemPromptVariablesExpandsUIDisplayProtocols(t *testing.T) {
+	input := "前文\n" + SystemVariableFormConfirmProtocol + "\n" + SystemVariableChartProtocol + "\n后文"
+	got := replaceSystemPromptVariables(input)
+
+	if strings.Contains(got, "{{") {
+		t.Fatalf("expected all placeholders expanded, got %q", got)
+	}
+	for _, want := range []string{":::form-confirm", `"name"`, `"options"`, ":::chart", `"categories"`, `"indicators"`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected protocol text to contain %q", want)
+		}
+	}
+	if !strings.Contains(got, "前文") || !strings.Contains(got, "后文") {
+		t.Fatalf("expected surrounding text preserved, got %q", got)
+	}
+}
+
+func TestUIDisplayProtocolsStayAlignedWithRendererContract(t *testing.T) {
+	// 协议里承诺的顶层键必须与前端归一化/渲染逻辑一致，避免文档与渲染再次漂移。
+	formKeys := []string{"variant", "workflow_id", "workflow_name", "description", "fields", "columns", "rows", "details"}
+	for _, key := range formKeys {
+		if !strings.Contains(uiFormConfirmProtocol, key) {
+			t.Fatalf("form-confirm protocol missing top-level key %q", key)
+		}
+	}
+	chartKeys := []string{"type", "title", "subtitle", "categories", "series", "indicators", "columns", "rows"}
+	for _, key := range chartKeys {
+		if !strings.Contains(uiChartProtocol, key) {
+			t.Fatalf("chart protocol missing top-level key %q", key)
+		}
+	}
+}

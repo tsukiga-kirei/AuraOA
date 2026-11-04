@@ -13,6 +13,7 @@ import {
   SendOutlined,
   MessageOutlined,
   ReloadOutlined,
+  WarningOutlined,
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { ChatMessageItem } from '~/types/chat'
@@ -20,58 +21,27 @@ import { renderSafeMarkdown } from '~/utils/markdown'
 import { safeCopyText } from '~/utils/clipboard'
 import { useChatSession } from '~/composables/useChatSession'
 import { formatDateTimeInAppZone } from '~/utils/appTime'
+import { parseChatChunks, type ChatMessageChunk } from '~/utils/chatUiProtocol'
 import ChatProcessTimeline from './ChatProcessTimeline.vue'
 import FormConfirmCard from './Cards/FormConfirmCard.vue'
 import ChartCard from './Cards/ChartCard.vue'
 
-defineProps<{ messages: ChatMessageItem[]; agentEmoji?: string; agentName?: string; retryDisabled?: boolean }>()
+const props = defineProps<{ messages: ChatMessageItem[]; agentEmoji?: string; agentName?: string; retryDisabled?: boolean }>()
 const emit = defineEmits<{ (e: 'retry', msg: ChatMessageItem): void; (e: 'send', text: string): void }>()
 const { t, locale } = useI18n()
 
-interface MessageContentChunk {
-  type: 'markdown' | 'form-confirm' | 'chart'
-  content: string
-  data?: any
-}
-
-function parseMessageChunks(content: string): MessageContentChunk[] {
-  if (!content) return []
-  const regex = /:::(form-confirm|chart)\s*\n([\s\S]*?)\n:::/g
-  const chunks: MessageContentChunk[] = []
-  let lastIndex = 0
-  let match: RegExpExecArray | null
-
-  while ((match = regex.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      const text = content.slice(lastIndex, match.index).trim()
-      if (text) {
-        chunks.push({ type: 'markdown', content: text })
-      }
-    }
-
-    const blockType = match[1] as 'form-confirm' | 'chart'
-    const jsonStr = match[2].trim()
-    try {
-      const parsed = JSON.parse(jsonStr)
-      chunks.push({ type: blockType, content: jsonStr, data: parsed })
-    } catch {
-      chunks.push({ type: 'markdown', content: '```json\n' + jsonStr + '\n```' })
-    }
-    lastIndex = regex.lastIndex
-  }
-
-  if (lastIndex < content.length) {
-    const tail = content.slice(lastIndex).trim()
-    if (tail) {
-      chunks.push({ type: 'markdown', content: tail })
+// 每条助手消息的正文只解析一次：流式输出时随 content 变化自动重算
+const parsedChunks = computed(() => {
+  const map = new Map<string, ChatMessageChunk[]>()
+  for (const msg of props.messages) {
+    if (msg.role === 'assistant' && msg.content) {
+      map.set(msg.id, parseChatChunks(msg.content))
     }
   }
+  return map
+})
 
-  if (chunks.length === 0) {
-    return [{ type: 'markdown', content }]
-  }
-  return chunks
-}
+const chunksOf = (msg: ChatMessageItem): ChatMessageChunk[] => parsedChunks.value.get(msg.id) || []
 const { updateMessageFeedback } = useChatSession()
 const copied = ref('')
 
@@ -204,21 +174,34 @@ function formatMsgTime(isoString?: string): string {
 
         <!-- 回答正文：流式过程中也实时渲染安全 Markdown 与 Generative UI 卡片 -->
         <div v-if="msg.content" class="answer-document">
-          <template v-for="(chunk, cIdx) in parseMessageChunks(msg.content)" :key="cIdx">
+          <template v-for="(chunk, cIdx) in chunksOf(msg)" :key="cIdx">
             <div
               v-if="chunk.type === 'markdown'"
-              :class="{ 'answer-streaming': msg.streaming && cIdx === parseMessageChunks(msg.content).length - 1 }"
+              :class="{ 'answer-streaming': msg.streaming && cIdx === chunksOf(msg).length - 1 }"
               v-html="renderSafeMarkdown(chunk.content)"
             />
+            <!-- 流式输出中尚未闭合的卡片块：给一个轻量占位，避免闪出半截 JSON -->
+            <div v-else-if="chunk.type === 'pending-block'" class="chunk-pending">
+              <LoadingOutlined spin />
+              <span>{{ t('chat.cardPending', '卡片生成中…') }}</span>
+            </div>
+            <!-- 解析失败：显式提示并保留原文，方便定位模型输出问题 -->
+            <div v-else-if="chunk.type === 'invalid-block'" class="chunk-invalid" role="alert">
+              <div class="chunk-invalid-title">
+                <WarningOutlined />
+                <span>{{ t('chat.cardParseFailed', '卡片数据格式有误，已按原文展示') }}</span>
+              </div>
+              <pre class="chunk-invalid-body">{{ chunk.content }}</pre>
+            </div>
             <FormConfirmCard
               v-else-if="chunk.type === 'form-confirm'"
-              :data="chunk.data"
+              :data="chunk.data || {}"
               :disabled="msg.streaming"
               @send="text => emit('send', text)"
             />
             <ChartCard
               v-else-if="chunk.type === 'chart'"
-              :data="chunk.data"
+              :data="chunk.data || {}"
             />
           </template>
         </div>
@@ -728,6 +711,47 @@ function formatMsgTime(isoString?: string): string {
 .generation-status--interrupted {
   display: flex;
   align-items: center;
+}
+
+.chunk-pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--color-text-tertiary, #8c8680);
+  background: var(--color-bg-subtle, #faf8f5);
+  border: 1px dashed var(--color-border-subtle, #ebe5df);
+  border-radius: 8px;
+}
+
+.chunk-invalid {
+  margin: 12px 0;
+  padding: 10px 14px;
+  border: 1px solid var(--color-warning-border, #ffe58f);
+  background: var(--color-warning-bg, #fffbe6);
+  border-radius: 8px;
+}
+
+.chunk-invalid-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-warning, #d48806);
+}
+
+.chunk-invalid-body {
+  margin: 8px 0 0;
+  max-height: 220px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--color-text-secondary, #605a54);
 }
 
 @media (max-width: 600px) {

@@ -91,8 +91,48 @@ sequenceDiagram
 
 AI 回复不仅是纯文本，而是通过受控的结构化块渲染出**响应式、可编辑、可触发交互的 Ant Design Vue 表单**。
 
+### 0. 协议以系统变量注入（唯一权威来源）
+
+卡片结构说明不再散落在各 skill 与提示词里，而是由 `go-service/internal/service/prompt_ui_protocols.go` 提供两段静态协议，运行时经系统变量展开：
+
+| 系统变量 | 内容 | 典型使用方 |
+|----------|------|-----------|
+| `{{form_confirm_protocol}}` | `:::form-confirm` 表单确认卡片协议（顶层键、字段类型、明细表、确认闭环） | `oa_creator`，及任何需要生成确认卡片的智能体 |
+| `{{chart_protocol}}` | `:::chart` 图表卡片协议（四种类型、categories/series/indicators 结构） | `oa_analyst`，及任何需要出图的智能体 |
+
+约束：
+
+- 其它智能体要出卡片，在系统提示词里直接引用这两个变量即可，**不要复制协议正文**，否则后续改协议会留下多份副本。
+- 变量只承载「卡片格式」，不含 E9 表字典、SQL 规范等业务知识——那些属于各 Skill 的正文，按 skill 维度维护。
+- Skill 正文经工具回传，**不会**做系统变量替换，因此不要在 `SKILL.md` 里写这两个变量。
+- 迁移 `000098` 只更新平台种子智能体的 `system_prompt`，租户自建副本不被覆盖。
+- 渲染端（`frontend/utils/chatUiProtocol.ts`）与协议正文必须同步：协议承诺的键渲染端必须支持，渲染端兼容的别名协议里只写推荐值。
+
 ### 1. 结构化表单协议 (`:::form-confirm`)
-大模型收集齐要素后，在 Markdown 回复末尾输出如下格式块：
+
+大模型收集齐要素后，在 Markdown 回复末尾输出如下格式块。**顶层键只认下表这些，自造键会被前端静默丢弃**：
+
+| 键 | 必填 | 说明 |
+|----|------|------|
+| `variant` | 否 | `summary_confirm`（默认）/ `compact_form` / `data_table` |
+| `workflow_id` | 否 | 流程定义 ID，如 `"102"` |
+| `workflow_name` | 否 | 卡片标题，如 `物品领用申请` |
+| `description` | 否 | 卡片说明，展示在标题下方 |
+| `fields` | 表单卡片必填 | 字段数组，见下 |
+| `details` | 否 | 内嵌只读明细子表 `{title, columns, rows}`，可为数组 |
+| `columns` / `rows` | `data_table` 必填 | 只读表格的列与数据，用于查数结果与 CSV 导出 |
+
+`fields` 每项：
+
+| 键 | 必填 | 说明 |
+|----|------|------|
+| `name` | **是** | OA 真实字段名，必须与 `get_workflow_schema` 返回一致；缺失会导致字段串值、确认后创建草稿失败（前端用 `field_N` 兜底但提交仍不合法） |
+| `label` | 是 | 中文显示名 |
+| `type` | 否 | `text` / `number` / `date` / `select` / `textarea` / `browser`，缺省 `text` |
+| `value` | 否 | 预填值；`date` 用 `YYYY-MM-DD`；`browser` 用存储 ID |
+| `display_value` | 否 | `browser` 字段的展示名（人员姓名、部门名称） |
+| `options` | `select` 必填 | `[{label, value}]`，也兼容 `["办公文具"]` 字符串数组 |
+| `disabled` | 否 | `true` 表示只读 |
 
 ````markdown
 为您整理了领用申请的预填信息，请确认或修改：
@@ -105,12 +145,15 @@ AI 回复不仅是纯文本，而是通过受控的结构化块渲染出**响应
   "fields": [
     { "name": "sqr", "label": "申请人", "type": "text", "value": "张三", "disabled": true },
     { "name": "sqrq", "label": "申请日期", "type": "date", "value": "2026-11-02" },
-    { "name": "wp_type", "label": "物品类型", "type": "select", "value": "文具", "options": ["文具", "打印耗材", "数码配件"] },
+    { "name": "wp_type", "label": "物品类型", "type": "select", "value": "0", "options": [{"label":"办公文具","value":"0"},{"label":"数码配件","value":"1"}] },
     { "name": "reason", "label": "领用用途", "type": "textarea", "value": "部门日常办公文具补充" }
-  ]
+  ],
+  "details": { "title": "领用明细", "columns": ["物品名称", "数量"], "rows": [{ "物品名称": "中性笔", "数量": 10 }] }
 }
 :::
 ````
+
+块规则：开始/结束标记各自独占一行；块内是裸 JSON，**不要**用三反引号 `json` 代码块包裹；解析失败时前端会提示「卡片数据格式有误」并保留原文，不会静默吞掉。
 
 ### 2. 多变体（Variants）视觉适配
 * **变体 A：`summary_confirm`（摘要确认型，推荐用于流程创建）**：
@@ -119,8 +162,30 @@ AI 回复不仅是纯文本，而是通过受控的结构化块渲染出**响应
   适合多字段一次性输入的填单向导。
 * **变体 C：`data_table`（查数展示型，专供智能体 3）**：
   将 SQL 查询到的结果以响应式只读表格展示，支持按列排序、分页预览与一键导出 CSV。
+* **内嵌明细 `details`**：在确认卡片底部追加只读明细子表，适配报销单、采购单等带明细的流程。
 
-### 3. 按钮交互闭环（自动注入下轮提示词）
+### 3. 图表协议 (`:::chart`)
+
+查询结果涉及排行、走势、占比或多维对比时输出。顶层键只认：`type`（`bar` / `line` / `pie` / `radar`）、`title`、`subtitle`、`categories`、`series`、`indicators`、`columns`、`rows`。
+
+- `categories` 是维度名称数组；`series` 每项 `{name, data}`，`data` 与 `categories` 等长且顺序一致。
+- `pie` 用 `categories` + 数值 `data`；只给 `[{name,value}]` 时渲染端会兜底拆分，但不推荐。
+- `radar` 必须给 `indicators`（**复数**）：`[{name, max}]`，与 `data` 等长；缺 `max` 时前端按数据量级自动补齐。
+
+````markdown
+:::chart
+{
+  "type": "bar",
+  "title": "各部门流程发起量 Top5",
+  "categories": ["市场部", "研发部", "供应链", "财务部", "人事部"],
+  "series": [{ "name": "流程数量", "data": [142, 98, 76, 55, 32] }]
+}
+:::
+````
+
+渲染端对历史写法保持兼容（`xAxis`、单数 `indicator`、`[{name,value}]` 饼图数据、`columns`+`rows` 直接出表），但协议与提示词只写推荐写法。
+
+### 4. 按钮交互闭环（自动注入下轮提示词）
 * 用户点击【确认创建】➔ 前端组件捕获最新表单数据，自动向对话流发送：
   `【用户已确认表单】流程ID: 102, 数据: {"sqr":"张三","sqrq":"2026-11-02","wp_type":"文具","reason":"部门日常办公文具补充"}，请立即调用接口创建草稿。`
 * 用户点击【取消】➔ 自动发送：
@@ -181,6 +246,7 @@ AI 回复不仅是纯文本，而是通过受控的结构化块渲染出**响应
 
 ### 模板 1：创建流程 Skill (`skills/workflows/create_supplies_request.md`)
 * **关联智能体**：`oa_creator`（流程发起助手）
+* **边界**：卡片结构与字段要求以系统变量 `{{form_confirm_protocol}}` 为准；本模板只保留该流程的槽位收集与下拉归类规则，避免协议出现第二份副本。
 ```markdown
 ---
 name: 办公用品领用申请填报指南
@@ -218,6 +284,7 @@ agent: oa_creator
 
 ### 模板 2：查数分析 Skill (`skills/data_query/oa_workflow_stats.md`)
 * **关联智能体**：`oa_analyst`（智能查数专家）
+* **边界**：图表结构与键名以系统变量 `{{chart_protocol}}` 为准；本模板只保留 E9 表字典、查数安全规则与业务口径。
 ```markdown
 ---
 name: OA 流程与人员统计查数指南
