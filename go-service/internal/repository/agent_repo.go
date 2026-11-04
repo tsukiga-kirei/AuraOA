@@ -278,6 +278,13 @@ func (r *AgentRepo) GetSkillByCode(tenantID uuid.UUID, code string) (*model.Agen
 	return &skill, err
 }
 
+// GetTenantSkillByCode 仅查询本租户自有技能（不含平台内置），用于创建前的重复校验。
+func (r *AgentRepo) GetTenantSkillByCode(tenantID uuid.UUID, code string) (*model.AgentSkill, error) {
+	var skill model.AgentSkill
+	err := r.db.Where("tenant_id = ? AND skill_code = ?", tenantID, code).First(&skill).Error
+	return &skill, err
+}
+
 func (r *AgentRepo) CreateSkill(skill *model.AgentSkill) error {
 	enabled := skill.Enabled
 	return r.db.Transaction(func(tx *gorm.DB) error {

@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/repository"
 )
 
@@ -38,16 +37,12 @@ func (s *SkillService) ResolveAgentSkillsOverview(ctx context.Context, tenantID 
 		return nil, err
 	}
 
-	skillMap := make(map[string]model.AgentSkill)
-	for _, sk := range allSkills {
-		if sk.Enabled {
-			skillMap[sk.SkillCode] = sk
-		}
-	}
+	// 同名时租户覆盖版本优先于平台内置版本；覆盖版本被停用也不回退，视为本租户主动关闭该技能。
+	overrides := resolveSkillOverrides(allSkills)
 
 	var res []SkillInfo
 	for _, code := range skillCodes {
-		if sk, ok := skillMap[code]; ok {
+		if sk, ok := overrides[code]; ok && sk.Enabled {
 			desc := sk.Description
 			if desc == "" {
 				desc = extractDescriptionFromContent(sk.Content)

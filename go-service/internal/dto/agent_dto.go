@@ -145,8 +145,10 @@ type SkillItemDTO struct {
 	Content     string    `json:"content"`
 	Enabled     bool      `json:"enabled"`
 	IsSystem    bool      `json:"is_system"`
-	AgentCodes  []string  `json:"agent_codes"`
-	CreatedAt   time.Time `json:"created_at"`
+	// OverridesSystem 表示该技能是本租户对同名平台内置技能的覆盖版本
+	OverridesSystem bool      `json:"overrides_system"`
+	AgentCodes      []string  `json:"agent_codes"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 // SaveSkillRequest 保存 Skill 请求

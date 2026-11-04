@@ -37,6 +37,11 @@ import type {
   QuickQuestionItem,
 } from '~/types/chat'
 import { useOrgApi } from '~/composables/useOrgApi'
+import {
+  buildSkillCopyDraft,
+  buildSkillEditDraft,
+  type SkillEditMode,
+} from '~/utils/skillCode'
 
 definePageMeta({
   layout: 'default',
@@ -197,6 +202,9 @@ const mcpForm = ref<SaveMCPServerRequest>({
   enabled: true,
   agent_codes: [],
 })
+
+// Skills 编辑模式：新建 / 编辑租户技能 / 复制为租户技能 / 覆盖内置技能
+const skillEditMode = ref<SkillEditMode>('create')
 
 const skillForm = ref<SaveSkillRequest>({
   skill_code: '',
@@ -448,7 +456,24 @@ const deleteMCP = async (id: string) => {
 }
 
 // Skills 保存/删除
+const skillDrawerTitle = computed(() => {
+  switch (skillEditMode.value) {
+    case 'override':
+      return t('agentAdmin.editBuiltinSkillTitle', '编辑内置技能')
+    case 'copy':
+      return t('agentAdmin.copySkillTitle', '复制技能')
+    case 'edit':
+      return t('agentAdmin.editSkill', '编辑技能')
+    default:
+      return t('agentAdmin.createSkill', '新建技能')
+  }
+})
+
+// 编辑既有技能或覆盖内置技能时，标识码不可改
+const skillCodeLocked = computed(() => !!skillForm.value.id || skillEditMode.value === 'override')
+
 const openCreateSkill = () => {
+  skillEditMode.value = 'create'
   skillForm.value = {
     skill_code: '',
     name: '',
@@ -461,10 +486,16 @@ const openCreateSkill = () => {
 }
 
 const openEditSkill = (item: AgentSkillItem) => {
-  skillForm.value = {
-    ...item,
-    agent_codes: [...(item.agent_codes || [])],
-  }
+  const draft = buildSkillEditDraft(item)
+  skillEditMode.value = draft.mode
+  skillForm.value = draft.form
+  skillDrawerVisible.value = true
+}
+
+const openCopySkill = (item: AgentSkillItem) => {
+  const draft = buildSkillCopyDraft(item, skills.value.map(skill => skill.skill_code))
+  skillEditMode.value = draft.mode
+  skillForm.value = draft.form
   skillDrawerVisible.value = true
 }
 
@@ -475,11 +506,18 @@ const saveSkill = async () => {
   }
   savingSkill.value = true
   try {
-    await authFetch(skillForm.value.id ? `/api/tenant/skills/${skillForm.value.id}` : '/api/tenant/skills', {
-      method: skillForm.value.id ? 'PUT' : 'POST',
+    const isUpdate = !!skillForm.value.id
+    await authFetch(isUpdate ? `/api/tenant/skills/${skillForm.value.id}` : '/api/tenant/skills', {
+      method: isUpdate ? 'PUT' : 'POST',
       body: skillForm.value,
     })
-    message.success(t('agentAdmin.saveSuccess'))
+    if (skillEditMode.value === 'override') {
+      message.success(t('agentAdmin.overrideSkillSuccess', '已生成本租户覆盖版本'))
+    } else if (skillEditMode.value === 'copy') {
+      message.success(t('agentAdmin.copySkillSuccess', '已复制为本租户技能'))
+    } else {
+      message.success(t('agentAdmin.saveSuccess'))
+    }
     skillDrawerVisible.value = false
     await fetchAll()
   } catch (err: any) {
@@ -489,10 +527,12 @@ const saveSkill = async () => {
   }
 }
 
-const deleteSkill = async (id: string) => {
+const deleteSkill = async (item: AgentSkillItem) => {
   try {
-    await authFetch(`/api/tenant/skills/${id}`, { method: 'DELETE' })
-    message.success(t('agentAdmin.deleteSuccess'))
+    await authFetch(`/api/tenant/skills/${item.id}`, { method: 'DELETE' })
+    message.success(item.overrides_system
+      ? t('agentAdmin.revertOverrideSuccess', '已删除覆盖版本，恢复使用内置技能')
+      : t('agentAdmin.deleteSuccess'))
     await fetchAll()
   } catch (err: any) {
     message.error(err.message || t('common.deleteFailed'))
@@ -716,7 +756,7 @@ onMounted(() => {
       </div>
 
       <div class="data-table-card data-table-card--skills">
-        <a-table :dataSource="skills" :rowKey="(r: AgentSkillItem) => r.id" :loading="loading" :pagination="false" :scroll="{ x: 1000 }">
+        <a-table :dataSource="skills" :rowKey="(r: AgentSkillItem) => r.id" :loading="loading" :pagination="false" :scroll="{ x: 1120 }">
           <a-table-column :title="t('agentAdmin.col.code')" dataIndex="skill_code" :width="140">
             <template #default="{ text }">
               <OverflowTooltip :text="text" block>{{ text }}</OverflowTooltip>
@@ -744,19 +784,22 @@ onMounted(() => {
               </OverflowTooltip>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.source')" dataIndex="is_system" width="100px">
-            <template #default="{ text }">
-              <a-tag :color="text ? 'blue' : 'green'">{{ text ? t('agentAdmin.systemBuiltin') : t('agentAdmin.tenantCustom') }}</a-tag>
+          <a-table-column :title="t('agentAdmin.col.source')" width="110px">
+            <template #default="{ record }">
+              <a-tag v-if="record.is_system" color="blue">{{ t('agentAdmin.systemBuiltin') }}</a-tag>
+              <a-tag v-else-if="record.overrides_system" color="orange">{{ t('agentAdmin.overriddenTag', '覆盖内置') }}</a-tag>
+              <a-tag v-else color="green">{{ t('agentAdmin.tenantCustom') }}</a-tag>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.actions')" :width="130" :fixed="'right'">
+          <a-table-column :title="t('agentAdmin.col.actions')" :width="200" :fixed="'right'">
             <template #default="{ record }">
               <a-space>
-                <a-button v-if="!record.is_system" type="link" size="small" @click="openEditSkill(record)">{{ t('agentAdmin.edit') }}</a-button>
+                <a-button type="link" size="small" @click="openEditSkill(record)">{{ t('agentAdmin.edit') }}</a-button>
+                <a-button type="link" size="small" @click="openCopySkill(record)">{{ t('agentAdmin.copy', '复制') }}</a-button>
                 <a-popconfirm
                   v-if="!record.is_system"
                   :title="t('agentAdmin.deleteConfirm')"
-                  @confirm="deleteSkill(record.id)"
+                  @confirm="deleteSkill(record)"
                 >
                   <a-button type="link" danger size="small">{{ t('agentAdmin.delete') }}</a-button>
                 </a-popconfirm>
@@ -1145,11 +1188,25 @@ onMounted(() => {
     <!-- 3. Skills 编辑大抽屉 -->
     <a-drawer
       v-model:open="skillDrawerVisible"
-      :title="skillForm.id ? t('agentAdmin.editSkill', '编辑技能') : t('agentAdmin.createSkill', '新建技能')"
+      :title="skillDrawerTitle"
       :width="680"
       placement="right"
     >
       <a-form :model="skillForm" layout="vertical" class="drawer-form">
+        <a-alert
+          v-if="skillEditMode === 'override'"
+          type="info"
+          show-icon
+          :message="t('agentAdmin.overrideSkillHint', '内置技能对所有租户只读。保存后将生成本租户专属覆盖版本（标识码不变），运行时以覆盖版本为准；删除覆盖即恢复内置版本。')"
+          class="skill-mode-alert"
+        />
+        <a-alert
+          v-else-if="skillEditMode === 'copy'"
+          type="info"
+          show-icon
+          :message="t('agentAdmin.copySkillHint', '将基于当前技能创建一份新的本租户技能，标识码已自动生成且可修改，保存后不影响原技能。')"
+          class="skill-mode-alert"
+        />
         <div class="drawer-section">
           <div class="drawer-section-title">{{ t('agentAdmin.form.skillBasicSection', '技能基础') }}</div>
           <a-row :gutter="16">
@@ -1157,7 +1214,7 @@ onMounted(() => {
               <a-form-item :label="t('agentAdmin.form.code')" required>
                 <a-input
                   v-model:value="skillForm.skill_code"
-                  :disabled="!!skillForm.id"
+                  :disabled="skillCodeLocked"
                   :placeholder="t('agentAdmin.form.codePlaceholder')"
                 />
               </a-form-item>
@@ -1245,6 +1302,9 @@ onMounted(() => {
 <style scoped>
 .tenant-page {
   width: 100%;
+}
+.skill-mode-alert {
+  margin-bottom: 12px;
 }
 .page-header {
   margin-bottom: 24px;

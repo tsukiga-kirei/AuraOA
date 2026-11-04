@@ -174,6 +174,8 @@ export interface AgentSkillItem {
   content: string
   input_schema?: Record<string, any>
   is_system: boolean
+  /** 是否为“覆盖平台内置”的租户版本 */
+  overrides_system?: boolean
   agent_codes?: string[]
   created_at: string
   updated_at: string

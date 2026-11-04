@@ -32,6 +32,18 @@ description: 在用户询问待办优先级时，按节点与提交时间整理�
 
 自定义 Skill 视为租户数据：随 `chat_retention` 或单独保留策略；禁止执行未声明的任意脚本路径。
 
+### 内置 Skill 的只读与覆盖（copy-on-write）
+
+平台内置 Skill（`tenant_id IS NULL`）对所有租户只读，避免一个租户的修改影响其他租户。租户要改内置 Skill 时有两条路径：
+
+| 动作 | 行为 |
+|------|------|
+| 编辑内置 | 写入 `tenant_id = 当前租户`、`skill_code` 相同的租户技能作为**覆盖版本**；列表与运行时都以覆盖版本为准（接口返回 `overrides_system = true`） |
+| 删除覆盖 | 删除租户版本即回落到平台内置版本；智能体绑定键 `skill:<code>` 不变，装配关系保留 |
+| 复制为新技能 | 用新的 `skill_code` 创建独立技能（管理端「复制」自动生成 `xxx_copy`），原件与副本并存 |
+
+覆盖版本被停用即视为该租户主动关闭该技能，**不回退**到内置版本。实现见 `go-service/internal/service/agent_skill_override.go`（`resolveSkillOverrides` / `mergeSkillsByCode`）。
+
 ## 3. 加载时机
 
 1. 会话使用某智能体时，列出其绑定 Skills（∩ 租户配额）。

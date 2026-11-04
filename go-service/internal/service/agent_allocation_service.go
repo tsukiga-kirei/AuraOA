@@ -542,22 +542,31 @@ func (s *AgentAllocationService) DeleteMCPServer(ctx context.Context, tenantID, 
 // ---------------- 租户管理员：Skills ----------------
 
 func (s *AgentAllocationService) ListSkills(ctx context.Context, tenantID uuid.UUID) ([]dto.SkillItemDTO, error) {
-	skills, err := s.agentRepo.ListSkills(tenantID)
+	all, err := s.agentRepo.ListSkills(tenantID)
 	if err != nil {
 		return nil, err
 	}
+	systemCodes := make(map[string]bool, len(all))
+	for _, sk := range all {
+		if sk.TenantID == nil {
+			systemCodes[sk.SkillCode] = true
+		}
+	}
+	// 同名时租户覆盖版本优先，列表不出现重复标识码
+	skills := mergeSkillsByCode(all)
 	res := make([]dto.SkillItemDTO, 0, len(skills))
 	for _, sk := range skills {
 		res = append(res, dto.SkillItemDTO{
-			ID:          sk.ID,
-			SkillCode:   sk.SkillCode,
-			Name:        sk.Name,
-			Description: sk.Description,
-			Content:     sk.Content,
-			Enabled:     sk.Enabled,
-			IsSystem:    sk.TenantID == nil,
-			AgentCodes:  s.agentCodesForPrefix(tenantID, "skill:"+sk.SkillCode),
-			CreatedAt:   sk.CreatedAt,
+			ID:              sk.ID,
+			SkillCode:       sk.SkillCode,
+			Name:            sk.Name,
+			Description:     sk.Description,
+			Content:         sk.Content,
+			Enabled:         sk.Enabled,
+			IsSystem:        sk.TenantID == nil,
+			OverridesSystem: sk.TenantID != nil && systemCodes[sk.SkillCode],
+			AgentCodes:      s.agentCodesForPrefix(tenantID, "skill:"+sk.SkillCode),
+			CreatedAt:       sk.CreatedAt,
 		})
 	}
 	return res, nil
@@ -583,6 +592,11 @@ func (s *AgentAllocationService) SaveSkill(ctx context.Context, tenantID uuid.UU
 			return nil, err
 		}
 		return &dto.SkillItemDTO{ID: skill.ID, SkillCode: skill.SkillCode, Name: req.Name, Description: req.Description, Content: req.Content, Enabled: req.Enabled, IsSystem: false, AgentCodes: req.AgentCodes, CreatedAt: skill.CreatedAt}, nil
+	}
+
+	// 新建时标识码在本租户内必须唯一；与平台内置同名则视为“覆盖内置技能”
+	if existing, err := s.agentRepo.GetTenantSkillByCode(tenantID, req.SkillCode); err == nil && existing != nil && existing.ID != uuid.Nil {
+		return nil, fmt.Errorf("标识码 %s 已存在，请更换标识码或直接编辑该技能", req.SkillCode)
 	}
 
 	skill := model.AgentSkill{
@@ -616,11 +630,16 @@ func (s *AgentAllocationService) SaveSkill(ctx context.Context, tenantID uuid.UU
 
 func (s *AgentAllocationService) DeleteSkill(ctx context.Context, tenantID, skillID uuid.UUID) error {
 	skills, _ := s.agentRepo.ListSkills(tenantID)
-	for _, sk := range skills {
-		if sk.ID == skillID {
-			_ = s.syncSkillBindings(ctx, tenantID, sk.SkillCode, nil)
+	var target *model.AgentSkill
+	for i := range skills {
+		if skills[i].ID == skillID {
+			target = &skills[i]
 			break
 		}
+	}
+	// 删除的是“覆盖内置”版本时保留智能体绑定：绑定仍指向同标识码的平台内置技能。
+	if target != nil && !hasSystemSkillFallback(skills, target.SkillCode) {
+		_ = s.syncSkillBindings(ctx, tenantID, target.SkillCode, nil)
 	}
 	return s.agentRepo.DeleteSkill(tenantID, skillID)
 }

@@ -37,7 +37,7 @@ system_prompt 支持运行时展开的系统变量：`{{current_date}}`、`{{cur
 
 MCP 字段：server_code、name、description、transport_type（http）、endpoint_url、headers（JSON 字符串对象，加密存储）、enabled、agent_codes。返回 cached_tools、last_synced_at、agent_codes，不返回密钥。`agent_codes` 表示挂载到哪些智能体；测试连接发现工具后会按原挂载智能体重写绑定。编辑时 headers 留空保留，传 "{}" 清空。地址或请求头改变后清空工具缓存，需要再次测试连接。创建检查租户配额并持行锁防止并发超额；标识码创建后不可变。
 
-Skill 字段：skill_code、name、description、content（最多 64 KB）、enabled、agent_codes；返回 is_system、agent_codes。内置 Skill 只读。当前 Skill 是可读取的指令指南，不执行本地脚本或安装软件。
+Skill 字段：skill_code、name、description、content（最多 64 KB）、enabled、agent_codes；返回 is_system、overrides_system、agent_codes。内置 Skill 对租户只读：POST 一个与内置同名的 skill_code 即创建该租户的覆盖版本（运行时以覆盖版本为准），DELETE 覆盖版本后回落到内置版本并保留 `skill:<code>` 绑定；PUT 只能改本租户技能，且同一租户内 skill_code 不可重复。当前 Skill 是可读取的指令指南，不执行本地脚本或安装软件。
 
 ## 装配和运行权限
 
