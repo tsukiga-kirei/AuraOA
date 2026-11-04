@@ -1402,6 +1402,8 @@ onMounted(() => {
 
 /* 能力装配 */
 .caps-group {
+  width: 100%;
+  min-width: 0;
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
   border-radius: 6px;
@@ -1421,8 +1423,10 @@ onMounted(() => {
 }
 .caps-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
+  width: 100%;
+  min-width: 0;
 }
 .cap-card {
   background: var(--color-bg-page);
@@ -1430,17 +1434,25 @@ onMounted(() => {
   border-radius: 6px;
   padding: 8px 12px;
   min-width: 0;
+  max-width: 100%;
   overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .cap-name {
   font-weight: 500;
   font-size: 13px;
+  white-space: normal;
+  word-break: break-word;
 }
 .cap-desc {
   font-size: 11px;
   color: var(--color-text-secondary);
   margin-top: 2px;
   margin-left: 24px;
+  line-height: 1.6;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .desc-cell {
