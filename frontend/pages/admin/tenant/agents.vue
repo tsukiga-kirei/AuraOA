@@ -1634,6 +1634,8 @@ onMounted(() => {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
   border-radius: 6px;
+  min-width: 0;
+  max-width: 100%;
 }
 .cap-config-field {
   min-width: 0;
@@ -1643,6 +1645,8 @@ onMounted(() => {
   font-weight: 500;
   color: var(--color-text-primary);
   margin-bottom: 4px;
+  white-space: normal;
+  word-break: break-word;
 }
 .cap-config-input {
   width: 100%;
@@ -1653,6 +1657,9 @@ onMounted(() => {
   color: var(--color-text-secondary);
   margin-top: 4px;
   line-height: 1.5;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .desc-cell {
