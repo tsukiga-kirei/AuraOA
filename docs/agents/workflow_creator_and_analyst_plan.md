@@ -65,8 +65,8 @@ sequenceDiagram
     Ecology-->>AuraOA: 返回 token (缓存至内存/Redis，过期前 5 分钟自动刷新)
 
     Note over AuraOA,Ecology: 阶段三：业务调用 (POST /api/workflow/paService/doCreateRequest)
-    AuraOA->>AuraOA: 用 spk 对当前登录用户的工号(loginid)进行 RSA 加密
-    AuraOA->>Ecology: Header: { appid, token, userid: encrypted_loginid }<br/>Body: 表单数据
+    AuraOA->>AuraOA: 用当前用户登录名查 hrmresource.id，再用 spk 加密该数字 ID
+    AuraOA->>Ecology: Header: { appid, token, userid: encrypted_user_id }<br/>Body: 表单数据
     Ecology-->>AuraOA: 返回 { code: "SUCCESS", data: { requestid: 1024 } }
 ```
 
@@ -76,7 +76,8 @@ sequenceDiagram
 * **请求头（Header）**：
   * `appid`：`{weaver_appid}`
   * `token`：缓存的有效令牌
-  * `userid`：当前用户工号经泛微 `spk` 公钥 RSA 加密后的 Base64 字符串
+  * `userid`：当前用户在 `hrmresource.id` 中的数字 ID，经泛微 `spk` 公钥 RSA 加密后的 Base64 字符串。登录名不能直接加密后传入。
+* 创建前必须先调用 `POST /api/workflow/paService/getCreateWorkflowList` 确认该用户能创建目标流程。名称明确时用 `conditions.wfName`，含糊时不传条件查全部可创建流程。未命中则停止，不调用 `get_workflow_schema`。
 * **请求体（Form Urlencoded）**：
   * `workflowId`：流程定义 ID（如 `102`）
   * `requestName`：单据标题（规则：`{申请人姓名}+{流程名称}+{YYYY-MM-DD}`）

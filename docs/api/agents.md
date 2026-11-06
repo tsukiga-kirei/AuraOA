@@ -52,9 +52,10 @@ Skill 字段：skill_code、name、description、content（最多 64 KB）、ena
 - `run_audit`：执行流程审核
 - `run_summary`：生成流程总结
 - `resolve_oa_url`：获取流程链接
-- `create_oa_draft`：在 OA 中创建流程草稿（固定 isnextflow=0 草稿模式）
+- `create_oa_draft`：在 OA 中创建流程草稿（固定 isnextflow=0 草稿模式）。官方接口 `userid` 使用当前登录用户在 `hrmresource` 中的数字 ID，不直接传登录名。
 - `execute_safe_query`：在 OA 数据库中执行只读数据统计与分析（五层安全守卫拦截 + LIMIT 100 截断）
-- `get_workflow_schema`：获取流程表单定义与字段选项（支持自动匹配 workflow_id 或名称搜索，提供下拉框候选项列表）
+- `list_creatable_workflows`：查询当前用户可创建的流程。名称明确时按流程名筛选，含糊时返回全部创建权限
+- `get_workflow_schema`：确认当前用户有创建权限后，读取表单字段与下拉选项。没有权限时不返回表单样式
 
 系统种子智能体矩阵：
 - `oa_assist`（OA 辅助办理助手，系统默认启用）：覆盖待办检索、表单详情、审批轨迹、批复意见起草与直达链接

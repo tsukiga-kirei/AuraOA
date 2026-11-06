@@ -9,6 +9,33 @@ import (
 	"testing"
 )
 
+func TestParseCreatableWorkflowList(t *testing.T) {
+	items, err := parseCreatableWorkflowList([]byte(`[{"formId":"-428","workflowId":"2810","workflowName":"RB010差旅申请流程","workflowTypeId":"42","workflowTypeName":"日常办公-财务类"}]`))
+	if err != nil {
+		t.Fatalf("解析数组失败: %v", err)
+	}
+	if len(items) != 1 || items[0].WorkflowID != "2810" || items[0].WorkflowName != "RB010差旅申请流程" {
+		t.Fatalf("解析结果不符: %+v", items)
+	}
+
+	empty, err := parseCreatableWorkflowList([]byte(`[]`))
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("空列表应成功，得到 %v %v", empty, err)
+	}
+
+	if _, err := parseCreatableWorkflowList([]byte(`{"code":-1,"msg":"解密错误"}`)); err == nil {
+		t.Fatal("失败响应应返回错误")
+	}
+
+	matched := filterCreatableWorkflows([]CreatableWorkflow{
+		{WorkflowID: "2810", WorkflowName: "RB010差旅申请流程", WorkflowTypeName: "日常办公-财务类"},
+		{WorkflowID: "551", WorkflowName: "RF007机房环境管理流程", WorkflowTypeName: "日常办公-信息类"},
+	}, "差旅")
+	if len(matched) != 1 || matched[0].WorkflowID != "2810" {
+		t.Fatalf("名称筛选不符: %+v", matched)
+	}
+}
+
 func TestParseRSAPublicKeyAndEncrypt(t *testing.T) {
 	// 1. 生成测试 RSA 密钥对
 	privKey, err := rsa.GenerateKey(rand.Reader, 1024)

@@ -15,7 +15,7 @@ type ToolSpec struct {
 	Parameters  map[string]interface{} `json:"parameters"`
 }
 
-// BuiltinTools 一期内置的 10 大系统工具规格清单
+// BuiltinTools 内置系统工具规格。新增工具必须同时加入 GetAllToolSpecs，能力装配和对话运行时都读那份有序列表。
 var BuiltinTools = map[string]ToolSpec{
 	"list_my_todos": {
 		Code:        "list_my_todos",
@@ -312,10 +312,31 @@ var BuiltinTools = map[string]ToolSpec{
 			"required": []string{"sql"},
 		},
 	},
+	"list_creatable_workflows": {
+		Code:        "list_creatable_workflows",
+		Name:        "查询可创建流程",
+		Description: "查询当前登录用户在 OA 中有权新建的流程。流程名称明确时传 workflow_name；名称含糊或需要查看全部权限时不传条件。确认有权限后，再调用 get_workflow_schema 读取表单样式。",
+		UIKind:      "creatable_workflow_list",
+		OARequired:  true,
+		Risk:        "read",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"workflow_id": map[string]interface{}{
+					"type":        "string",
+					"description": "流程定义 ID。传入后只判断该流程当前用户能否创建",
+				},
+				"workflow_name": map[string]interface{}{
+					"type":        "string",
+					"description": "流程名称关键词，如 '差旅'、'领用'。不传则返回当前用户全部可创建流程",
+				},
+			},
+		},
+	},
 	"get_workflow_schema": {
 		Code:        "get_workflow_schema",
 		Name:        "获取流程表单定义与字段选项",
-		Description: "查询指定流程（workflow_id 或流程名称关键词）的表单字段结构、中文标签、字段类型以及下拉选择框（Select）的完整候选项列表。在填单前用于主动了解表单字段并为用户匹配合适选项。",
+		Description: "在确认当前用户有权创建该流程之后，读取表单字段结构、中文标签、字段类型以及下拉选择框的候选项。没有创建权限时不返回表单样式。",
 		UIKind:      "workflow_schema",
 		OARequired:  true,
 		Risk:        "read",
@@ -347,7 +368,8 @@ func (ts ToolSpec) ToToolDefinition() ai.ToolDefinition {
 	}
 }
 
-// GetAllToolSpecs 返回按稳定顺序排列的内置工具规格列表
+// GetAllToolSpecs 返回按稳定顺序排列的内置工具规格列表。
+// 能力装配页和对话运行时只认这份列表，漏登记的工具既不能勾选，模型也调用不到。
 func GetAllToolSpecs() []ToolSpec {
 	orderedCodes := []string{
 		"list_my_todos",
@@ -360,6 +382,8 @@ func GetAllToolSpecs() []ToolSpec {
 		"run_audit",
 		"run_summary",
 		"resolve_oa_url",
+		"list_creatable_workflows",
+		"get_workflow_schema",
 		"create_oa_draft",
 		"execute_safe_query",
 	}

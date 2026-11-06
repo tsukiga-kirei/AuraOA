@@ -3671,6 +3671,7 @@ export default {
   "chat.tools.resolve_oa_url": "获取流程链接",
   "chat.tools.create_oa_draft": "创建 OA 流程草稿",
   "chat.tools.execute_safe_query": "执行安全数据查询",
+  "chat.tools.list_creatable_workflows": "查询可创建流程",
   "chat.tools.get_workflow_schema": "获取流程表单定义与字段选项",
   "chat.formConfirm.title": "流程预填信息确认",
   "chat.formConfirm.confirm": "确认创建",

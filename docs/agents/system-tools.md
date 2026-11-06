@@ -34,6 +34,16 @@
 
 `run_*` 立即返回 `job_id` 与状态，由前端再订现有 stream；对话 HTTP 不阻塞到审核结束。
 
+### 填单（默认绑定 `oa_creator`）
+
+| tool_code | 作用 | 依赖 | ui_kind | oa_required |
+|-----------|------|------|---------|-------------|
+| `list_creatable_workflows` | 查询当前用户可创建的流程 | 官方 `getCreateWorkflowList`，人员 ID 取自 `hrmresource` | `creatable_workflow_list` | 是 |
+| `get_workflow_schema` | 有创建权限后读取空白表单字段与下拉选项 | 可创建列表通过后，再 `FetchFieldsByWorkflowID` | `workflow_schema` | 是 |
+| `create_oa_draft` | 创建流程草稿 | 官方 `doCreateRequest`；`userid` 使用当前用户的 `hrmresource.id` | `create_workflow_draft` | 是 |
+
+`GetAllToolSpecs` 必须覆盖 `BuiltinTools` 的每一个键。能力装配页和对话运行时只读取这份列表，未登记的工具不会出现，模型也调用不到。
+
 ## 2. 明确不进一期目录
 
 | 候选 | 原因 |

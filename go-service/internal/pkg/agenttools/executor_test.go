@@ -154,6 +154,25 @@ func (d *draftCreatorAdapter) CreateWorkflowDraft(ctx context.Context, loginID s
 	}, nil
 }
 
+func TestGetAllToolSpecsCoversBuiltinTools(t *testing.T) {
+	specs := GetAllToolSpecs()
+	seen := make(map[string]bool, len(specs))
+	for _, spec := range specs {
+		if seen[spec.Code] {
+			t.Fatalf("系统工具目录重复登记 %s", spec.Code)
+		}
+		seen[spec.Code] = true
+	}
+	for code := range BuiltinTools {
+		if !seen[code] {
+			t.Fatalf("能力装配目录缺少系统工具 %s", code)
+		}
+	}
+	if len(seen) != len(BuiltinTools) {
+		t.Fatalf("目录数量 %d 与内置工具 %d 不一致", len(seen), len(BuiltinTools))
+	}
+}
+
 func TestExecuteCreateOADraft(t *testing.T) {
 	executor := &SystemToolExecutor{}
 	ctx := &ExecutionContext{Ctx: context.Background(), Username: "zhangsan"}
@@ -277,7 +296,7 @@ func TestExecuteGetWorkflowSchema(t *testing.T) {
 	mockAdapter := &mockSchemaAdapter{}
 
 	// 按流程名称搜索并拉取表单选项
-	res, uiKind, err := executor.executeGetWorkflowSchema(`{"workflow_name":"领用"}`, ctx, mockAdapter)
+	res, uiKind, err := executor.executeGetWorkflowSchema(`{"workflow_name":"领用"}`, ctx, nil, mockAdapter)
 	if err != nil {
 		t.Fatalf("executeGetWorkflowSchema failed: %v", err)
 	}
@@ -294,5 +313,59 @@ func TestExecuteGetWorkflowSchema(t *testing.T) {
 	}
 	if mainFields[1].FieldKey != "wplx" || len(mainFields[1].Options) != 2 {
 		t.Fatalf("wplx options not populated properly: %+v", mainFields[1])
+	}
+}
+
+type permissionSchemaAdapter struct {
+	mockSchemaAdapter
+	items []oa.CreatableWorkflow
+}
+
+func (p *permissionSchemaAdapter) ListCreatableWorkflows(context.Context, string, oa.CreatableWorkflowQuery) ([]oa.CreatableWorkflow, error) {
+	return p.items, nil
+}
+
+func TestGetWorkflowSchemaRequiresCreatePermission(t *testing.T) {
+	executor := &SystemToolExecutor{}
+	ctx := &ExecutionContext{Ctx: context.Background(), Username: "zhangsan"}
+
+	denied := &permissionSchemaAdapter{}
+	res, _, err := executor.executeGetWorkflowSchema(`{"workflow_name":"领用"}`, ctx, nil, denied)
+	if err != nil {
+		t.Fatalf("无权时应返回未匹配结果，而不是错误: %v", err)
+	}
+	if res.(map[string]interface{})["matched"] != false {
+		t.Fatal("没有创建权限时不应读取表单")
+	}
+	if _, ok := res.(map[string]interface{})["main_fields"]; ok {
+		t.Fatal("没有创建权限时不应返回表单字段")
+	}
+
+	allowed := &permissionSchemaAdapter{items: []oa.CreatableWorkflow{{
+		WorkflowID:   "102",
+		WorkflowName: "物品领用申请",
+	}}}
+	res, _, err = executor.executeGetWorkflowSchema(`{"workflow_name":"领用"}`, ctx, nil, allowed)
+	if err != nil {
+		t.Fatalf("有权限时读取表单失败: %v", err)
+	}
+	if res.(map[string]interface{})["workflow_id"] != "102" {
+		t.Fatalf("应使用权限列表中的流程，得到 %v", res)
+	}
+
+	multiple := &permissionSchemaAdapter{items: []oa.CreatableWorkflow{
+		{WorkflowID: "102", WorkflowName: "物品领用申请"},
+		{WorkflowID: "103", WorkflowName: "固定资产领用"},
+	}}
+	res, _, err = executor.executeGetWorkflowSchema(`{"workflow_name":"领用"}`, ctx, nil, multiple)
+	if err != nil {
+		t.Fatalf("多条匹配不应报错: %v", err)
+	}
+	got := res.(map[string]interface{})
+	if got["matched"] != false {
+		t.Fatal("多条可创建流程时应先让用户确认，不读取表单")
+	}
+	if len(got["workflows"].([]map[string]string)) != 2 {
+		t.Fatalf("应返回两条候选流程，得到 %#v", got["workflows"])
 	}
 }

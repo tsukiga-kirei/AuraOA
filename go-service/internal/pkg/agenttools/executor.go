@@ -137,8 +137,10 @@ func (e *SystemToolExecutor) Execute(toolCode string, argumentsJSON string, exec
 		return e.executeCreateOADraft(argumentsJSON, execCtx, oaConn, adapter)
 	case "execute_safe_query":
 		return e.executeSafeQuery(argumentsJSON, execCtx, oaConn)
+	case "list_creatable_workflows":
+		return e.executeListCreatableWorkflows(argumentsJSON, execCtx, oaConn, adapter)
 	case "get_workflow_schema":
-		return e.executeGetWorkflowSchema(argumentsJSON, execCtx, adapter)
+		return e.executeGetWorkflowSchema(argumentsJSON, execCtx, oaConn, adapter)
 	default:
 		return nil, spec.UIKind, fmt.Errorf("工具 %s 暂未实现", toolCode)
 	}
@@ -911,6 +913,7 @@ func (e *SystemToolExecutor) executeCreateOADraft(
 		return nil, "create_workflow_draft", fmt.Errorf("缺少流程定义 ID (workflow_id)")
 	}
 
+	// 这里传登录账号。适配器会到 hrmresource 查出人员数字 ID，再加密后调用官方接口。
 	loginID := strings.TrimSpace(execCtx.Username)
 	if loginID == "" && oaConn != nil {
 		loginID = strings.TrimSpace(oaConn.WeaverDefaultUser)
@@ -1061,10 +1064,73 @@ func (e *SystemToolExecutor) executeSafeQuery(
 	return res, "data_query_table", nil
 }
 
-// 13. 获取流程表单定义与字段选项（支持自动匹配 workflow_id 或名称搜索）
+func toolContext(execCtx *ExecutionContext) context.Context {
+	if execCtx != nil && execCtx.Ctx != nil {
+		return execCtx.Ctx
+	}
+	return context.Background()
+}
+
+func currentOAAccount(execCtx *ExecutionContext, oaConn *model.OADatabaseConnection) string {
+	account := ""
+	if execCtx != nil {
+		account = strings.TrimSpace(execCtx.Username)
+	}
+	if account == "" && oaConn != nil {
+		account = strings.TrimSpace(oaConn.WeaverDefaultUser)
+	}
+	return account
+}
+
+func creatableWorkflowPayload(items []oa.CreatableWorkflow) []map[string]string {
+	payload := make([]map[string]string, 0, len(items))
+	for _, item := range items {
+		payload = append(payload, map[string]string{
+			"workflow_id":        item.WorkflowID,
+			"workflow_name":      item.WorkflowName,
+			"workflow_type_id":   item.WorkflowTypeID,
+			"workflow_type_name": item.WorkflowTypeName,
+			"form_id":            item.FormID,
+		})
+	}
+	return payload
+}
+
+// 13. 查询当前用户可创建的流程。名称明确时按名称筛选，含糊时返回全部权限。
+func (e *SystemToolExecutor) executeListCreatableWorkflows(
+	argsJSON string,
+	execCtx *ExecutionContext,
+	oaConn *model.OADatabaseConnection,
+	adapter oa.OAAdapter,
+) (interface{}, string, error) {
+	lister, ok := adapter.(oa.CreatableWorkflowLister)
+	if !ok {
+		return nil, "creatable_workflow_list", fmt.Errorf("当前 OA 适配器不支持查询可创建流程")
+	}
+	var args struct {
+		WorkflowID   string `json:"workflow_id"`
+		WorkflowName string `json:"workflow_name"`
+	}
+	_ = json.Unmarshal([]byte(argsJSON), &args)
+
+	items, err := lister.ListCreatableWorkflows(toolContext(execCtx), currentOAAccount(execCtx, oaConn), oa.CreatableWorkflowQuery{
+		WorkflowID:   strings.TrimSpace(args.WorkflowID),
+		WorkflowName: strings.TrimSpace(args.WorkflowName),
+	})
+	if err != nil {
+		return nil, "creatable_workflow_list", err
+	}
+	return map[string]interface{}{
+		"total":     len(items),
+		"workflows": creatableWorkflowPayload(items),
+	}, "creatable_workflow_list", nil
+}
+
+// 14. 获取流程表单定义与字段选项。先确认当前用户有创建权限，再读取表单样式。
 func (e *SystemToolExecutor) executeGetWorkflowSchema(
 	argsJSON string,
 	execCtx *ExecutionContext,
+	oaConn *model.OADatabaseConnection,
 	adapter oa.OAAdapter,
 ) (interface{}, string, error) {
 	var args struct {
@@ -1081,12 +1147,44 @@ func (e *SystemToolExecutor) executeGetWorkflowSchema(
 		return nil, "workflow_schema", fmt.Errorf("当前 OA 适配器不支持检索流程定义与表单字段")
 	}
 
-	ctx := context.Background()
-	if targetID == "" {
+	ctx := toolContext(execCtx)
+	if lister, supported := adapter.(oa.CreatableWorkflowLister); supported {
+		if targetID == "" && targetName == "" {
+			return nil, "workflow_schema", fmt.Errorf("请提供流程定义 ID (workflow_id) 或流程名称关键词 (workflow_name)")
+		}
+		items, err := lister.ListCreatableWorkflows(ctx, currentOAAccount(execCtx, oaConn), oa.CreatableWorkflowQuery{
+			WorkflowID:   targetID,
+			WorkflowName: targetName,
+		})
+		if err != nil {
+			return nil, "workflow_schema", err
+		}
+		if len(items) == 0 {
+			message := "当前用户没有可创建的匹配流程，不能继续读取表单"
+			if targetName != "" {
+				message = fmt.Sprintf("当前用户不能创建名称包含「%s」的流程", targetName)
+			} else if targetID != "" {
+				message = fmt.Sprintf("当前用户无权创建流程 %s", targetID)
+			}
+			return map[string]interface{}{
+				"matched":   false,
+				"message":   message,
+				"workflows": []map[string]string{},
+			}, "workflow_schema", nil
+		}
+		if len(items) > 1 {
+			return map[string]interface{}{
+				"matched":   false,
+				"message":   "匹配到多条当前用户可创建的流程，请确认具体流程后再读取表单",
+				"workflows": creatableWorkflowPayload(items),
+			}, "workflow_schema", nil
+		}
+		targetID = items[0].WorkflowID
+		targetName = items[0].WorkflowName
+	} else if targetID == "" {
 		if targetName == "" {
 			return nil, "workflow_schema", fmt.Errorf("请提供流程定义 ID (workflow_id) 或流程名称关键词 (workflow_name)")
 		}
-		// 检索流程定义
 		defs, err := selector.SearchWorkflowDefinitions(ctx, targetName)
 		if err != nil {
 			return nil, "workflow_schema", fmt.Errorf("检索流程定义失败: %w", err)

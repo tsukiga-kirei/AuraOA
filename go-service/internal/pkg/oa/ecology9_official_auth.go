@@ -327,18 +327,19 @@ func (s *EcologyOfficialAuthService) GetValidToken(
 
 // CreateRequestInput 泛微 doCreateRequest 报文参数
 type CreateRequestInput struct {
-	WorkflowID   string
-	RequestName  string
-	RequestLevel string // "0": 正常
-	IsNextFlow   string // 固定 "0" 为草稿
-	MainDataJSON string
+	WorkflowID     string
+	RequestName    string
+	RequestLevel   string // "0": 正常
+	IsNextFlow     string // 固定 "0" 为草稿
+	MainDataJSON   string
 	DetailDataJSON string
 }
 
-// DoCreateRequest 调用泛微官方 doCreateRequest 接口创建草稿
+// DoCreateRequest 调用泛微官方 doCreateRequest 接口创建草稿。
+// oaUserID 必须是 hrmresource.id 的十进制字符串，调用方先按当前用户登录名查表，再传入。
 func (s *EcologyOfficialAuthService) DoCreateRequest(
 	ctx context.Context,
-	apiURL, appID, configuredSecret, loginID string,
+	apiURL, appID, configuredSecret, oaUserID string,
 	input *CreateRequestInput,
 ) (string, error) {
 	cached, err := s.GetValidToken(ctx, apiURL, appID, configuredSecret)
@@ -346,10 +347,10 @@ func (s *EcologyOfficialAuthService) DoCreateRequest(
 		return "", fmt.Errorf("获取泛微鉴权 Token 失败: %w", err)
 	}
 
-	// 用 SPK 对当前登录账号进行 RSA 加密
-	encryptedUserID, err := EncryptWithSPK(cached.SPKKey, loginID)
+	// 官方接口的 userid 是人员数字 ID 经服务端公钥加密后的值，不能直接传登录名。
+	encryptedUserID, err := EncryptWithSPK(cached.SPKKey, oaUserID)
 	if err != nil {
-		return "", fmt.Errorf("加密流程申请人工号失败: %w", err)
+		return "", fmt.Errorf("加密泛微人员 ID 失败: %w", err)
 	}
 
 	baseURL := strings.TrimRight(strings.TrimSpace(apiURL), "/")
@@ -433,4 +434,120 @@ func (s *EcologyOfficialAuthService) DoCreateRequest(
 	}
 
 	return reqIDStr, nil
+}
+
+// GetCreateWorkflowList 查询指定人员可创建的流程。
+// oaUserID 是 hrmresource.id。conditionsJSON 为空时不附加筛选，返回该人员的全部可创建流程。
+func (s *EcologyOfficialAuthService) GetCreateWorkflowList(
+	ctx context.Context,
+	apiURL, appID, configuredSecret, oaUserID, conditionsJSON string,
+) ([]CreatableWorkflow, error) {
+	cached, err := s.GetValidToken(ctx, apiURL, appID, configuredSecret)
+	if err != nil {
+		return nil, fmt.Errorf("获取泛微鉴权 Token 失败: %w", err)
+	}
+	encryptedUserID, err := EncryptWithSPK(cached.SPKKey, strings.TrimSpace(oaUserID))
+	if err != nil {
+		return nil, fmt.Errorf("加密泛微人员 ID 失败: %w", err)
+	}
+
+	formData := url.Values{}
+	if strings.TrimSpace(conditionsJSON) != "" {
+		formData.Set("conditions", conditionsJSON)
+	}
+
+	baseURL := strings.TrimRight(strings.TrimSpace(apiURL), "/")
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/api/workflow/paService/getCreateWorkflowList", strings.NewReader(formData.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("构建可创建流程列表请求失败: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
+	req.Header.Set("appid", appID)
+	req.Header.Set("token", cached.Token)
+	req.Header.Set("userid", encryptedUserID)
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("调用可创建流程列表接口失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取可创建流程列表响应失败: %w", err)
+	}
+	return parseCreatableWorkflowList(respBytes)
+}
+
+func parseCreatableWorkflowList(body []byte) ([]CreatableWorkflow, error) {
+	trimmed := strings.TrimSpace(string(body))
+	if trimmed == "" {
+		return nil, errors.New("可创建流程列表响应为空")
+	}
+	if strings.HasPrefix(trimmed, "[") {
+		return decodeCreatableWorkflowRows([]byte(trimmed))
+	}
+
+	var wrapped struct {
+		Code    interface{}     `json:"code"`
+		Status  interface{}     `json:"status"`
+		Msg     string          `json:"msg"`
+		ErrMsg  string          `json:"errMsg"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(body, &wrapped); err != nil {
+		return nil, fmt.Errorf("解析可创建流程列表失败 (%s): %w", truncateOABody(trimmed), err)
+	}
+	if len(wrapped.Data) > 0 && string(wrapped.Data) != "null" {
+		return decodeCreatableWorkflowRows(wrapped.Data)
+	}
+	errMsg := wrapped.ErrMsg
+	if errMsg == "" {
+		errMsg = wrapped.Msg
+	}
+	if errMsg == "" {
+		errMsg = wrapped.Message
+	}
+	if errMsg == "" {
+		errMsg = truncateOABody(trimmed)
+	}
+	return nil, fmt.Errorf("查询可创建流程失败: %s", errMsg)
+}
+
+func decodeCreatableWorkflowRows(raw []byte) ([]CreatableWorkflow, error) {
+	var rows []map[string]interface{}
+	if err := json.Unmarshal(raw, &rows); err != nil {
+		return nil, fmt.Errorf("解析可创建流程列表失败: %w", err)
+	}
+	items := make([]CreatableWorkflow, 0, len(rows))
+	for _, row := range rows {
+		item := CreatableWorkflow{
+			FormID:           oaMapString(row, "formId"),
+			WorkflowID:       oaMapString(row, "workflowId"),
+			WorkflowName:     oaMapString(row, "workflowName"),
+			WorkflowTypeID:   oaMapString(row, "workflowTypeId"),
+			WorkflowTypeName: oaMapString(row, "workflowTypeName"),
+		}
+		if item.WorkflowID == "" {
+			continue
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
+func oaMapString(row map[string]interface{}, key string) string {
+	value, ok := row[key]
+	if !ok || value == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
+}
+
+func truncateOABody(body string) string {
+	if len(body) > 300 {
+		return body[:300] + "..."
+	}
+	return body
 }

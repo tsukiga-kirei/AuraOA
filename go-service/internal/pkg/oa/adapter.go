@@ -170,6 +170,27 @@ type WorkflowDefinitionSelector interface {
 	FetchFieldsByWorkflowID(ctx context.Context, workflowID string) (*ProcessFields, error)
 }
 
+// CreatableWorkflow 当前用户可以新建的流程。
+type CreatableWorkflow struct {
+	FormID           string `json:"form_id"`
+	WorkflowID       string `json:"workflow_id"`
+	WorkflowName     string `json:"workflow_name"`
+	WorkflowTypeID   string `json:"workflow_type_id"`
+	WorkflowTypeName string `json:"workflow_type_name"`
+}
+
+// CreatableWorkflowQuery 可创建流程的筛选条件。都为空时返回当前用户的全部可创建流程。
+type CreatableWorkflowQuery struct {
+	WorkflowID   string
+	WorkflowName string
+}
+
+// CreatableWorkflowLister 查询当前用户在 OA 中有权新建的流程。
+// loginID 是登录账号，由适配器换成人员数字 ID 后再调用官方接口。
+type CreatableWorkflowLister interface {
+	ListCreatableWorkflows(ctx context.Context, loginID string, query CreatableWorkflowQuery) ([]CreatableWorkflow, error)
+}
+
 // CreateWorkflowDraftInput 流程草稿创建入参
 type CreateWorkflowDraftInput struct {
 	WorkflowID   string                 `json:"workflow_id"`
@@ -188,6 +209,7 @@ type CreateWorkflowDraftOutput struct {
 }
 
 // WorkflowDraftCreator 由支持创建流程草稿的 OA 适配器实现。
+// loginID 是当前用户的 OA 登录账号。适配器负责到人员表查出数字 ID，再传给官方接口。
 type WorkflowDraftCreator interface {
 	CreateWorkflowDraft(ctx context.Context, loginID string, draft *CreateWorkflowDraftInput) (*CreateWorkflowDraftOutput, error)
 }

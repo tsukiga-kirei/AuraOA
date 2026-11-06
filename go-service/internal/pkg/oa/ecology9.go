@@ -588,18 +588,56 @@ func (a *Ecology9Adapter) fetchFieldsByForm(ctx context.Context, formID int, mai
 
 // ── CheckUserPermission ────────────────────────────────────
 
-// CheckUserPermission 检查用户在泛微 E9 中是否具有指定流程的审批权限。
-func (a *Ecology9Adapter) CheckUserPermission(ctx context.Context, username string, processType string) (bool, error) {
-	// 1. 通过 loginid 查询 OA 系统内部的数字 ID (id)
-	var e9UserID int
+// lookupHrmResourceID 把当前用户解析成泛微人员数字 ID。
+// 先按 hrmresource.loginid 匹配登录账号；连接上配置的值本身已是数字 ID 时，再按 id 命中。
+func (a *Ecology9Adapter) lookupHrmResourceID(ctx context.Context, account string) (int, error) {
+	account = strings.TrimSpace(account)
+	if account == "" {
+		return 0, fmt.Errorf("缺少当前用户，无法确定泛微人员 ID")
+	}
+
+	id, err := a.scanHrmResourceID(ctx, a.col("loginid")+" = ?", account)
+	if err == nil && id > 0 {
+		return id, nil
+	}
+	if err != nil && !isNoOARow(err) {
+		return 0, fmt.Errorf("查询 OA 人员失败: %w", err)
+	}
+
+	if numericID, convErr := strconv.Atoi(account); convErr == nil && numericID > 0 {
+		id, err = a.scanHrmResourceID(ctx, a.col("id")+" = ?", numericID)
+		if err == nil && id > 0 {
+			return id, nil
+		}
+		if err != nil && !isNoOARow(err) {
+			return 0, fmt.Errorf("查询 OA 人员失败: %w", err)
+		}
+	}
+	return 0, fmt.Errorf("未在 OA 人员表中找到账号 '%s'", account)
+}
+
+func (a *Ecology9Adapter) scanHrmResourceID(ctx context.Context, where string, arg interface{}) (int, error) {
+	var id int
 	err := a.db.WithContext(ctx).
 		Table(a.tableName("hrmresource")).
 		Select(a.col("id")).
-		Where(a.col("loginid")+" = ?", username).
-		Row().Scan(&e9UserID)
+		Where(where, arg).
+		Row().Scan(&id)
+	return id, err
+}
+
+func isNoOARow(err error) bool {
+	return err == sql.ErrNoRows || err == gorm.ErrRecordNotFound
+}
+
+// CheckUserPermission 检查用户在泛微 E9 中是否具有指定流程的审批权限。
+func (a *Ecology9Adapter) CheckUserPermission(ctx context.Context, username string, processType string) (bool, error) {
+	e9UserID, err := a.lookupHrmResourceID(ctx, username)
 	if err != nil {
-		// 如果在 OA 中找不到对应用户，则直接返回无权限
-		return false, nil
+		if strings.Contains(err.Error(), "未在 OA 人员表中找到") || strings.Contains(err.Error(), "缺少当前用户") {
+			return false, nil
+		}
+		return false, err
 	}
 
 	// 2. 查询流程 ID
@@ -1687,7 +1725,7 @@ func (a *Ecology9Adapter) fetchDataShowTitleField(ctx context.Context, mainID in
 	var rows []map[string]interface{}
 	err := a.db.WithContext(ctx).
 		Table(a.tableName("datashowparam")).
-		Select(a.col("searchname") + " AS searchname").
+		Select(a.col("searchname")+" AS searchname").
 		Where(a.col("mainid")+" = ? AND "+a.col("isshowname")+" = ?", mainID, 1).
 		Order(a.col("id") + " ASC").
 		Find(&rows).Error
@@ -1738,7 +1776,7 @@ func (a *Ecology9Adapter) fetchModeCustomBrowserTarget(ctx context.Context, brow
 		var billRows []map[string]interface{}
 		_ = a.db.WithContext(ctx).
 			Table(a.tableName("workflow_bill")).
-			Select(a.col("tablename") + " AS tablename").
+			Select(a.col("tablename")+" AS tablename").
 			Where(a.col("id")+" = ?", formID).
 			Find(&billRows).Error
 		if len(billRows) > 0 {
@@ -2298,7 +2336,6 @@ func cleanSelectColumn(expr string) (string, bool) {
 	}
 	return s, true
 }
-
 
 func isSafeIdentifier(s string) bool {
 	if s == "" {
@@ -3258,13 +3295,12 @@ func (a *Ecology9Adapter) resolveArchivedVisibilityUserID(ctx context.Context, u
 	if username == "" {
 		return nil, nil
 	}
-	var e9UserID int
-	if err := a.db.WithContext(ctx).
-		Table(a.tableName("hrmresource")).
-		Select(a.col("id")).
-		Where(a.col("loginid")+" = ?", username).
-		Row().Scan(&e9UserID); err != nil {
-		return nil, fmt.Errorf("OA 用户 '%s' 不存在", username)
+	e9UserID, err := a.lookupHrmResourceID(ctx, username)
+	if err != nil {
+		if strings.Contains(err.Error(), "未在 OA 人员表中找到") {
+			return nil, fmt.Errorf("OA 用户 '%s' 不存在", username)
+		}
+		return nil, err
 	}
 	return &e9UserID, nil
 }
@@ -4891,6 +4927,85 @@ func (a *Ecology9Adapter) resolveSingleBrowseValueToID(ctx context.Context, brow
 	return raw
 }
 
+// ListCreatableWorkflows 调用泛微官方接口，查询当前用户有权新建的流程。
+// 名称筛选先交给接口的 wfName；接口未命中时再在该用户的全部可创建流程里做包含匹配。
+func (a *Ecology9Adapter) ListCreatableWorkflows(ctx context.Context, loginID string, query CreatableWorkflowQuery) ([]CreatableWorkflow, error) {
+	if a.weaverAPIURL == "" {
+		return nil, fmt.Errorf("未配置泛微接口地址（weaver_api_url）")
+	}
+	if a.weaverAppID == "" {
+		return nil, fmt.Errorf("未配置泛微 appid（weaver_appid）")
+	}
+
+	account := strings.TrimSpace(loginID)
+	if account == "" {
+		account = a.weaverLoginID
+	}
+	oaUserID, err := a.lookupHrmResourceID(ctx, account)
+	if err != nil {
+		return nil, err
+	}
+
+	workflowID := strings.TrimSpace(query.WorkflowID)
+	workflowName := strings.TrimSpace(query.WorkflowName)
+	authSvc := GetEcologyOfficialAuthService()
+	userID := strconv.Itoa(oaUserID)
+
+	if workflowID != "" {
+		return authSvc.GetCreateWorkflowList(ctx, a.weaverAPIURL, a.weaverAppID, a.weaverAppSecret, userID, creatableConditions(workflowID, ""))
+	}
+	if workflowName == "" {
+		return authSvc.GetCreateWorkflowList(ctx, a.weaverAPIURL, a.weaverAppID, a.weaverAppSecret, userID, "")
+	}
+
+	matched, err := authSvc.GetCreateWorkflowList(ctx, a.weaverAPIURL, a.weaverAppID, a.weaverAppSecret, userID, creatableConditions("", workflowName))
+	if err != nil {
+		return nil, err
+	}
+	if narrowed := filterCreatableWorkflows(matched, workflowName); len(narrowed) > 0 {
+		return narrowed, nil
+	}
+	all, err := authSvc.GetCreateWorkflowList(ctx, a.weaverAPIURL, a.weaverAppID, a.weaverAppSecret, userID, "")
+	if err != nil {
+		return nil, err
+	}
+	return filterCreatableWorkflows(all, workflowName), nil
+}
+
+func creatableConditions(workflowID, workflowName string) string {
+	payload := map[string]string{}
+	if workflowID != "" {
+		payload["wfIds"] = workflowID
+	}
+	if workflowName != "" {
+		payload["wfName"] = workflowName
+	}
+	if len(payload) == 0 {
+		return ""
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return ""
+	}
+	return string(raw)
+}
+
+func filterCreatableWorkflows(items []CreatableWorkflow, keyword string) []CreatableWorkflow {
+	keyword = strings.ToLower(strings.TrimSpace(keyword))
+	if keyword == "" {
+		return items
+	}
+	matched := make([]CreatableWorkflow, 0, len(items))
+	for _, item := range items {
+		name := strings.ToLower(item.WorkflowName)
+		typeName := strings.ToLower(item.WorkflowTypeName)
+		if strings.Contains(name, keyword) || strings.Contains(typeName, keyword) {
+			matched = append(matched, item)
+		}
+	}
+	return matched
+}
+
 // CreateWorkflowDraft 在泛微 OA 中创建流程草稿（实现 WorkflowDraftCreator 接口）
 func (a *Ecology9Adapter) CreateWorkflowDraft(
 	ctx context.Context,
@@ -4903,17 +5018,17 @@ func (a *Ecology9Adapter) CreateWorkflowDraft(
 	if a.weaverAppID == "" {
 		return nil, fmt.Errorf("未配置泛微 appid（weaver_appid）")
 	}
-
-	effectiveLoginID := strings.TrimSpace(loginID)
-	if effectiveLoginID == "" {
-		effectiveLoginID = a.weaverLoginID
-	}
-	if effectiveLoginID == "" {
-		effectiveLoginID = "sysadmin"
-	}
-
 	if draft == nil || strings.TrimSpace(draft.WorkflowID) == "" {
 		return nil, fmt.Errorf("流程定义 ID (workflow_id) 不能为空")
+	}
+
+	account := strings.TrimSpace(loginID)
+	if account == "" {
+		account = a.weaverLoginID
+	}
+	oaUserID, err := a.lookupHrmResourceID(ctx, account)
+	if err != nil {
+		return nil, err
 	}
 
 	// 标题规范：{申请人}+{流程名称}+{YYYY-MM-DD}
@@ -4923,7 +5038,7 @@ func (a *Ecology9Adapter) CreateWorkflowDraft(
 		if wfName == "" {
 			wfName = "新流程申请"
 		}
-		reqName = fmt.Sprintf("%s-%s-%s", effectiveLoginID, wfName, apptime.Now().Format("2006-01-02"))
+		reqName = fmt.Sprintf("%s-%s-%s", account, wfName, apptime.Now().Format("2006-01-02"))
 	}
 
 	// 归一化主表字段：将浏览按钮和下拉框的文本标签解析映射到底层 OA 真实 ID
@@ -4953,7 +5068,15 @@ func (a *Ecology9Adapter) CreateWorkflowDraft(
 	}
 
 	authSvc := GetEcologyOfficialAuthService()
-	reqID, err := authSvc.DoCreateRequest(ctx, a.weaverAPIURL, a.weaverAppID, a.weaverAppSecret, effectiveLoginID, &CreateRequestInput{
+	allowed, err := authSvc.GetCreateWorkflowList(ctx, a.weaverAPIURL, a.weaverAppID, a.weaverAppSecret, strconv.Itoa(oaUserID), creatableConditions(strings.TrimSpace(draft.WorkflowID), ""))
+	if err != nil {
+		return nil, err
+	}
+	if len(allowed) == 0 {
+		return nil, fmt.Errorf("当前用户无权创建流程 %s", strings.TrimSpace(draft.WorkflowID))
+	}
+
+	reqID, err := authSvc.DoCreateRequest(ctx, a.weaverAPIURL, a.weaverAppID, a.weaverAppSecret, strconv.Itoa(oaUserID), &CreateRequestInput{
 		WorkflowID:     strings.TrimSpace(draft.WorkflowID),
 		RequestName:    reqName,
 		RequestLevel:   draft.RequestLevel,
@@ -4973,4 +5096,3 @@ func (a *Ecology9Adapter) CreateWorkflowDraft(
 		ProcessURL:  processURL,
 	}, nil
 }
-

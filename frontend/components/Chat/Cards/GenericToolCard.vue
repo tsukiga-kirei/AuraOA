@@ -60,11 +60,22 @@ const isExpanded = ref(true)
       />
     </template>
 
+    <template v-else-if="toolCode === 'list_creatable_workflows' && result && !error">
+      <div class="schema-hint-pill">
+        <FileSearchOutlined style="color: #1677ff; font-size: 13px;" />
+        <span class="schema-hint-title">已核对该用户可创建流程</span>
+        <span class="schema-hint-count">({{ result.total || 0 }} 条)</span>
+      </div>
+    </template>
+
     <template v-else-if="toolCode === 'get_workflow_schema' && result && !error">
       <div class="schema-hint-pill">
         <FileSearchOutlined style="color: #1677ff; font-size: 13px;" />
-        <span class="schema-hint-title">已自查流程字典：{{ result.workflow_name || ('ID: ' + result.workflow_id) }}</span>
-        <span class="schema-hint-count">({{ result.main_fields?.length || 0 }} 个字段)</span>
+        <template v-if="result.matched">
+          <span class="schema-hint-title">已读取表单样式：{{ result.workflow_name || ('ID: ' + result.workflow_id) }}</span>
+          <span class="schema-hint-count">({{ result.main_fields?.length || 0 }} 个字段)</span>
+        </template>
+        <span v-else class="schema-hint-title">{{ result.message || '当前用户不能创建该流程' }}</span>
       </div>
     </template>
 

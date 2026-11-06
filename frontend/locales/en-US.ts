@@ -3641,6 +3641,7 @@ export default {
   "chat.tools.resolve_oa_url": "Resolve process link",
   "chat.tools.create_oa_draft": "Create OA Workflow Draft",
   "chat.tools.execute_safe_query": "Execute Safe Read-only Query",
+  "chat.tools.list_creatable_workflows": "List workflows I can create",
   "chat.tools.get_workflow_schema": "Get Workflow Form Schema & Options",
   "chat.formConfirm.title": "Confirm Form Pre-fill",
   "chat.formConfirm.confirm": "Confirm & Create",
