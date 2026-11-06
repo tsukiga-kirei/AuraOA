@@ -8,7 +8,7 @@
 租户 chat_enabled
     ∩ 智能体已启用且绑定
     ∩ 组织角色 page_permissions 含 /chat
-    ∩ 组织角色智能体授权（空=全部已启用）
+    ∩ 智能体 access_control（全员 / 角色 / 部门 / 人员）
     ∩ 租户 MCP / Skill 大开关
     ∩ OA 流程可见性（读实例时）
     ∩ 当前用户身份（待办只查自己）
@@ -17,7 +17,7 @@
 伪代码：
 
 ```text
-effective_agents = (role_grants.agents 或全部已启用) ∩ enabled_agents
+effective_agents = enabled_agents ∩ agent.access_control（前提：租户开启对话且角色允许 /chat）
 effective_tools  = agent.bindings ∩ tenant MCP/Skill 开关 ∩ enabled
 ```
 
@@ -45,7 +45,7 @@ MCP 工具键、Skill 脚本工具键与系统 `tool_code` 走同一 `effective_
 
 ## 4. 角色叠加
 
-用户多个组织角色时，智能体授权、页面权限均取**并集**。未勾选智能体的角色视为可用全部已启用智能体。工具不再单独授权，由智能体绑定决定。
+用户多个组织角色时，页面权限取**并集**；角色不再维护智能体或工具白名单。智能体使用范围统一由智能体管理中的 `access_control` 控制，角色、部门、人员命中任意一项即可访问，`allow_all=true` 表示全员可用。工具由智能体绑定与租户能力开关决定。
 
 租户管理员若要自己试用对话：必须具备业务角色及 `/chat`（与现网「租户管理员切业务身份」一致），不能用 `tenant_admin` 身份直打业务编排接口。
 

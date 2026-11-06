@@ -37,8 +37,6 @@ type CreateRoleRequest struct {
 	Name            string      `json:"name" binding:"required"`
 	Description     string      `json:"description"`
 	PagePermissions interface{} `json:"page_permissions"` // JSON 数组，页面权限列表
-	AgentCodes      []string    `json:"agent_codes"`
-	ToolCodes       []string    `json:"tool_codes"`
 }
 
 // UpdateRoleRequest 更新组织角色请求（PUT /api/tenant/org/roles/:id）。
@@ -46,8 +44,6 @@ type UpdateRoleRequest struct {
 	Name            string      `json:"name"`
 	Description     string      `json:"description"`
 	PagePermissions interface{} `json:"page_permissions"`
-	AgentCodes      []string    `json:"agent_codes"`
-	ToolCodes       []string    `json:"tool_codes"`
 }
 
 // RoleResponse 组织角色信息响应。
@@ -56,8 +52,6 @@ type RoleResponse struct {
 	Name            string      `json:"name"`
 	Description     string      `json:"description"`
 	PagePermissions interface{} `json:"page_permissions"`
-	AgentCodes      []string    `json:"agent_codes"`
-	ToolCodes       []string    `json:"tool_codes"`
 	IsSystem        bool        `json:"is_system"`
 	CreatedAt       string      `json:"created_at"`
 	UpdatedAt       string      `json:"updated_at"`

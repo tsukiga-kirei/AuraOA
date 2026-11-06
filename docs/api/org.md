@@ -40,7 +40,7 @@ DELETE /api/tenant/org/departments/:id
 
 ## 角色管理
 
-角色的 `page_permissions` 控制可访问页面。规划中的 AI 对话另有智能体/工具再分配字段，见 [`docs/api/agents.md`](./agents.md) 与 [`docs/agents/allocation.md`](../agents/allocation.md)，实现时扩展本模块角色读写接口。
+角色仅通过 `page_permissions` 控制可访问页面，包括 `/chat`。智能体的使用范围统一在智能体管理的 `access_control` 配置，见 [`docs/api/agents.md`](./agents.md)。
 
 ### 获取角色列表
 
@@ -56,7 +56,7 @@ GET /api/tenant/org/roles
 POST /api/tenant/org/roles
 ```
 
-请求体支持：`name`, `description`, `page_permissions[]`, `agent_codes[]`。
+请求体支持：`name`, `description`, `page_permissions[]`。
 
 ---
 
@@ -66,7 +66,7 @@ POST /api/tenant/org/roles
 PUT /api/tenant/org/roles/:id
 ```
 
-请求体支持：`name`, `description`, `page_permissions[]`, `agent_codes[]`。只授权智能体；不选表示该角色可用全部已启用智能体。
+请求体支持：`name`, `description`, `page_permissions[]`。
 
 ---
 
@@ -132,6 +132,6 @@ GET /api/tenant/org/members/import-template
 
 下载成员导入 Excel 模板文件。
 
-## 智能体与工具再分配（2026-09-05）
+## 智能体使用权限
 
-角色创建、更新与查询包含 `agent_codes: string[]`。业务用户还需 `page_permissions` 包含 `/chat`。不选智能体表示可用全部已启用智能体；多角色取授权并集。工具、MCP、Skill 由智能体绑定决定。参见 [智能体接口](./agents.md)。
+角色创建、更新与查询不再包含 `agent_codes`、`tool_codes`。业务用户需 `page_permissions` 包含 `/chat`；可用智能体由启用状态及 `access_control` 决定。历史角色授权表保留但不再读写，无须清理旧授权记录。工具、MCP、Skill 由智能体绑定和租户开关决定。参见 [智能体接口](./agents.md)。

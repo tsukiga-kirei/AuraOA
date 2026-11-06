@@ -11,7 +11,7 @@ import (
 	"auraoa/go-service/internal/repository"
 )
 
-// AgentPermissionService 计算系统管理员配额、租户启用状态、组织角色授权等多层求交后的有效智能体与有效工具集
+// AgentPermissionService 根据租户开关、角色页面权限和智能体使用范围计算有效智能体与工具集
 type AgentPermissionService struct {
 	agentRepo  *repository.AgentRepo
 	tenantRepo *repository.TenantRepo
@@ -54,12 +54,10 @@ func (s *AgentPermissionService) CalculateEffectivePermissions(ctx context.Conte
 	}
 
 	// 2. 获取用户的所有组织角色
-	var roleIDs []uuid.UUID
 	chatPageAllowed := false
 	member, err := s.orgRepo.FindByUserAndTenant(userID, tenantID)
 	if err == nil && member != nil {
 		for _, r := range member.Roles {
-			roleIDs = append(roleIDs, r.ID)
 			for _, page := range repository.ParseJSONSlice(r.PagePermissions) {
 				if page == "/chat" {
 					chatPageAllowed = true
@@ -72,33 +70,16 @@ func (s *AgentPermissionService) CalculateEffectivePermissions(ctx context.Conte
 		return &EffectivePermissions{Tools: make(map[string]bool)}, nil
 	}
 
-	// 3. 组织角色授予的智能体；任一角色未勾选则视为该角色可用全部已启用智能体。
-	grantedAgentCodes, err := s.agentRepo.ListRoleAgentGrants(roleIDs)
-	if err != nil {
-		return nil, err
-	}
-	roleAgentSet := make(map[string]bool)
-	for _, code := range grantedAgentCodes {
-		roleAgentSet[code] = true
-	}
-
-	// 4. 有效智能体 = 角色授权 ∩ 已启用
+	// 3. 智能体使用范围统一由 access_control 决定，不再读取历史角色白名单。
 	allAgents, err := s.agentRepo.ListAgentsByTenant(tenantID)
 	if err != nil {
 		return nil, err
-	}
-	if len(roleAgentSet) == 0 {
-		for _, ag := range allAgents {
-			if ag.Enabled {
-				roleAgentSet[ag.AgentCode] = true
-			}
-		}
 	}
 
 	var effectiveAgents []model.AgentDefinition
 	effectiveTools := make(map[string]bool)
 	for _, ag := range allAgents {
-		if !ag.Enabled || !roleAgentSet[ag.AgentCode] {
+		if !ag.Enabled {
 			continue
 		}
 		if !agentAccessControlAllows(ag.AccessControl, member) {
@@ -154,7 +135,7 @@ func (s *AgentPermissionService) capabilityAllowed(alloc *model.TenantChatAlloca
 }
 
 // CalculateEffectiveToolsForAgent 计算特定智能体执行时模型可见并允许调用的有效工具集合：
-// effective_tools = 租户配额 ∩ 智能体绑定 ∩ 角色工具 ∩ 启用状态
+// effective_tools = 智能体绑定 ∩ 租户 MCP/Skill 开关 ∩ 启用状态
 func (s *AgentPermissionService) CalculateEffectiveToolsForAgent(ctx context.Context, tenantID, userID uuid.UUID, agent *model.AgentDefinition) (map[string]bool, error) {
 	perms, err := s.CalculateEffectivePermissions(ctx, tenantID, userID)
 	if err != nil {
@@ -168,7 +149,7 @@ func (s *AgentPermissionService) CalculateEffectiveToolsForAgent(ctx context.Con
 		}
 	}
 	if !allowed {
-		return nil, fmt.Errorf("智能体已停用或当前角色没有对话权限")
+		return nil, fmt.Errorf("智能体已停用或当前用户没有使用权限")
 	}
 
 	effective := make(map[string]bool)

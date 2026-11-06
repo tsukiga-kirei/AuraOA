@@ -3691,7 +3691,6 @@ export default {
   "chat.chart.line": "折线图",
   "chat.chart.pie": "饼图",
   "chat.chart.radar": "雷达图",
-  "chat.grantHint": "不选则该角色可使用全部已启用智能体；选中后仅这些智能体可见。工具、MCP 和 Skill 由智能体配置决定。",
   "chat.search.title": "搜索历史",
   "chat.search.kicker": "AI 助理",
   "chat.search.placeholder": "搜索智能体、工具或对话",

@@ -173,7 +173,7 @@ func main() {
 	// 第六步：初始化各业务服务层（Service）
 	authService := service.NewAuthService(userRepo, rdb, db, systemConfigRepo)
 	basicSSOService := service.NewBasicSSOService(tenantRepo, userRepo, authService, rdb)
-	orgService := service.NewOrgService(orgRepo, userRepo, systemConfigRepo, db, agentRepo)
+	orgService := service.NewOrgService(orgRepo, userRepo, systemConfigRepo, db)
 	tenantService := service.NewTenantService(tenantRepo, systemConfigRepo, userRepo, db, invalidationManager)
 	systemConfigService := service.NewSystemConfigService(systemConfigRepo)
 	optionService := service.NewOptionService(optionRepo)

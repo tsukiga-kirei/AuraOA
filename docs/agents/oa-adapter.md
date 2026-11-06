@@ -74,7 +74,7 @@ CheckProcessVisibility(ctx, username, processID) (visible bool, err error)
 
 - 读/写的是 AuraOA 的 `audit_logs`、`process_summary_*` 等。
 - 拉 OA 表单仍走适配器（与工作台同一套 `FetchProcessData`）。
-- 须满足流程可见性，且用户具备对应工作台权限时是否还要再卡一层：默认 **对话工具授权已包含**，不再强制 `page_permissions` 含 `/dashboard`（避免「能对话辅助办但不能进工作台」的角色卡住）。产品若要强绑定，在租户再分配时不要把 `run_audit` 授给无工作台角色。
+- 须满足流程可见性，且用户具备对应工作台权限时是否还要再卡一层：默认 **对话工具授权已包含**，不再强制 `page_permissions` 含 `/dashboard`（避免「能对话辅助办但不能进工作台」的角色卡住）。产品若要强绑定，在智能体使用范围中限制相应角色，并按需配置 `run_audit` 绑定。
 
 ## 7. 新 OA 类型接入清单
 

@@ -69,7 +69,7 @@ Skill 字段：skill_code、name、description、content（最多 64 KB）、ena
 - MCP：mcp:server_code:tool_name，测试发现后可装配。
 
 有效工具 = 租户 MCP/Skill 开关 ∩ 智能体绑定 ∩ 启用状态。
-有效智能体 = 组织角色授权 ∩ 智能体人员访问控制 (`access_control`) ∩ 启用状态。组织角色只再分配智能体（agent_codes）；不选智能体表示可用全部已启用智能体。用户同时需要 /chat 页面权限。
+有效智能体 = 智能体访问控制 (`access_control`) ∩ 启用状态。用户同时需要 `/chat` 页面权限。组织角色不再配置 `agent_codes` / `tool_codes`；历史角色授权记录不参与鉴权。使用范围只在智能体管理中配置。
 租户管理员默认拥有 `/admin/tenant/agents`。Token 配额小于 0 表示不限制。
 
 ## MCP 实现范围

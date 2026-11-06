@@ -24,7 +24,7 @@
 ```
 用户发消息（选定 agent_id）
   → 校验 chat_enabled、页面权限、智能体授权
-  → 计算 effective_tools（配额 ∩ 智能体绑定 ∩ 角色工具）
+  → 计算 effective_tools（智能体绑定 ∩ 租户 MCP/Skill 开关 ∩ 启用状态）
   → 加载 Skills 正文（仅已绑定且在配额内）
   → 组装 messages + tools 调模型
   → 若 tool_calls：鉴权 → 执行（系统工具 / MCP / Skill 脚本）→ 推 tool_start/tool_result

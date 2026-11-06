@@ -1267,7 +1267,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: {"type":"object","properties":{"name":{"type":"string"},"description":{"type":"string"},"page_permissions":{"type":"array","items":{"type":"string"}},"agent_codes":{"type":"array","items":{"type":"string"},"description":"空数组清空授权"},"tool_codes":{"type":"array","items":{"type":"string"},"description":"空数组清空授权"}}}
+            schema: {"type":"object","properties":{"name":{"type":"string"},"description":{"type":"string"},"page_permissions":{"type":"array","items":{"type":"string"}}}}
       summary: 创建角色
       tags:
       - Org
@@ -1391,7 +1391,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: {"type":"object","properties":{"name":{"type":"string"},"description":{"type":"string"},"page_permissions":{"type":"array","items":{"type":"string"}},"agent_codes":{"type":"array","items":{"type":"string"},"description":"空数组清空授权"},"tool_codes":{"type":"array","items":{"type":"string"},"description":"空数组清空授权"}}}
+            schema: {"type":"object","properties":{"name":{"type":"string"},"description":{"type":"string"},"page_permissions":{"type":"array","items":{"type":"string"}}}}
       summary: 更新角色
       tags:
       - Org
@@ -7385,6 +7385,7 @@ paths:
   "/api/chat/agents":
     "get":
       "summary": "获取当前用户有效智能体"
+      "description": "要求租户开启对话且组织角色拥有 /chat 页面权限；智能体按 enabled 与 access_control 筛选，历史角色智能体白名单不再参与鉴权。"
       "tags":
         - "Chat"
       "security":

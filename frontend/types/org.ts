@@ -13,8 +13,6 @@ export interface OrgRole {
   name: string
   description: string
   page_permissions: string[]
-  agent_codes: string[]
-  tool_codes: string[]
   is_system: boolean
 }
 

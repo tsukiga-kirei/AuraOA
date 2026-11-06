@@ -1,6 +1,6 @@
 # 系统工具目录
 
-系统工具由代码注册，`tool_code` 跨版本稳定。租户能否使用由 **系统管理员配额** 决定，角色能否调用由 **租户再分配** 决定。执行必须走 [OA 适配器](./oa-adapter.md) 或现有 AuraOA Service，禁止直连 OA 库。
+系统工具由代码注册，`tool_code` 跨版本稳定。租户能否使用由 **系统管理员配额** 决定，用户能否调用由 **智能体使用范围与工具绑定** 决定。执行必须走 [OA 适配器](./oa-adapter.md) 或现有 AuraOA Service，禁止直连 OA 库。
 
 每个工具必须同时登记：JSON Schema、适配器/服务依赖、`ui_kind`、权限键（默认等于 `tool_code`）、是否 `oa_required`。
 

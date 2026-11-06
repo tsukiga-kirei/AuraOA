@@ -3661,7 +3661,6 @@ export default {
   "chat.chart.line": "Line Chart",
   "chat.chart.pie": "Pie Chart",
   "chat.chart.radar": "Radar Chart",
-  "chat.grantHint": "Leave empty to allow all enabled agents; selecting some limits the role to those agents. Tools, MCP and skills are configured on the agent.",
   "chat.search.title": "Search history",
   "chat.search.kicker": "AI Assistant",
   "chat.search.placeholder": "Search agents, tools or conversations",
