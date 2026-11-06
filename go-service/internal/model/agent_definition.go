@@ -18,6 +18,7 @@ type AgentDefinition struct {
 	Enabled          bool           `gorm:"not null;default:true" json:"enabled"`
 	IsSystem         bool           `gorm:"not null;default:false" json:"is_system"`
 	ToolHistoryTurns int            `gorm:"not null" json:"tool_history_turns"`
+	MaxLoopSteps     int            `gorm:"not null;default:8" json:"max_loop_steps"`
 	QuickQuestions   datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"quick_questions"`
 	AccessControl    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"access_control"`
 	CreatedAt        time.Time      `json:"created_at"`
@@ -37,4 +38,16 @@ func (a AgentDefinition) EffectiveToolHistoryTurns() int {
 		return 3
 	}
 	return a.ToolHistoryTurns
+}
+
+// EffectiveMaxLoopSteps 返回单轮对话允许的模型步数。未配置时用 8，超出 1-20 时收拢到边界。
+func (a AgentDefinition) EffectiveMaxLoopSteps() int {
+	steps := a.MaxLoopSteps
+	if steps <= 0 {
+		return 8
+	}
+	if steps > 20 {
+		return 20
+	}
+	return steps
 }

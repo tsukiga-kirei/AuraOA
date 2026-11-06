@@ -26,8 +26,6 @@ import (
 	"auraoa/go-service/internal/repository"
 )
 
-const maxAgentLoopSteps = 8
-
 // prepareAgentModelConfig 创建调用配置副本并解密密钥，供对话、标题生成及备用调用复用。
 func prepareAgentModelConfig(cfg *model.AIModelConfig) (*model.AIModelConfig, error) {
 	if cfg == nil {
@@ -195,11 +193,20 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 		return fmt.Errorf("权限计算失败: %w", err)
 	}
 
+	toolConfigs := map[string]map[string]int{}
+	for _, binding := range agent.ToolBindings {
+		cfg := agenttools.ParseToolConfig(binding.Config)
+		if len(cfg) > 0 {
+			toolConfigs[binding.ToolCode] = cfg
+		}
+	}
+	loopSteps := agent.EffectiveMaxLoopSteps()
+
 	// 3. 组装可用工具定义列表 (Tools Definition)
 	var toolDefinitions []ai.ToolDefinition
 	for _, spec := range agenttools.GetAllToolSpecs() {
 		if effectiveTools[spec.Code] {
-			toolDefinitions = append(toolDefinitions, spec.ToToolDefinition())
+			toolDefinitions = append(toolDefinitions, agenttools.AnnotateToolDefinition(spec.ToToolDefinition(), toolConfigs[spec.Code]))
 		}
 	}
 
@@ -454,14 +461,15 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 	var totalTokenUsage ai.TokenUsage
 
 	execCtx := &agenttools.ExecutionContext{
-		Ctx:      taskCtx,
-		GinCtx:   c,
-		TenantID: tenantID,
-		UserID:   userID,
-		Username: username,
+		Ctx:         taskCtx,
+		GinCtx:      c,
+		TenantID:    tenantID,
+		UserID:      userID,
+		Username:    username,
+		ToolConfigs: toolConfigs,
 	}
 
-	for step := 1; step <= maxAgentLoopSteps; step++ {
+	for step := 1; step <= loopSteps; step++ {
 		select {
 		case <-taskCtx.Done():
 			// 任务被主动停止或执行超时
@@ -517,7 +525,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 			},
 		}
 
-		if step == maxAgentLoopSteps {
+		if step == loopSteps {
 			req.Tools = nil
 		}
 		cTask := c.Copy()
@@ -579,7 +587,7 @@ func (s *AgentRuntimeService) ExecuteMessageStream(
 
 		stepThought := turnThought.String()
 
-		if step == maxAgentLoopSteps {
+		if step == loopSteps {
 			if err := s.saveAssistantMessage(sessionID, tenantID, finalContent.String(), finalReasoning.String(), "error", accumulatedRecords, totalTokenUsage, apptime.Now().Sub(startTime).Milliseconds()); err != nil {
 				return err
 			}

@@ -11,6 +11,7 @@ import {
 import TodoListCard from './TodoListCard.vue'
 import FormConfirmCard from './FormConfirmCard.vue'
 import ChartCard from './ChartCard.vue'
+import QueryResultStack from './QueryResultStack.vue'
 
 const props = defineProps<{
   toolCode: string
@@ -50,7 +51,9 @@ const isExpanded = ref(true)
     </template>
 
     <template v-else-if="toolCode === 'execute_safe_query' && result && !error">
+      <QueryResultStack v-if="Array.isArray(result.queries)" :result="result" />
       <ChartCard
+        v-else
         :data="{
           title: result.title,
           type: 'bar',

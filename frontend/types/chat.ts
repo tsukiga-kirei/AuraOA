@@ -110,7 +110,9 @@ export interface AgentDefinitionItem {
   sort_order?: number
   quick_questions?: QuickQuestionItem[]
   tool_codes: string[]
+  tool_configs?: Record<string, Record<string, number>>
   tool_history_turns?: number
+  max_loop_steps?: number
   access_control?: AccessControl
   created_at: string
   updated_at: string
@@ -128,7 +130,9 @@ export interface SaveAgentRequest {
   sort_order?: number
   quick_questions?: QuickQuestionItem[]
   tool_codes: string[]
+  tool_configs?: Record<string, Record<string, number>>
   tool_history_turns?: number
+  max_loop_steps?: number
   access_control?: AccessControl
 }
 

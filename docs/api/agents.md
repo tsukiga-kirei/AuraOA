@@ -29,8 +29,8 @@
 | GET | /api/tenant/agent-sessions | 查询租户下所有用户的智能体会话列表（分页）；支持 keyword、agent_code、username、start_date、end_date 筛选 |
 | GET | /api/tenant/agent-sessions/:id/messages | 查询指定会话的完整消息记录（供抽屉审计回放） |
 
-智能体创建字段：agent_code、name、description、system_prompt、enabled、tool_codes、tool_history_turns（多轮对话中工具执行明细保留轮数，整数，默认 3 轮，0 表示不保留明细；创建、更新、列表及运行时均保留显式 0，只有创建时未传字段才使用默认 3）、quick_questions（快捷提问配置数组：`[{icon, title, prompt, description}]`）、access_control（访问控制对象：`{allow_all: boolean, allowed_roles: string[], allowed_members: string[], allowed_departments: string[]}`，默认 `allow_all: true` 全员可用）。
-更新支持 name、description、system_prompt、enabled、tool_codes、tool_history_turns、quick_questions、access_control，标识码不可变。
+智能体创建字段：agent_code、name、description、system_prompt、enabled、tool_codes、tool_configs（按工具编码保存的运行参数，如 `{"execute_safe_query":{"max_rows":100,"max_queries":5}}`。`max_rows` 为 0 表示不限制行数；待办和我发起的流程使用 `page_size` / `max_page_size`；最新审核和最新总结使用 `max_batch`）、tool_history_turns（多轮对话中工具执行明细保留轮数，整数，默认 3 轮，0 表示不保留明细；创建、更新、列表及运行时均保留显式 0，只有创建时未传字段才使用默认 3）、max_loop_steps（单轮对话最多工具步数，默认 8，范围 1-20，未传或 0 视为 8）、quick_questions（快捷提问配置数组：`[{icon, title, prompt, description}]`）、access_control（访问控制对象：`{allow_all: boolean, allowed_roles: string[], allowed_members: string[], allowed_departments: string[]}`，默认 `allow_all: true` 全员可用）。
+更新支持 name、description、system_prompt、enabled、tool_codes、tool_configs、tool_history_turns、max_loop_steps、quick_questions、access_control，标识码不可变。未传 tool_configs 时保留原有工具配置。
 system_prompt 支持运行时展开的系统变量：`{{current_date}}`、`{{current_time}}`、`{{current_datetime}}`、`{{weekday}}`，以及智能体模块的两段 Generative UI 卡片协议 `{{form_confirm_protocol}}`（`:::form-confirm` 表单确认卡片）与 `{{chart_protocol}}`（`:::chart` 图表卡片），协议正文见 `go-service/internal/service/prompt_ui_protocols.go`。未知占位符原样保留；Skill 正文不做变量展开。
 返回字段额外包含 `tool_history_turns`、`skill_codes`、`mcp_codes`（从 `tool_codes` 解析提取，方便前端快速装配与卡片展示）、`access_control`。
 修改平台智能体时创建租户专属覆盖，平台模板和其他租户保持独立；历史会话按 agent_code 解析本租户当前定义。定义和绑定同事务保存。
@@ -53,7 +53,7 @@ Skill 字段：skill_code、name、description、content（最多 64 KB）、ena
 - `run_summary`：生成流程总结
 - `resolve_oa_url`：获取流程链接
 - `create_oa_draft`：在 OA 中创建流程草稿（固定 isnextflow=0 草稿模式）。官方接口 `userid` 使用当前登录用户在 `hrmresource` 中的数字 ID，不直接传登录名。
-- `execute_safe_query`：在 OA 数据库中执行只读数据统计与分析（五层安全守卫拦截 + LIMIT 100 截断）
+- `execute_safe_query`：在 OA 数据库中执行只读数据统计与分析。单条传 `sql`；多组数据传 `queries: [{sql, title}]`，一次返回每条查询的 JSON。行数和一次最多条数由该智能体的工具配置决定，`max_rows` 为 0 时不截断。
 - `list_creatable_workflows`：查询当前用户可创建的流程。名称明确时按流程名筛选，含糊时返回全部创建权限
 - `get_workflow_schema`：确认当前用户有创建权限后，读取表单字段与下拉选项。没有权限时不返回表单样式
 

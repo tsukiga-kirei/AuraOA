@@ -2,6 +2,7 @@ package agenttools
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"auraoa/go-service/internal/model"
@@ -253,6 +254,36 @@ func TestExecuteSafeQuerySecurityGuards(t *testing.T) {
 		if err == nil {
 			t.Fatalf("包含敏感词的 SQL %s 应被拦截，但未报错", sql)
 		}
+	}
+}
+
+func TestExecuteSafeQueryBatchReportsEachFailure(t *testing.T) {
+	executor := &SystemToolExecutor{}
+	ctx := &ExecutionContext{
+		Ctx:      context.Background(),
+		Username: "user",
+		ToolConfigs: map[string]map[string]int{
+			"execute_safe_query": {"max_queries": 2, "max_rows": 0},
+		},
+	}
+	conn := &model.OADatabaseConnection{Driver: "mysql", OAType: "weaver_e9"}
+
+	_, _, err := executor.executeSafeQuery(`{"queries":[{"sql":"SELECT 1","title":"a"},{"sql":"SELECT 2","title":"b"},{"sql":"SELECT 3","title":"c"}]}`, ctx, conn)
+	if err == nil || !strings.Contains(err.Error(), "一次最多提交 2 条") {
+		t.Fatalf("超出一次查询条数时应拒绝，得到 %v", err)
+	}
+
+	result, _, err := executor.executeSafeQuery(`{"queries":[{"sql":"DELETE FROM hrmresource","title":"非法"},{"sql":"","title":"空语句"}]}`, ctx, conn)
+	if err != nil {
+		t.Fatalf("单条失败应留在结果里，而不是整次失败: %v", err)
+	}
+	payload, ok := result.(map[string]interface{})
+	if !ok || payload["query_count"] != 2 {
+		t.Fatalf("应返回两组结果: %#v", result)
+	}
+	items := payload["queries"].([]map[string]interface{})
+	if items[0]["error"] == nil || items[1]["error"] == nil {
+		t.Fatalf("两条失败都应带 error: %#v", items)
 	}
 }
 

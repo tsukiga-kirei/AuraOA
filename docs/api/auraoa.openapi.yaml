@@ -9480,6 +9480,17 @@ components:
           "type": "integer"
           "description": "工具明细保留轮数；显式0表示不保留，创建未传时默认3，读写及运行时保留0"
           "default": 3
+        "max_loop_steps":
+          "type": "integer"
+          "description": "单轮对话最多工具步数，默认8，范围1-20"
+          "default": 8
+        "tool_configs":
+          "type": "object"
+          "additionalProperties":
+            "type": "object"
+            "additionalProperties":
+              "type": "integer"
+          "description": "按工具编码保存的运行参数，如分页条数、SQL 行数上限"
         "system_prompt":
           "type": "string"
         "tool_codes":
@@ -9633,10 +9644,21 @@ components:
           "type": "integer"
           "description": "工具明细保留轮数；显式0表示不保留，创建未传时默认3，读写及运行时保留0"
           "default": 3
+        "max_loop_steps":
+          "type": "integer"
+          "description": "单轮对话最多工具步数，默认8，范围1-20"
+          "default": 8
         "tool_codes":
           "type": "array"
           "items":
             "type": "string"
+        "tool_configs":
+          "type": "object"
+          "additionalProperties":
+            "type": "object"
+            "additionalProperties":
+              "type": "integer"
+          "description": "按工具编码保存的运行参数"
         "quick_questions":
           "type": "array"
           "items":
@@ -9683,10 +9705,20 @@ components:
         "tool_history_turns":
           "type": "integer"
           "description": "工具明细保留轮数；显式0表示不保留，创建未传时默认3，读写及运行时保留0"
+        "max_loop_steps":
+          "type": "integer"
+          "description": "单轮对话最多工具步数，默认8，范围1-20"
         "tool_codes":
           "type": "array"
           "items":
             "type": "string"
+        "tool_configs":
+          "type": "object"
+          "additionalProperties":
+            "type": "object"
+            "additionalProperties":
+              "type": "integer"
+          "description": "按工具编码保存的运行参数；未传则保留原配置"
         "quick_questions":
           "type": "array"
           "items":

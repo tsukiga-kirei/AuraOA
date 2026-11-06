@@ -22,11 +22,12 @@ import (
 
 // ExecutionContext 工具调用执行上下文
 type ExecutionContext struct {
-	Ctx      context.Context
-	GinCtx   *gin.Context
-	TenantID uuid.UUID
-	UserID   uuid.UUID
-	Username string
+	Ctx         context.Context
+	GinCtx      *gin.Context
+	TenantID    uuid.UUID
+	UserID      uuid.UUID
+	Username    string
+	ToolConfigs map[string]map[string]int
 }
 
 // ToolExecutor 系统工具执行器接口
@@ -164,12 +165,7 @@ func (e *SystemToolExecutor) executeListMyTodos(
 	if args.Page <= 0 {
 		args.Page = 1
 	}
-	if args.PageSize <= 0 {
-		args.PageSize = 20
-	}
-	if args.PageSize > 50 {
-		args.PageSize = 50
-	}
+	args.PageSize = ResolvePageSize(execCtx, "list_my_todos", args.PageSize)
 
 	filter := oa.TodoListPagedFilter{
 		Keyword:    args.Keyword,
@@ -253,12 +249,7 @@ func (e *SystemToolExecutor) executeListMyRequests(
 	if args.Page <= 0 {
 		args.Page = 1
 	}
-	if args.PageSize <= 0 {
-		args.PageSize = 20
-	}
-	if args.PageSize > 50 {
-		args.PageSize = 50
-	}
+	args.PageSize = ResolvePageSize(execCtx, "list_my_requests", args.PageSize)
 	if args.Status == "" {
 		args.Status = "all"
 	}
@@ -507,9 +498,8 @@ func (e *SystemToolExecutor) executeGetLatestAudit(
 		return nil, "audit_result", fmt.Errorf("无法校验 OA 流程访问权限")
 	}
 
-	// 限制单次批量最大查询 50 条，防止超载
-	if len(targetIDs) > 50 {
-		targetIDs = targetIDs[:50]
+	if limit := ResolveBatchLimit(execCtx, "get_latest_audit"); len(targetIDs) > limit {
+		targetIDs = targetIDs[:limit]
 	}
 
 	// 单条流程查询，保持与之前完全一致的 DTO 结构，向后兼容
@@ -625,8 +615,8 @@ func (e *SystemToolExecutor) executeGetLatestSummary(
 		return nil, "summary_result", fmt.Errorf("无法校验 OA 流程访问权限")
 	}
 
-	if len(targetIDs) > 50 {
-		targetIDs = targetIDs[:50]
+	if limit := ResolveBatchLimit(execCtx, "get_latest_summary"); len(targetIDs) > limit {
+		targetIDs = targetIDs[:limit]
 	}
 
 	if len(targetIDs) == 1 {
@@ -945,7 +935,12 @@ func (e *SystemToolExecutor) executeCreateOADraft(
 	return result, "create_workflow_draft", nil
 }
 
-// 12. 执行安全数据查询
+type safeQueryItem struct {
+	SQL   string `json:"sql"`
+	Title string `json:"title"`
+}
+
+// 12. 执行安全数据查询。单条 sql 保持原来的扁平结果；queries 一次返回多组 JSON。
 func (e *SystemToolExecutor) executeSafeQuery(
 	argsJSON string,
 	execCtx *ExecutionContext,
@@ -956,88 +951,103 @@ func (e *SystemToolExecutor) executeSafeQuery(
 	}
 
 	var args struct {
-		SQL   string `json:"sql"`
-		Title string `json:"title"`
+		SQL     string          `json:"sql"`
+		Title   string          `json:"title"`
+		Queries []safeQueryItem `json:"queries"`
 	}
 	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
 		return nil, "data_query_table", fmt.Errorf("解析参数失败: %w", err)
 	}
 
-	rawSQL := strings.TrimSpace(args.SQL)
-	if rawSQL == "" {
-		return nil, "data_query_table", fmt.Errorf("SQL 查询语句不能为空")
+	if len(args.Queries) > 0 {
+		return e.executeSafeQueryBatch(args.Queries, execCtx, oaConn)
 	}
 
-	// 1. 五层安全拦截
-	// 层级一：去除首尾分号后检查是否以 SELECT 开头
-	cleanSQL := strings.TrimRight(rawSQL, ";")
-	cleanSQL = strings.TrimSpace(cleanSQL)
-
-	upper := strings.ToUpper(cleanSQL)
-	if !strings.HasPrefix(upper, "SELECT") || (len(upper) > 6 && upper[6] != ' ' && upper[6] != '\t' && upper[6] != '\n') {
-		return nil, "data_query_table", fmt.Errorf("安全守卫拦截：仅允许执行 SELECT 只读查询语句")
+	result, err := e.runOneSafeQuery(oaConn, execCtx, args.SQL, args.Title)
+	if err != nil {
+		return nil, "data_query_table", err
 	}
+	return result, "data_query_table", nil
+}
 
-	// 层级二：严禁包含增删改查以外的 DML/DDL 关键字
-	if forbiddenDMLRegex.MatchString(cleanSQL) {
-		return nil, "data_query_table", fmt.Errorf("安全守卫拦截：查询语句中包含禁止的 DDL/DML 关键字")
+func (e *SystemToolExecutor) executeSafeQueryBatch(
+	queries []safeQueryItem,
+	execCtx *ExecutionContext,
+	oaConn *model.OADatabaseConnection,
+) (interface{}, string, error) {
+	limit := ResolveMaxQueries(execCtx)
+	if len(queries) > limit {
+		return nil, "data_query_table", fmt.Errorf("一次最多提交 %d 条 SQL，请减少后再查", limit)
 	}
+	items := make([]map[string]interface{}, 0, len(queries))
+	for i, query := range queries {
+		item, err := e.runOneSafeQuery(oaConn, execCtx, query.SQL, query.Title)
+		if err != nil {
+			title := strings.TrimSpace(query.Title)
+			if title == "" {
+				title = fmt.Sprintf("查询 %d", i+1)
+			}
+			items = append(items, map[string]interface{}{
+				"title": title,
+				"sql":   strings.TrimSpace(query.SQL),
+				"error": err.Error(),
+			})
+			continue
+		}
+		items = append(items, item)
+	}
+	return map[string]interface{}{
+		"query_count": len(items),
+		"queries":     items,
+	}, "data_query_table", nil
+}
 
-	// 层级三：严禁包含 SQL 注释符（防绕过注入）
-	if strings.Contains(cleanSQL, "--") || strings.Contains(cleanSQL, "/*") || strings.Contains(cleanSQL, "*/") {
-		return nil, "data_query_table", fmt.Errorf("安全守卫拦截：禁止在 SQL 查询中使用注释符号（-- 或 /* */）")
+// runOneSafeQuery 执行一条只读 SQL。守卫失败或数据库失败都返回错误，由调用方决定是整次失败还是记入该条结果。
+func (e *SystemToolExecutor) runOneSafeQuery(
+	oaConn *model.OADatabaseConnection,
+	execCtx *ExecutionContext,
+	rawSQL string,
+	title string,
+) (map[string]interface{}, error) {
+	cleanSQL, err := guardReadOnlySQL(rawSQL)
+	if err != nil {
+		return nil, err
 	}
-
-	// 层级四：敏感凭证表与字段黑名单
-	if sensitiveWordsRegex.MatchString(cleanSQL) {
-		return nil, "data_query_table", fmt.Errorf("安全守卫拦截：禁止查询包含密码、令牌或密钥等敏感字段")
-	}
-
-	// 层级五：强制行数限制（100 行截断保护）
-	// 根据数据库方言使用子查询包裹，杜绝全表扫描与巨量输出
-	var wrappedSQL string
-	if oaConn.Driver == "oracle" {
-		wrappedSQL = fmt.Sprintf("SELECT * FROM (%s) safe_sub WHERE ROWNUM <= 100", cleanSQL)
-	} else {
-		wrappedSQL = fmt.Sprintf("SELECT * FROM (%s) AS safe_sub LIMIT 100", cleanSQL)
-	}
+	maxRows := ResolveMaxRows(execCtx)
+	wrappedSQL := WrapSafeSQL(oaConn.Driver, cleanSQL, maxRows)
 
 	db, err := e.oaConnections.GetDB(execCtx.Ctx, oaConn.OAType, oaConn)
 	if err != nil {
-		return nil, "data_query_table", fmt.Errorf("获取 OA 数据库连接失败: %w", err)
+		return nil, fmt.Errorf("获取 OA 数据库连接失败: %w", err)
 	}
 
-	// 执行只读查询，超时时间 10 秒
 	queryCtx, cancel := context.WithTimeout(execCtx.Ctx, 10*time.Second)
 	defer cancel()
 
 	rows, err := db.WithContext(queryCtx).Raw(wrappedSQL).Rows()
 	if err != nil {
-		return nil, "data_query_table", fmt.Errorf("执行 SQL 查询失败: %w", err)
+		return nil, fmt.Errorf("执行 SQL 查询失败: %w", err)
 	}
 	defer rows.Close()
 
 	cols, err := rows.Columns()
 	if err != nil {
-		return nil, "data_query_table", fmt.Errorf("读取列信息失败: %w", err)
+		return nil, fmt.Errorf("读取列信息失败: %w", err)
 	}
 
 	var results []map[string]interface{}
 	for rows.Next() {
-		// 创建动态切片承载列值
 		values := make([]interface{}, len(cols))
 		valuePtrs := make([]interface{}, len(cols))
 		for i := range cols {
 			valuePtrs[i] = &values[i]
 		}
 		if scanErr := rows.Scan(valuePtrs...); scanErr != nil {
-			return nil, "data_query_table", fmt.Errorf("扫描查询数据行失败: %w", scanErr)
+			return nil, fmt.Errorf("扫描查询数据行失败: %w", scanErr)
 		}
-
 		rowMap := make(map[string]interface{})
 		for i, colName := range cols {
 			val := values[i]
-			// 如果是字节数组转成字符串，便于 JSON 序列化
 			if b, ok := val.([]byte); ok {
 				rowMap[colName] = string(b)
 			} else {
@@ -1047,21 +1057,40 @@ func (e *SystemToolExecutor) executeSafeQuery(
 		results = append(results, rowMap)
 	}
 
-	title := strings.TrimSpace(args.Title)
-	if title == "" {
-		title = "OA 业务数据查询结果"
+	displayTitle := strings.TrimSpace(title)
+	if displayTitle == "" {
+		displayTitle = "OA 业务数据查询结果"
 	}
-
-	res := map[string]interface{}{
-		"title":      title,
+	return map[string]interface{}{
+		"title":      displayTitle,
 		"columns":    cols,
 		"rows":       results,
 		"total_rows": len(results),
 		"sql":        cleanSQL,
-		"truncated":  len(results) >= 100,
-	}
+		"truncated":  maxRows > 0 && len(results) >= maxRows,
+	}, nil
+}
 
-	return res, "data_query_table", nil
+// guardReadOnlySQL 对一条 SQL 做五层只读守卫，通过后返回去掉末尾分号的语句。
+func guardReadOnlySQL(rawSQL string) (string, error) {
+	cleanSQL := strings.TrimSpace(strings.TrimRight(strings.TrimSpace(rawSQL), ";"))
+	if cleanSQL == "" {
+		return "", fmt.Errorf("SQL 查询语句不能为空")
+	}
+	upper := strings.ToUpper(cleanSQL)
+	if !strings.HasPrefix(upper, "SELECT") || (len(upper) > 6 && upper[6] != ' ' && upper[6] != '\t' && upper[6] != '\n') {
+		return "", fmt.Errorf("安全守卫拦截：仅允许执行 SELECT 只读查询语句")
+	}
+	if forbiddenDMLRegex.MatchString(cleanSQL) {
+		return "", fmt.Errorf("安全守卫拦截：查询语句中包含禁止的 DDL/DML 关键字")
+	}
+	if strings.Contains(cleanSQL, "--") || strings.Contains(cleanSQL, "/*") || strings.Contains(cleanSQL, "*/") {
+		return "", fmt.Errorf("安全守卫拦截：禁止在 SQL 查询中使用注释符号（-- 或 /* */）")
+	}
+	if sensitiveWordsRegex.MatchString(cleanSQL) {
+		return "", fmt.Errorf("安全守卫拦截：禁止查询包含密码、令牌或密钥等敏感字段")
+	}
+	return cleanSQL, nil
 }
 
 func toolContext(execCtx *ExecutionContext) context.Context {

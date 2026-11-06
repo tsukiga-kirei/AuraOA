@@ -46,7 +46,7 @@ var BuiltinTools = map[string]ToolSpec{
 				},
 				"page_size": map[string]interface{}{
 					"type":        "integer",
-					"description": "每页记录条数，默认 20，最大 50",
+					"description": "每页记录条数。未传时使用该智能体配置的默认条数，且不超过配置的单页上限",
 					"default":     20,
 				},
 			},
@@ -79,7 +79,7 @@ var BuiltinTools = map[string]ToolSpec{
 				},
 				"page_size": map[string]interface{}{
 					"type":        "integer",
-					"description": "每页记录条数，默认 20，最大 50",
+					"description": "每页记录条数。未传时使用该智能体配置的默认条数，且不超过配置的单页上限",
 					"default":     20,
 				},
 			},
@@ -293,7 +293,7 @@ var BuiltinTools = map[string]ToolSpec{
 	"execute_safe_query": {
 		Code:        "execute_safe_query",
 		Name:        "执行安全数据查询",
-		Description: "在 OA 数据库中执行只读的数据统计与分析 SELECT SQL 查询。系统内置五层安全守卫拦截（仅限 SELECT、严禁增删改与注释符、敏感表黑名单、强制 LIMIT 100 截断），返回二维结构化数据供分析及表格渲染。",
+		Description: "在 OA 数据库中执行只读的数据统计与分析 SELECT SQL 查询。系统内置五层安全守卫拦截（仅限 SELECT、严禁增删改与注释符、敏感表黑名单、按智能体配置限制行数）。单条查询传 sql；需要多组数据时在 queries 中一次提交多条 SELECT，返回每条查询的 JSON 结果。",
 		UIKind:      "data_query_table",
 		OARequired:  true,
 		Risk:        "read",
@@ -308,8 +308,25 @@ var BuiltinTools = map[string]ToolSpec{
 					"type":        "string",
 					"description": "查询主题或统计指标说明（可选，如 '本月各部门流程发起数量统计'）",
 				},
+				"queries": map[string]interface{}{
+					"type":        "array",
+					"description": "一次提交多条只读查询。每项包含 sql，可选 title。传入后忽略单独的 sql 字段，并按数组顺序返回结果。",
+					"items": map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"sql": map[string]interface{}{
+								"type":        "string",
+								"description": "一条只读 SELECT 语句",
+							},
+							"title": map[string]interface{}{
+								"type":        "string",
+								"description": "该条查询的标题",
+							},
+						},
+						"required": []string{"sql"},
+					},
+				},
 			},
-			"required": []string{"sql"},
 		},
 	},
 	"list_creatable_workflows": {

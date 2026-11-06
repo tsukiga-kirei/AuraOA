@@ -67,45 +67,51 @@ type QuickQuestionItem struct {
 
 // AgentDefinitionDTO 智能体 DTO
 type AgentDefinitionDTO struct {
-	ID             uuid.UUID           `json:"id"`
-	TenantID       *uuid.UUID          `json:"tenant_id,omitempty"`
-	AgentCode      string              `json:"agent_code"`
-	Name           string              `json:"name"`
-	Description    string              `json:"description"`
-	SystemPrompt   string              `json:"system_prompt"`
-	Enabled        bool                `json:"enabled"`
-	IsSystem       bool                `json:"is_system"`
-	ToolHistoryTurns int               `json:"tool_history_turns"`
-	QuickQuestions []QuickQuestionItem `json:"quick_questions"`
-	ToolCodes      []string            `json:"tool_codes"`
-	AccessControl  datatypes.JSON      `json:"access_control"`
-	CreatedAt      time.Time           `json:"created_at"`
-	UpdatedAt      time.Time           `json:"updated_at"`
+	ID               uuid.UUID                 `json:"id"`
+	TenantID         *uuid.UUID                `json:"tenant_id,omitempty"`
+	AgentCode        string                    `json:"agent_code"`
+	Name             string                    `json:"name"`
+	Description      string                    `json:"description"`
+	SystemPrompt     string                    `json:"system_prompt"`
+	Enabled          bool                      `json:"enabled"`
+	IsSystem         bool                      `json:"is_system"`
+	ToolHistoryTurns int                       `json:"tool_history_turns"`
+	MaxLoopSteps     int                       `json:"max_loop_steps"`
+	QuickQuestions   []QuickQuestionItem       `json:"quick_questions"`
+	ToolCodes        []string                  `json:"tool_codes"`
+	ToolConfigs      map[string]map[string]int `json:"tool_configs"`
+	AccessControl    datatypes.JSON            `json:"access_control"`
+	CreatedAt        time.Time                 `json:"created_at"`
+	UpdatedAt        time.Time                 `json:"updated_at"`
 }
 
 // CreateAgentRequest 创建智能体请求
 type CreateAgentRequest struct {
-	AgentCode        string              `json:"agent_code" binding:"required"`
-	Name             string              `json:"name" binding:"required"`
-	Description      string              `json:"description"`
-	SystemPrompt     string              `json:"system_prompt"`
-	Enabled          bool                `json:"enabled"`
-	ToolHistoryTurns *int                `json:"tool_history_turns"`
-	QuickQuestions   []QuickQuestionItem `json:"quick_questions"`
-	ToolCodes        []string            `json:"tool_codes"`
-	AccessControl    datatypes.JSON      `json:"access_control"`
+	AgentCode        string                    `json:"agent_code" binding:"required"`
+	Name             string                    `json:"name" binding:"required"`
+	Description      string                    `json:"description"`
+	SystemPrompt     string                    `json:"system_prompt"`
+	Enabled          bool                      `json:"enabled"`
+	ToolHistoryTurns *int                      `json:"tool_history_turns"`
+	MaxLoopSteps     *int                      `json:"max_loop_steps"`
+	QuickQuestions   []QuickQuestionItem       `json:"quick_questions"`
+	ToolCodes        []string                  `json:"tool_codes"`
+	ToolConfigs      map[string]map[string]int `json:"tool_configs"`
+	AccessControl    datatypes.JSON            `json:"access_control"`
 }
 
 // UpdateAgentRequest 更新智能体请求
 type UpdateAgentRequest struct {
-	Name             *string              `json:"name"`
-	Description      *string              `json:"description"`
-	SystemPrompt     *string              `json:"system_prompt"`
-	Enabled          *bool                `json:"enabled"`
-	ToolHistoryTurns *int                 `json:"tool_history_turns"`
-	QuickQuestions   *[]QuickQuestionItem `json:"quick_questions"`
-	ToolCodes        *[]string            `json:"tool_codes"`
-	AccessControl    datatypes.JSON       `json:"access_control"`
+	Name             *string                   `json:"name"`
+	Description      *string                   `json:"description"`
+	SystemPrompt     *string                   `json:"system_prompt"`
+	Enabled          *bool                     `json:"enabled"`
+	ToolHistoryTurns *int                      `json:"tool_history_turns"`
+	MaxLoopSteps     *int                      `json:"max_loop_steps"`
+	QuickQuestions   *[]QuickQuestionItem      `json:"quick_questions"`
+	ToolCodes        *[]string                 `json:"tool_codes"`
+	ToolConfigs      map[string]map[string]int `json:"tool_configs"`
+	AccessControl    datatypes.JSON            `json:"access_control"`
 }
 
 // MCPServerDTO MCP 服务器 DTO

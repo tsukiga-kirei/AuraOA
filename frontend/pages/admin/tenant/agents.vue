@@ -187,7 +187,9 @@ const agentForm = ref<SaveAgentRequest>({
   system_prompt: '',
   enabled: true,
   tool_codes: [],
+  tool_configs: {},
   tool_history_turns: 3,
+  max_loop_steps: 8,
   quick_questions: [],
   access_control: emptyAccessControl(),
 })
@@ -311,6 +313,76 @@ const removeQuickQuestion = (index: number) => {
   agentForm.value.quick_questions?.splice(index, 1)
 }
 
+interface ToolConfigField {
+  key: string
+  labelKey: string
+  label: string
+  hintKey: string
+  hint: string
+  min: number
+  max: number
+  defaultValue: number
+}
+
+const toolConfigFields: Record<string, ToolConfigField[]> = {
+  list_my_todos: [
+    { key: 'page_size', labelKey: 'agentAdmin.toolConfig.pageSize', label: '默认每页条数', hintKey: 'agentAdmin.toolConfig.pageSizeHint', hint: '模型未指定条数时使用。', min: 1, max: 200, defaultValue: 20 },
+    { key: 'max_page_size', labelKey: 'agentAdmin.toolConfig.maxPageSize', label: '单页最多条数', hintKey: 'agentAdmin.toolConfig.maxPageSizeHint', hint: '模型要求更多时也会截到这个上限。', min: 1, max: 200, defaultValue: 50 },
+  ],
+  list_my_requests: [
+    { key: 'page_size', labelKey: 'agentAdmin.toolConfig.pageSize', label: '默认每页条数', hintKey: 'agentAdmin.toolConfig.pageSizeHint', hint: '模型未指定条数时使用。', min: 1, max: 200, defaultValue: 20 },
+    { key: 'max_page_size', labelKey: 'agentAdmin.toolConfig.maxPageSize', label: '单页最多条数', hintKey: 'agentAdmin.toolConfig.maxPageSizeHint', hint: '模型要求更多时也会截到这个上限。', min: 1, max: 200, defaultValue: 50 },
+  ],
+  execute_safe_query: [
+    { key: 'max_rows', labelKey: 'agentAdmin.toolConfig.maxRows', label: '每条 SQL 最多行数', hintKey: 'agentAdmin.toolConfig.maxRowsHint', hint: '填 0 表示不限制行数，查询仍受 10 秒超时约束。', min: 0, max: 5000, defaultValue: 100 },
+    { key: 'max_queries', labelKey: 'agentAdmin.toolConfig.maxQueries', label: '一次最多 SQL 条数', hintKey: 'agentAdmin.toolConfig.maxQueriesHint', hint: '技能需要多组数据时，模型可在一次调用里提交多条 SQL。', min: 1, max: 10, defaultValue: 5 },
+  ],
+  get_latest_audit: [
+    { key: 'max_batch', labelKey: 'agentAdmin.toolConfig.maxBatch', label: '一次最多流程数', hintKey: 'agentAdmin.toolConfig.maxBatchHint', hint: '批量查询审核结果时，超出的流程 ID 会被截断。', min: 1, max: 100, defaultValue: 50 },
+  ],
+  get_latest_summary: [
+    { key: 'max_batch', labelKey: 'agentAdmin.toolConfig.maxBatch', label: '一次最多流程数', hintKey: 'agentAdmin.toolConfig.maxBatchHint', hint: '批量查询流程总结时，超出的流程 ID 会被截断。', min: 1, max: 100, defaultValue: 50 },
+  ],
+}
+
+const configFieldsFor = (code: string) => toolConfigFields[code] || []
+
+const toolConfigValue = (code: string, key: string, fallback: number) => {
+  const value = agentForm.value.tool_configs?.[code]?.[key]
+  let resolved = typeof value === 'number' ? value : fallback
+  if (key === 'page_size') {
+    const max = agentForm.value.tool_configs?.[code]?.max_page_size
+    const maxResolved = typeof max === 'number' ? max : 50
+    if (resolved > maxResolved) resolved = maxResolved
+  }
+  return resolved
+}
+
+const materializeToolConfigs = () => {
+  const configs: Record<string, Record<string, number>> = { ...(agentForm.value.tool_configs || {}) }
+  for (const code of agentForm.value.tool_codes || []) {
+    const fields = toolConfigFields[code]
+    if (!fields) continue
+    configs[code] = { ...(configs[code] || {}) }
+    for (const field of fields) {
+      if (typeof configs[code][field.key] !== 'number') {
+        configs[code][field.key] = field.defaultValue
+      }
+    }
+    if (typeof configs[code].page_size === 'number' && typeof configs[code].max_page_size === 'number' && configs[code].page_size > configs[code].max_page_size) {
+      configs[code].page_size = configs[code].max_page_size
+    }
+  }
+  agentForm.value.tool_configs = configs
+}
+
+const setToolConfig = (code: string, key: string, value: number | string | null, fallback: number) => {
+  if (!agentForm.value.tool_configs) agentForm.value.tool_configs = {}
+  if (!agentForm.value.tool_configs[code]) agentForm.value.tool_configs[code] = {}
+  const parsed = typeof value === 'number' ? value : Number(value)
+  agentForm.value.tool_configs[code][key] = Number.isFinite(parsed) ? parsed : fallback
+}
+
 // 智能体保存/删除
 const openCreateAgent = () => {
   agentRoleSearch.value = ''
@@ -323,7 +395,9 @@ const openCreateAgent = () => {
     system_prompt: '',
     enabled: true,
     tool_codes: [],
+    tool_configs: {},
     tool_history_turns: 3,
+    max_loop_steps: 8,
     quick_questions: [
       { icon: 'UnorderedListOutlined', title: '待办任务', prompt: '请帮我查询当前我有哪些待办流程？', detail: '快速检阅当前待办事项' },
       { icon: 'FileSearchOutlined', title: '流程总结', prompt: '请帮我总结一下最近的审批流程', detail: '提取流程关键要点与审批流转' },
@@ -345,7 +419,9 @@ const openEditAgent = (item: AgentDefinitionItem) => {
     system_prompt: item.system_prompt,
     enabled: item.enabled,
     tool_codes: [...(item.tool_codes || [])],
+    tool_configs: item.tool_configs ? JSON.parse(JSON.stringify(item.tool_configs)) : {},
     tool_history_turns: item.tool_history_turns ?? 3,
+    max_loop_steps: item.max_loop_steps || 8,
     quick_questions: item.quick_questions
       ? item.quick_questions.map((q: any) => ({
           ...q,
@@ -362,6 +438,7 @@ const saveAgent = async () => {
     message.warning(t('agentAdmin.form.required'))
     return
   }
+  materializeToolConfigs()
   savingAgent.value = true
   try {
     await authFetch(agentForm.value.id ? `/api/tenant/agents/${agentForm.value.id}` : '/api/tenant/agents', {
@@ -634,9 +711,10 @@ onMounted(() => {
               <a-tag color="geekblue">{{ record.quick_questions?.length || 0 }} {{ t('agentAdmin.quickQuestionUnit', '条') }}</a-tag>
             </template>
           </a-table-column>
-          <a-table-column :title="t('agentAdmin.col.toolHistoryTurns', '记忆轮数')" :width="92">
+          <a-table-column :title="t('agentAdmin.col.toolHistoryTurns', '记忆 / 步数')" :width="148">
             <template #default="{ record }">
               <a-tag color="cyan">{{ record.tool_history_turns ?? 3 }} {{ t('agentAdmin.turnsUnit', '轮') }}</a-tag>
+              <a-tag>{{ record.max_loop_steps || 8 }} {{ t('agentAdmin.stepsUnit', '步') }}</a-tag>
             </template>
           </a-table-column>
           <a-table-column :title="t('agentAdmin.col.permissions')" :width="100">
@@ -897,6 +975,25 @@ onMounted(() => {
                     <span class="cap-name">{{ tool.name }}</span>
                   </a-checkbox>
                   <div class="cap-desc">{{ tool.description || tool.tool_code }}</div>
+                  <div
+                    v-if="agentForm.tool_codes.includes(tool.tool_code) && configFieldsFor(tool.tool_code).length"
+                    class="cap-config"
+                    @click.stop
+                  >
+                    <div v-for="field in configFieldsFor(tool.tool_code)" :key="field.key" class="cap-config-field">
+                      <div class="cap-config-label">{{ t(field.labelKey, field.label) }}</div>
+                      <a-input-number
+                        :value="toolConfigValue(tool.tool_code, field.key, field.defaultValue)"
+                        :min="field.min"
+                        :max="field.max"
+                        :precision="0"
+                        size="small"
+                        class="cap-config-input"
+                        @update:value="(value) => setToolConfig(tool.tool_code, field.key, value, field.defaultValue)"
+                      />
+                      <div class="cap-config-hint">{{ t(field.hintKey, field.hint) }}</div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -954,8 +1051,22 @@ onMounted(() => {
                   :precision="0"
                   style="width: 100%;"
                 />
-                <div style="font-size: 12px; color: var(--color-text-secondary); margin-top: 4px; line-height: 1.5;">
+                <div class="field-hint">
                   {{ t('agentAdmin.toolHistoryTurnsHint', '保留最近几轮工具执行明细（默认 3 轮，设为 0 时仅保留纯文本回复）。轮数越长多轮追问越精准，但会消耗更多上下文 Token。') }}
+                </div>
+              </a-form-item>
+            </a-col>
+            <a-col :span="12">
+              <a-form-item :label="t('agentAdmin.maxLoopSteps', '单轮最多工具步数')">
+                <a-input-number
+                  v-model:value="agentForm.max_loop_steps"
+                  :min="1"
+                  :max="20"
+                  :precision="0"
+                  style="width: 100%;"
+                />
+                <div class="field-hint">
+                  {{ t('agentAdmin.maxLoopStepsHint', '一轮对话里模型最多调用工具的步数（默认 8，范围 1-20）。最后一步不再提供工具，避免停不下来。') }}
                 </div>
               </a-form-item>
             </a-col>
@@ -1513,6 +1624,35 @@ onMounted(() => {
   white-space: normal;
   word-break: break-word;
   overflow-wrap: anywhere;
+}
+.cap-config {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 12px;
+  margin: 10px 0 2px 24px;
+  padding: 10px 12px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: 6px;
+}
+.cap-config-field {
+  min-width: 0;
+}
+.cap-config-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  margin-bottom: 4px;
+}
+.cap-config-input {
+  width: 100%;
+}
+.cap-config-hint,
+.field-hint {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-top: 4px;
+  line-height: 1.5;
 }
 
 .desc-cell {

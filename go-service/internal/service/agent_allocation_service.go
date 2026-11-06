@@ -236,8 +236,12 @@ func (s *AgentAllocationService) ListTenantAgents(ctx context.Context, tenantID 
 	res := make([]dto.AgentDefinitionDTO, 0, len(agents))
 	for _, a := range agents {
 		toolCodes := make([]string, 0, len(a.ToolBindings))
+		toolConfigs := map[string]map[string]int{}
 		for _, b := range a.ToolBindings {
 			toolCodes = append(toolCodes, b.ToolCode)
+			if cfg := agenttools.ParseToolConfig(b.Config); len(cfg) > 0 {
+				toolConfigs[b.ToolCode] = cfg
+			}
 		}
 		ac := a.AccessControl
 		if len(ac) == 0 || string(ac) == "{}" || string(ac) == "null" {
@@ -254,8 +258,10 @@ func (s *AgentAllocationService) ListTenantAgents(ctx context.Context, tenantID 
 			Enabled:          a.Enabled,
 			IsSystem:         a.IsSystem,
 			ToolHistoryTurns: turns,
+			MaxLoopSteps:     a.EffectiveMaxLoopSteps(),
 			QuickQuestions:   parseQuickQuestions(a.QuickQuestions),
 			ToolCodes:        toolCodes,
+			ToolConfigs:      toolConfigs,
 			AccessControl:    ac,
 			CreatedAt:        a.CreatedAt,
 			UpdatedAt:        a.UpdatedAt,
@@ -293,6 +299,11 @@ func (s *AgentAllocationService) CreateTenantAgent(ctx context.Context, tenantID
 	if req.ToolHistoryTurns != nil && *req.ToolHistoryTurns >= 0 {
 		turns = *req.ToolHistoryTurns
 	}
+	steps := agenttools.ClampLoopSteps(0)
+	if req.MaxLoopSteps != nil {
+		steps = agenttools.ClampLoopSteps(*req.MaxLoopSteps)
+	}
+	toolConfigs := encodeToolConfigs(req.ToolConfigs)
 
 	agent := model.AgentDefinition{
 		TenantID:         &tenantID,
@@ -303,11 +314,12 @@ func (s *AgentAllocationService) CreateTenantAgent(ctx context.Context, tenantID
 		Enabled:          req.Enabled,
 		IsSystem:         false,
 		ToolHistoryTurns: turns,
+		MaxLoopSteps:     steps,
 		QuickQuestions:   qqJSON,
 		AccessControl:    ac,
 	}
 
-	if err := s.agentRepo.CreateAgentWithBindings(tenantID, &agent, req.ToolCodes); err != nil {
+	if err := s.agentRepo.CreateAgentWithBindings(tenantID, &agent, req.ToolCodes, toolConfigs); err != nil {
 		return nil, fmt.Errorf("创建智能体失败: %w", err)
 	}
 
@@ -321,8 +333,10 @@ func (s *AgentAllocationService) CreateTenantAgent(ctx context.Context, tenantID
 		Enabled:          agent.Enabled,
 		IsSystem:         agent.IsSystem,
 		ToolHistoryTurns: agent.ToolHistoryTurns,
+		MaxLoopSteps:     agent.MaxLoopSteps,
 		QuickQuestions:   req.QuickQuestions,
 		ToolCodes:        req.ToolCodes,
+		ToolConfigs:      agenttools.SanitizeToolConfigs(req.ToolConfigs),
 		AccessControl:    agent.AccessControl,
 		CreatedAt:        agent.CreatedAt,
 		UpdatedAt:        agent.UpdatedAt,
@@ -357,6 +371,9 @@ func (s *AgentAllocationService) UpdateTenantAgent(ctx context.Context, tenantID
 	if req.ToolHistoryTurns != nil && *req.ToolHistoryTurns >= 0 {
 		updates["tool_history_turns"] = *req.ToolHistoryTurns
 	}
+	if req.MaxLoopSteps != nil {
+		updates["max_loop_steps"] = agenttools.ClampLoopSteps(*req.MaxLoopSteps)
+	}
 	if req.QuickQuestions != nil {
 		qqJSON, _ := json.Marshal(*req.QuickQuestions)
 		updates["quick_questions"] = qqJSON
@@ -374,7 +391,7 @@ func (s *AgentAllocationService) UpdateTenantAgent(ctx context.Context, tenantID
 			return err
 		}
 	}
-	return s.agentRepo.SaveTenantAgent(tenantID, agent, updates, req.ToolCodes)
+	return s.agentRepo.SaveTenantAgent(tenantID, agent, updates, req.ToolCodes, encodeToolConfigs(req.ToolConfigs))
 }
 
 // DeleteTenantAgent 租户管理员删除自定义智能体
@@ -782,7 +799,7 @@ func (s *AgentAllocationService) syncCapabilityBindings(tenantID uuid.UUID, pref
 		if should {
 			next = append(next, toolCodes...)
 		}
-		if err := s.agentRepo.SaveTenantAgent(tenantID, agent, map[string]interface{}{}, &next); err != nil {
+		if err := s.agentRepo.SaveTenantAgent(tenantID, agent, map[string]interface{}{}, &next, nil); err != nil {
 			return err
 		}
 	}
@@ -848,4 +865,21 @@ func (s *AgentAllocationService) GetTenantSessionMessages(
 		})
 	}
 	return res, nil
+}
+
+// encodeToolConfigs 把前端提交的工具配置收拢后写成 JSON。未提交时返回 nil，保存时保留原配置。
+func encodeToolConfigs(raw map[string]map[string]int) map[string]datatypes.JSON {
+	sanitized := agenttools.SanitizeToolConfigs(raw)
+	if sanitized == nil {
+		return nil
+	}
+	out := map[string]datatypes.JSON{}
+	for code, cfg := range sanitized {
+		encoded, err := json.Marshal(cfg)
+		if err != nil || len(cfg) == 0 {
+			continue
+		}
+		out[code] = datatypes.JSON(encoded)
+	}
+	return out
 }

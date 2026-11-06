@@ -86,11 +86,23 @@ func (r *AgentRepo) DeleteAgent(tenantID, id uuid.UUID) error {
 }
 
 // ReplaceAgentToolBindings 覆盖更新智能体的工具绑定
-func (r *AgentRepo) ReplaceAgentToolBindings(tenantID, agentID uuid.UUID, toolCodes []string) error {
+func (r *AgentRepo) ReplaceAgentToolBindings(tenantID, agentID uuid.UUID, toolCodes []string, configs map[string]datatypes.JSON) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		var owner model.AgentDefinition
 		if err := tx.Where("tenant_id = ? AND id = ?", tenantID, agentID).First(&owner).Error; err != nil {
 			return fmt.Errorf("无权修改该智能体: %w", err)
+		}
+		preserved := map[string]datatypes.JSON{}
+		if configs == nil {
+			var existing []model.AgentToolBinding
+			if err := tx.Where("tenant_id = ? AND agent_id = ?", tenantID, agentID).Find(&existing).Error; err != nil {
+				return err
+			}
+			for _, item := range existing {
+				if len(item.Config) > 0 && string(item.Config) != "{}" && string(item.Config) != "null" {
+					preserved[item.ToolCode] = item.Config
+				}
+			}
 		}
 		if err := tx.Where("tenant_id = ? AND agent_id = ?", tenantID, agentID).Delete(&model.AgentToolBinding{}).Error; err != nil {
 			return err
@@ -108,11 +120,20 @@ func (r *AgentRepo) ReplaceAgentToolBindings(tenantID, agentID uuid.UUID, toolCo
 			if strings.HasPrefix(tc, "mcp:") {
 				kind = "mcp"
 			}
+			cfg := datatypes.JSON([]byte(`{}`))
+			if configs != nil {
+				if raw, ok := configs[tc]; ok && len(raw) > 0 {
+					cfg = raw
+				}
+			} else if raw, ok := preserved[tc]; ok {
+				cfg = raw
+			}
 			b := model.AgentToolBinding{
 				TenantID: &tenantID,
 				AgentID:  agentID,
 				ToolType: kind,
 				ToolCode: tc,
+				Config:   cfg,
 			}
 			if err := tx.Create(&b).Error; err != nil {
 				return err
@@ -352,9 +373,10 @@ func ParseJSONSlice(data datatypes.JSON) []string {
 }
 
 // SaveTenantAgent 在同一事务内保存租户定义及绑定；修改平台模板时创建租户专属副本。
-func (r *AgentRepo) SaveTenantAgent(tenantID uuid.UUID, agent *model.AgentDefinition, updates map[string]interface{}, toolCodes *[]string) error {
+func (r *AgentRepo) SaveTenantAgent(tenantID uuid.UUID, agent *model.AgentDefinition, updates map[string]interface{}, toolCodes *[]string, toolConfigs map[string]datatypes.JSON) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		repo := NewAgentRepo(tx)
+		sourceBindings := agent.ToolBindings
 		if agent.TenantID == nil {
 			var existing model.AgentDefinition
 			err := tx.Where("tenant_id = ? AND agent_code = ?", tenantID, agent.AgentCode).First(&existing).Error
@@ -368,9 +390,17 @@ func (r *AgentRepo) SaveTenantAgent(tenantID uuid.UUID, agent *model.AgentDefini
 				if err := tx.Create(&copy).Error; err != nil {
 					return err
 				}
+				if toolConfigs == nil {
+					toolConfigs = map[string]datatypes.JSON{}
+					for _, b := range sourceBindings {
+						if len(b.Config) > 0 {
+							toolConfigs[b.ToolCode] = b.Config
+						}
+					}
+				}
 				if toolCodes == nil {
-					codes := []string{}
-					for _, b := range agent.ToolBindings {
+					codes := make([]string, 0, len(sourceBindings))
+					for _, b := range sourceBindings {
 						codes = append(codes, b.ToolCode)
 					}
 					toolCodes = &codes
@@ -386,14 +416,14 @@ func (r *AgentRepo) SaveTenantAgent(tenantID uuid.UUID, agent *model.AgentDefini
 			return err
 		}
 		if toolCodes != nil {
-			return repo.ReplaceAgentToolBindings(tenantID, agent.ID, *toolCodes)
+			return repo.ReplaceAgentToolBindings(tenantID, agent.ID, *toolCodes, toolConfigs)
 		}
 		return nil
 	})
 }
 
 // CreateAgentWithBindings 原子创建定义与工具绑定，避免出现没有装配完成的智能体。
-func (r *AgentRepo) CreateAgentWithBindings(tenantID uuid.UUID, agent *model.AgentDefinition, codes []string) error {
+func (r *AgentRepo) CreateAgentWithBindings(tenantID uuid.UUID, agent *model.AgentDefinition, codes []string, configs map[string]datatypes.JSON) error {
 	enabled := agent.Enabled
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(agent).Error; err != nil {
@@ -403,7 +433,7 @@ func (r *AgentRepo) CreateAgentWithBindings(tenantID uuid.UUID, agent *model.Age
 		if err := tx.Model(agent).Update("enabled", enabled).Error; err != nil {
 			return err
 		}
-		return NewAgentRepo(tx).ReplaceAgentToolBindings(tenantID, agent.ID, codes)
+		return NewAgentRepo(tx).ReplaceAgentToolBindings(tenantID, agent.ID, codes, configs)
 	})
 }
 

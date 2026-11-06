@@ -19,7 +19,7 @@
 | `get_latest_audit` | AuraOA 最近一次审核结论 | `audit_logs` + 可见性 | `audit_result` | 是 |
 | `get_latest_summary` | AuraOA 最近一次总结 | `process_summary_*` + 可见性 | `summary_result` | 是 |
 
-`list_my_todos` 参数应对齐工作台：`keyword`、`applicant`、`department`、`process_types`、日期范围、`page` / `page_size`（默认 20，上限 50，避免一次塞爆上下文）。
+`list_my_todos` 参数应对齐工作台：`keyword`、`applicant`、`department`、`process_types`、日期范围、`page` / `page_size`。未传条数时使用该智能体配置的默认值（默认 20），并截断到配置的单页上限（默认 50）。`list_my_requests` 同样读取 `page_size` / `max_page_size`。`get_latest_audit` 与 `get_latest_summary` 的批量上限读取 `max_batch`（默认 50）。`execute_safe_query` 读取 `max_rows`（默认 100，0 为不限制）和 `max_queries`（默认 5）；多条 SQL 放在一次调用的 `queries` 数组里。这些数值保存在 `agent_tool_bindings.config`，在智能体抽屉里按工具配置。单轮工具步数保存在 `agent_definitions.max_loop_steps`（默认 8）。
 
 `get_process` / `get_approval_flow` 在 `CheckProcessVisibility` 为假时返回无权，不返回表单。
 
