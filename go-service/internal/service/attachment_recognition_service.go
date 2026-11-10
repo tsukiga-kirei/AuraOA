@@ -1,6 +1,7 @@
 package service
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -10,6 +11,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -346,6 +348,11 @@ func (s *AttachmentRecognitionService) RecognizeAttachments(
 				zap.String("fileName", f.FileName),
 				zap.Int("maxCount", cfg.MaxAttachmentCount))
 			results = append(results, base)
+			continue
+		}
+		if ext == "zip" {
+			zipInfos := s.recognizeZipArchive(ctx, cfg, f, maxBytes, supported, base, now)
+			results = append(results, zipInfos...)
 			continue
 		}
 		if _, ok := supported[ext]; !ok {
@@ -742,4 +749,171 @@ func extractFileExt(name string) string {
 		return ""
 	}
 	return strings.ToLower(name[idx+1:])
+}
+
+const (
+	defaultMaxZipFileCount  = 50                // 单个压缩包最多提取子文件数
+	defaultMaxZipTotalBytes = 100 * 1024 * 1024 // 单个压缩包解压累计最大字节数（100MB），防 Zip 炸弹
+)
+
+func (s *AttachmentRecognitionService) recognizeZipArchive(
+	ctx context.Context,
+	cfg *RecognitionConfig,
+	f oa.AttachmentFilePayload,
+	maxBytes int64,
+	supported map[string]struct{},
+	base oa.AttachmentInfo,
+	now string,
+) []oa.AttachmentInfo {
+	// 1. 解码 ZIP 压缩包 Base64 数据
+	raw, decodeErr := decodeAttachmentData(f.FileData, maxBytes)
+	if decodeErr != nil {
+		base.Error = "解码 ZIP 压缩包失败: " + decodeErr.Error()
+		return []oa.AttachmentInfo{base}
+	}
+	if f.FileSize <= 0 {
+		base.FileSize = int64(len(raw))
+	}
+
+	// 2. 打开 ZIP 归档
+	zipReader, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		base.Error = "打开 ZIP 压缩包失败: " + err.Error()
+		return []oa.AttachmentInfo{base}
+	}
+
+	var results []oa.AttachmentInfo
+	var totalUncompressedBytes int64
+	extractedCount := 0
+
+	for _, fileEntry := range zipReader.File {
+		// 跳过目录
+		if fileEntry.FileInfo().IsDir() {
+			continue
+		}
+
+		cleanPath := filepath.Clean(fileEntry.Name)
+		// 防 Zip Slip 目录穿越
+		if strings.HasPrefix(cleanPath, "..") || filepath.IsAbs(cleanPath) {
+			continue
+		}
+		// 过滤 macOS 资源分叉和系统元数据文件
+		baseName := filepath.Base(cleanPath)
+		if strings.HasPrefix(cleanPath, "__MACOSX/") || strings.HasPrefix(baseName, "._") ||
+			baseName == ".DS_Store" || baseName == "Thumbs.db" || strings.TrimSpace(baseName) == "" {
+			continue
+		}
+
+		extractedCount++
+		if extractedCount > defaultMaxZipFileCount {
+			pkglogger.Global().Warn("附件识别：ZIP 压缩包内文件数超过上限，截断后续文件",
+				zap.String("zipFile", f.FileName),
+				zap.Int("maxCount", defaultMaxZipFileCount))
+			results = append(results, oa.AttachmentInfo{
+				DocID:            base.DocID,
+				FileName:         cleanPath,
+				FileType:         extractFileExt(cleanPath),
+				FieldKey:         base.FieldKey,
+				FieldName:        base.FieldName,
+				DetailTable:      base.DetailTable,
+				RowIndex:         base.RowIndex,
+				ContentLimitMode: cfg.AIContentLimitMode,
+				ContentMaxBytes:  cfg.AIContentMaxBytes,
+				ExtractedAt:      now,
+				Error:            fmt.Sprintf("压缩包内文件数超出限制（最多%d个），已跳过解析", defaultMaxZipFileCount),
+				ArchiveFileName:  base.FileName,
+			})
+			break
+		}
+
+		subExt := extractFileExt(cleanPath)
+		subSize := int64(fileEntry.UncompressedSize64)
+		child := oa.AttachmentInfo{
+			DocID:            base.DocID,
+			FileName:         cleanPath,
+			FileType:         subExt,
+			FileSize:         subSize,
+			FieldKey:         base.FieldKey,
+			FieldName:        base.FieldName,
+			DetailTable:      base.DetailTable,
+			RowIndex:         base.RowIndex,
+			ContentLimitMode: cfg.AIContentLimitMode,
+			ContentMaxBytes:  cfg.AIContentMaxBytes,
+			ExtractedAt:      now,
+			ArchiveFileName:  base.FileName,
+		}
+
+		// 检查嵌套压缩包
+		if subExt == "zip" {
+			child.Error = "暂不支持嵌套压缩包二次解压"
+			results = append(results, child)
+			continue
+		}
+
+		// 检查是否属于支持的文件类型
+		if _, ok := supported[subExt]; !ok {
+			child.Error = fmt.Sprintf("文件类型 %q 不在支持列表中，已跳过内容解析", subExt)
+			results = append(results, child)
+			continue
+		}
+
+		// 检查解压单文件大小限制
+		if maxBytes > 0 && subSize > maxBytes {
+			child.Error = fmt.Sprintf("解压文件大小 %d 字节超过限制 %d MB，已跳过内容解析", subSize, cfg.MaxFileSizeMB)
+			results = append(results, child)
+			continue
+		}
+
+		// 检查累计解包大小（防 Zip 炸弹）
+		totalUncompressedBytes += subSize
+		if totalUncompressedBytes > defaultMaxZipTotalBytes {
+			child.Error = "压缩包累计解压大小超出安全上限（100MB），已跳过内容解析"
+			results = append(results, child)
+			continue
+		}
+
+		// 读取解压流
+		rc, err := fileEntry.Open()
+		if err != nil {
+			child.Error = "打开压缩包内文件失败: " + err.Error()
+			results = append(results, child)
+			continue
+		}
+
+		subLimit := maxBytes
+		if subLimit <= 0 {
+			subLimit = 50 * 1024 * 1024
+		}
+		subRaw, readErr := io.ReadAll(io.LimitReader(rc, subLimit+1024))
+		rc.Close()
+		if readErr != nil {
+			child.Error = "读取解压文件失败: " + readErr.Error()
+			results = append(results, child)
+			continue
+		}
+		if int64(len(subRaw)) > subLimit {
+			child.Error = fmt.Sprintf("解压实际文件大小超过限制 %d MB，已跳过内容解析", cfg.MaxFileSizeMB)
+			results = append(results, child)
+			continue
+		}
+		if child.FileSize <= 0 {
+			child.FileSize = int64(len(subRaw))
+		}
+
+		subPayload := oa.AttachmentFilePayload{
+			DocID:    base.DocID,
+			FileName: cleanPath,
+			FileSize: child.FileSize,
+		}
+		recognized := s.recognizeAttachment(ctx, cfg, subPayload, subRaw, child)
+		recognized.ArchiveFileName = base.FileName
+		results = append(results, recognized)
+	}
+
+	if len(results) == 0 {
+		base.Error = "ZIP 压缩包为空或未包含有效文件"
+		return []oa.AttachmentInfo{base}
+	}
+
+	return results
 }

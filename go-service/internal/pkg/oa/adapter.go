@@ -317,8 +317,9 @@ type AttachmentInfo struct {
 	Content          string `json:"content"`                // 提取的文本内容（可选）
 	ContentLimitMode string `json:"content_limit_mode"`     // AI 正文策略：bytes / unlimited
 	ContentMaxBytes  int    `json:"content_max_bytes"`      // bytes 模式下单附件正文上限
-	ExtractedAt      string `json:"extracted_at"`           // 提取时间
-	Error            string `json:"error"`                  // 提取错误信息（如有）
+	ExtractedAt      string `json:"extracted_at"`                 // 提取时间
+	Error            string `json:"error"`                        // 提取错误信息（如有）
+	ArchiveFileName  string `json:"archive_file_name,omitempty"` // 所属压缩包文件名（如解压所得）
 }
 
 // AttachmentFilePayload OA 适配器返回给识别服务的附件原始载荷。

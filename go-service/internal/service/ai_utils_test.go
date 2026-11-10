@@ -112,3 +112,45 @@ func TestFormatAttachmentsWithDetailTableAndRow(t *testing.T) {
 		t.Errorf("未能正确格式化明细表第2行附件头: %q", got)
 	}
 }
+
+func TestFormatAttachments_WithZipArchive(t *testing.T) {
+	attachments := []oa.AttachmentInfo{
+		{
+			FileName:  "独立通知.txt",
+			FieldKey:  "fj",
+			FieldName: "流程附件",
+			Content:   "独立通知正文",
+		},
+		{
+			FileName:        "方案.docx",
+			FieldKey:        "fj",
+			FieldName:       "流程附件",
+			Content:         "方案详细内容",
+			ArchiveFileName: "资料包.zip",
+		},
+		{
+			FileName:        "图纸.dwg",
+			FieldKey:        "fj",
+			FieldName:       "流程附件",
+			Error:           "文件类型 dwg 不在支持列表中",
+			ArchiveFileName: "资料包.zip",
+		},
+	}
+
+	got := formatAttachments(attachments, 8000)
+	if !strings.Contains(got, "- 附件 1：独立通知.txt") {
+		t.Errorf("未能正确展示独立文件: %s", got)
+	}
+	if !strings.Contains(got, "- 附件 2：资料包.zip（ZIP 压缩包，共解压出 2 个文件）") {
+		t.Errorf("未能正确展示压缩包汇总项: %s", got)
+	}
+	if !strings.Contains(got, "* [已提取内容] 1. 方案.docx") {
+		t.Errorf("未能正确标记已提取内容子文件: %s", got)
+	}
+	if !strings.Contains(got, "* [未提取内容] 2. 图纸.dwg") {
+		t.Errorf("未能正确标记未提取内容子文件: %s", got)
+	}
+	if !strings.Contains(got, "说明：文件类型 dwg 不在支持列表中") {
+		t.Errorf("未能正确展示未提取说明: %s", got)
+	}
+}

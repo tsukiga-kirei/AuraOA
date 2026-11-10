@@ -364,37 +364,108 @@ func formatAttachments(attachments []oa.AttachmentInfo, maxBytesPerFile int) str
 			}
 			sb.WriteString(fmt.Sprintf("### 附件字段：%s（%s）\n", header, fieldDisplay))
 		}
-		for i, a := range g.items {
-			sb.WriteString(fmt.Sprintf("- 附件 %d：%s", i+1, a.FileName))
-			if a.FileType != "" {
-				sb.WriteString(fmt.Sprintf("（类型：%s", a.FileType))
-				if a.FileSize > 0 {
-					sb.WriteString(fmt.Sprintf("，大小：%d 字节", a.FileSize))
+		type entryGroup struct {
+			archiveName string // 空表示独立附件
+			items       []oa.AttachmentInfo
+		}
+		var entryGroups []entryGroup
+		groupIndex := make(map[string]int) // archiveName -> index in entryGroups
+
+		for _, a := range g.items {
+			arc := strings.TrimSpace(a.ArchiveFileName)
+			if arc == "" {
+				// 独立文件单独一组
+				entryGroups = append(entryGroups, entryGroup{
+					archiveName: "",
+					items:       []oa.AttachmentInfo{a},
+				})
+			} else {
+				// 属于某个压缩包
+				idx, exists := groupIndex[arc]
+				if !exists {
+					idx = len(entryGroups)
+					groupIndex[arc] = idx
+					entryGroups = append(entryGroups, entryGroup{
+						archiveName: arc,
+						items:       nil,
+					})
 				}
-				sb.WriteString("）")
+				entryGroups[idx].items = append(entryGroups[idx].items, a)
 			}
-			sb.WriteByte('\n')
-			if a.Error != "" {
-				sb.WriteString("  解析失败：")
-				sb.WriteString(a.Error)
+		}
+
+		for i, eg := range entryGroups {
+			if eg.archiveName == "" {
+				a := eg.items[0]
+				sb.WriteString(fmt.Sprintf("- 附件 %d：%s", i+1, a.FileName))
+				if a.FileType != "" {
+					sb.WriteString(fmt.Sprintf("（类型：%s", a.FileType))
+					if a.FileSize > 0 {
+						sb.WriteString(fmt.Sprintf("，大小：%d 字节", a.FileSize))
+					}
+					sb.WriteString("）")
+				}
 				sb.WriteByte('\n')
-				continue
+				if a.Error != "" {
+					sb.WriteString("  解析失败：")
+					sb.WriteString(a.Error)
+					sb.WriteByte('\n')
+					continue
+				}
+				content := strings.TrimSpace(a.Content)
+				if content == "" {
+					sb.WriteString("  （未提取到正文内容）\n")
+					continue
+				}
+				contentLimit := maxBytesPerFile
+				if a.ContentMaxBytes > 0 {
+					contentLimit = a.ContentMaxBytes
+				}
+				if a.ContentLimitMode == attachmentAIContentLimitUnlimited {
+					contentLimit = 0
+				}
+				sb.WriteString("  内容：\n")
+				sb.WriteString(indentLines(truncateUTF8Bytes(content, contentLimit), "    "))
+				sb.WriteByte('\n')
+			} else {
+				sb.WriteString(fmt.Sprintf("- 附件 %d：%s（ZIP 压缩包，共解压出 %d 个文件）\n", i+1, eg.archiveName, len(eg.items)))
+				for j, sub := range eg.items {
+					statusTag := "[已提取内容]"
+					if sub.Error != "" {
+						statusTag = "[未提取内容]"
+					}
+					sb.WriteString(fmt.Sprintf("  * %s %d. %s", statusTag, j+1, sub.FileName))
+					if sub.FileType != "" {
+						sb.WriteString(fmt.Sprintf("（类型：%s", sub.FileType))
+						if sub.FileSize > 0 {
+							sb.WriteString(fmt.Sprintf("，大小：%d 字节", sub.FileSize))
+						}
+						sb.WriteString("）")
+					}
+					sb.WriteByte('\n')
+					if sub.Error != "" {
+						sb.WriteString("    说明：")
+						sb.WriteString(sub.Error)
+						sb.WriteByte('\n')
+						continue
+					}
+					content := strings.TrimSpace(sub.Content)
+					if content == "" {
+						sb.WriteString("    （未提取到正文内容）\n")
+						continue
+					}
+					contentLimit := maxBytesPerFile
+					if sub.ContentMaxBytes > 0 {
+						contentLimit = sub.ContentMaxBytes
+					}
+					if sub.ContentLimitMode == attachmentAIContentLimitUnlimited {
+						contentLimit = 0
+					}
+					sb.WriteString("    内容：\n")
+					sb.WriteString(indentLines(truncateUTF8Bytes(content, contentLimit), "      "))
+					sb.WriteByte('\n')
+				}
 			}
-			content := strings.TrimSpace(a.Content)
-			if content == "" {
-				sb.WriteString("  （未提取到正文内容）\n")
-				continue
-			}
-			contentLimit := maxBytesPerFile
-			if a.ContentMaxBytes > 0 {
-				contentLimit = a.ContentMaxBytes
-			}
-			if a.ContentLimitMode == attachmentAIContentLimitUnlimited {
-				contentLimit = 0
-			}
-			sb.WriteString("  内容：\n")
-			sb.WriteString(indentLines(truncateUTF8Bytes(content, contentLimit), "    "))
-			sb.WriteByte('\n')
 		}
 		sb.WriteByte('\n')
 	}

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -641,4 +642,83 @@ func TestCreateTestPNGImage(t *testing.T) {
 		t.Fatalf("image dimensions (%d x %d) must be >= 15x15", bounds.Dx(), bounds.Dy())
 	}
 }
+
+func TestRecognizeAttachments_ZipArchive(t *testing.T) {
+	// 构造一个内存 ZIP 压缩包：
+	// 1. note.txt -> 可识别纯文本
+	// 2. drawing.dwg -> 不支持格式
+	// 3. nested.zip -> 嵌套压缩包跳过
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+
+	// 文件 1：note.txt
+	w1, err := zw.Create("folder/note.txt")
+	if err != nil {
+		t.Fatalf("Create note.txt error: %v", err)
+	}
+	_, _ = w1.Write([]byte("这是压缩包内的通知内容"))
+
+	// 文件 2：drawing.dwg
+	w2, err := zw.Create("drawing.dwg")
+	if err != nil {
+		t.Fatalf("Create drawing.dwg error: %v", err)
+	}
+	_, _ = w2.Write([]byte("fake dwg content"))
+
+	// 文件 3：nested.zip
+	w3, err := zw.Create("nested.zip")
+	if err != nil {
+		t.Fatalf("Create nested.zip error: %v", err)
+	}
+	_, _ = w3.Write([]byte("fake zip content"))
+
+	if err := zw.Close(); err != nil {
+		t.Fatalf("zw.Close error: %v", err)
+	}
+
+	cfgReader := mapSystemConfigReader{
+		"attachment.recognition_enabled": "true",
+		"attachment.supported_types":     "txt,pdf,docx",
+		"attachment.max_file_size_mb":    "10",
+	}
+	svc := &AttachmentRecognitionService{configRepo: cfgReader}
+
+	filePayload := testAttachment("1001", "资料合集.zip", buf.Bytes())
+	results, err := svc.RecognizeAttachments(context.Background(), []oa.AttachmentFilePayload{filePayload}, "fj", "附件")
+	if err != nil {
+		t.Fatalf("RecognizeAttachments error: %v", err)
+	}
+
+	if len(results) != 3 {
+		t.Fatalf("预期解压出 3 个文件，实际: %d", len(results))
+	}
+
+	// 验证每个文件的分类
+	var noteItem, dwgItem, zipItem *oa.AttachmentInfo
+	for i := range results {
+		r := &results[i]
+		if r.ArchiveFileName != "资料合集.zip" {
+			t.Errorf("文件 %s 的 ArchiveFileName 应为 资料合集.zip，实际: %s", r.FileName, r.ArchiveFileName)
+		}
+		switch r.FileName {
+		case "folder/note.txt":
+			noteItem = r
+		case "drawing.dwg":
+			dwgItem = r
+		case "nested.zip":
+			zipItem = r
+		}
+	}
+
+	if noteItem == nil || noteItem.Content != "这是压缩包内的通知内容" || noteItem.Error != "" {
+		t.Errorf("note.txt 解析异常: %+v", noteItem)
+	}
+	if dwgItem == nil || !strings.Contains(dwgItem.Error, "不在支持列表中") {
+		t.Errorf("drawing.dwg 应提示不支持类型，实际: %+v", dwgItem)
+	}
+	if zipItem == nil || !strings.Contains(zipItem.Error, "嵌套") {
+		t.Errorf("nested.zip 应提示不支持嵌套压缩包，实际: %+v", zipItem)
+	}
+}
+
 
