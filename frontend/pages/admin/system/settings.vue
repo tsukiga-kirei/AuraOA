@@ -1190,7 +1190,7 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
             <a-row :gutter="16">
               <a-col :span="24">
                 <a-form-item :label="t('admin.settings.attachmentOCRProvider')">
-                  <a-radio-group v-model:value="generalConfig.attachment_ocr_provider" button-style="solid">
+                  <a-radio-group v-model:value="generalConfig.attachment_ocr_provider" class="attachment-provider-selector" button-style="solid">
                     <a-radio-button value="mineru">
                       <FileSearchOutlined style="margin-right: 6px;" />
                       {{ t('admin.settings.attachmentOCRProviderMineru') }}
@@ -1225,7 +1225,9 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
               <div class="form-hint">{{ t('admin.settings.attachmentMineru4EndpointHint') }}</div>
             </a-form-item>
             <a-form-item :label="t('admin.settings.attachmentMineruApiKey')">
-              <a-input-password v-model:value="generalConfig.attachment_mineru4_api_key" size="large" :placeholder="t('admin.settings.attachmentMineruApiKeyPlaceholder')" />
+              <a-input-password v-model:value="generalConfig.attachment_mineru4_api_key" size="large" :placeholder="t('admin.settings.attachmentMineruApiKeyPlaceholder')">
+                <template #prefix><KeyOutlined /></template>
+              </a-input-password>
             </a-form-item>
             <a-row :gutter="16">
               <a-col :xs="24" :md="12">
@@ -2158,6 +2160,9 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
   .attachment-route-row { grid-template-columns: minmax(180px, 1fr) minmax(120px, 0.65fr) minmax(220px, 1.2fr) minmax(80px, 0.45fr); }
 }
 @media (max-width: 640px) {
+  .attachment-provider-selector { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+  .attachment-provider-selector :deep(.ant-radio-button-wrapper) { height: auto; padding: 10px 14px; line-height: 1.5; white-space: normal; border-inline-start-width: 1px; border-radius: var(--radius-md); }
+  .attachment-provider-selector :deep(.ant-radio-button-wrapper::before) { display: none; }
   .overview-stats { grid-template-columns: 1fr; }
   .tab-nav { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .tab-btn { flex: 1; text-align: center; padding: 8px 12px; justify-content: center; }
