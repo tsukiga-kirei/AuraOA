@@ -93,6 +93,11 @@ export interface SystemGeneralConfig {
     // ===== 附件解析（attachment.*） =====
     /** attachment.recognition_enabled — 是否启用附件解析功能 */
     attachment_recognition_enabled: boolean
+    /** attachment.mineru4_endpoint — MinerU 4.0 V1 服务根地址 */
+    attachment_mineru4_endpoint: string
+    attachment_mineru4_api_key?: string
+    attachment_mineru4_tier: 'flash' | 'basic' | 'standard' | 'advanced'
+    attachment_mineru4_ocr_mode: 'auto' | 'txt' | 'ocr'
     /** attachment.mineru_endpoint — MinerU 文档解析服务自建端点 */
     attachment_mineru_endpoint: string
     /** attachment.mineru_api_key — MinerU API Key（可选） */
@@ -127,8 +132,8 @@ export interface SystemGeneralConfig {
     attachment_ofd_enabled: boolean
     /** attachment.visual_fallback_enabled — 复杂版式是否回退到 MinerU */
     attachment_visual_fallback_enabled: boolean
-    /** attachment.ocr_provider — OCR 解析服务提供商：mineru / aliyun */
-    attachment_ocr_provider: 'mineru' | 'aliyun'
+    /** attachment.ocr_provider — OCR 解析服务提供商：mineru / mineru4 / aliyun */
+    attachment_ocr_provider: 'mineru' | 'mineru4' | 'aliyun'
     /** attachment.aliyun_ocr_endpoint — 阿里云 OCR 服务端点 */
     attachment_aliyun_ocr_endpoint: string
     /** attachment.aliyun_ocr_access_key_id — 阿里云 AccessKey ID */
@@ -187,6 +192,10 @@ export function mapConfigItems(items: ConfigItem[]): Partial<SystemGeneralConfig
         ...(str('system.smtp_sender') !== undefined && { smtp_sender: kv['system.smtp_sender'] }),
 
         ...(str('attachment.recognition_enabled') !== undefined && { attachment_recognition_enabled: bool('attachment.recognition_enabled') }),
+        ...(str('attachment.mineru4_endpoint') !== undefined && { attachment_mineru4_endpoint: kv['attachment.mineru4_endpoint'] }),
+        ...(str('attachment.mineru4_api_key') !== undefined && { attachment_mineru4_api_key: kv['attachment.mineru4_api_key'] }),
+        ...(str('attachment.mineru4_tier') !== undefined && { attachment_mineru4_tier: kv['attachment.mineru4_tier'] as SystemGeneralConfig['attachment_mineru4_tier'] }),
+        ...(str('attachment.mineru4_ocr_mode') !== undefined && { attachment_mineru4_ocr_mode: kv['attachment.mineru4_ocr_mode'] as SystemGeneralConfig['attachment_mineru4_ocr_mode'] }),
         ...(str('attachment.mineru_endpoint') !== undefined && { attachment_mineru_endpoint: kv['attachment.mineru_endpoint'] }),
         ...(str('attachment.mineru_api_key') !== undefined && { attachment_mineru_api_key: kv['attachment.mineru_api_key'] }),
         ...(str('attachment.mineru_backend') !== undefined && { attachment_mineru_backend: kv['attachment.mineru_backend'] }),
@@ -211,7 +220,7 @@ export function mapConfigItems(items: ConfigItem[]): Partial<SystemGeneralConfig
         ...(str('attachment.ofd_enabled') !== undefined && { attachment_ofd_enabled: bool('attachment.ofd_enabled') }),
         ...(str('attachment.visual_fallback_enabled') !== undefined && { attachment_visual_fallback_enabled: bool('attachment.visual_fallback_enabled') }),
         ...(str('attachment.ocr_provider') !== undefined && {
-            attachment_ocr_provider: kv['attachment.ocr_provider'] === 'aliyun' ? 'aliyun' : 'mineru',
+            attachment_ocr_provider: kv['attachment.ocr_provider'] === 'aliyun' ? 'aliyun' : kv['attachment.ocr_provider'] === 'mineru4' ? 'mineru4' : 'mineru',
         }),
         ...(str('attachment.aliyun_ocr_endpoint') !== undefined && { attachment_aliyun_ocr_endpoint: kv['attachment.aliyun_ocr_endpoint'] }),
         ...(str('attachment.aliyun_ocr_access_key_id') !== undefined && { attachment_aliyun_ocr_access_key_id: kv['attachment.aliyun_ocr_access_key_id'] }),
@@ -264,6 +273,10 @@ export function configToUpdateRequest(cfg: SystemGeneralConfig): ConfigUpdateReq
         'attachment.aliyun_ocr_access_key_id': cfg.attachment_aliyun_ocr_access_key_id ?? '',
         'attachment.aliyun_ocr_access_key_secret': cfg.attachment_aliyun_ocr_access_key_secret ?? '',
         'attachment.aliyun_ocr_type': cfg.attachment_aliyun_ocr_type ?? 'General',
+        'attachment.mineru4_endpoint': cfg.attachment_mineru4_endpoint ?? '',
+        'attachment.mineru4_api_key': cfg.attachment_mineru4_api_key ?? '',
+        'attachment.mineru4_tier': cfg.attachment_mineru4_tier ?? 'standard',
+        'attachment.mineru4_ocr_mode': cfg.attachment_mineru4_ocr_mode ?? 'auto',
         'attachment.mineru_endpoint': cfg.attachment_mineru_endpoint ?? '',
         'attachment.mineru_api_key': cfg.attachment_mineru_api_key ?? '',
         'attachment.mineru_backend': cfg.attachment_mineru_backend ?? 'pipeline',

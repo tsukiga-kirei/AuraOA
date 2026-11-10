@@ -351,12 +351,24 @@ func (h *SystemHandler) UpdateSystemConfigs(c *gin.Context) {
 // ── 附件识别 ──────────────────────────────────────────────────────────────
 
 type attachmentRecognitionTestRequest struct {
+	AttachmentOCRProvider        *string `json:"attachment_ocr_provider"`
+	AttachmentMinerU4Endpoint    *string `json:"attachment_mineru4_endpoint"`
+	AttachmentMinerU4APIKey      *string `json:"attachment_mineru4_api_key"`
 	AttachmentRecognitionEnabled *bool   `json:"attachment_recognition_enabled"`
 	AttachmentMinerUEndpoint     *string `json:"attachment_mineru_endpoint"`
 	AttachmentMinerUAPIKey       *string `json:"attachment_mineru_api_key"`
 }
 
 func (r attachmentRecognitionTestRequest) apply(cfg *service.RecognitionConfig) {
+	if r.AttachmentOCRProvider != nil {
+		cfg.OCRProvider = *r.AttachmentOCRProvider
+	}
+	if r.AttachmentMinerU4Endpoint != nil {
+		cfg.MinerU4Endpoint = *r.AttachmentMinerU4Endpoint
+	}
+	if r.AttachmentMinerU4APIKey != nil {
+		cfg.MinerU4APIKey = *r.AttachmentMinerU4APIKey
+	}
 	if r.AttachmentRecognitionEnabled != nil {
 		cfg.Enabled = *r.AttachmentRecognitionEnabled
 	}
@@ -398,7 +410,7 @@ func (r attachmentCompatibilityTestRequest) apply(cfg *service.RecognitionConfig
 	}
 }
 
-// TestAttachmentRecognition 探测 MinerU /health 接口是否可达。
+// TestAttachmentRecognition 按所选版本探测 MinerU /health 或 /v1/health。
 // POST /api/admin/system/attachment-recognition/test
 // 返回：{"success": true, "message": "MinerU 服务可达"} 或服务错误。
 func (h *SystemHandler) TestAttachmentRecognition(c *gin.Context) {
@@ -515,4 +527,3 @@ func (h *SystemHandler) TestAliyunOCR(c *gin.Context) {
 		"message": "阿里云 OCR 服务连接成功且凭证有效",
 	})
 }
-

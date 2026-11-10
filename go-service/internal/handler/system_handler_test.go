@@ -88,3 +88,11 @@ func TestAttachmentAliyunOCRTestRequestAppliesUnsavedValues(t *testing.T) {
 	}
 }
 
+func TestAttachmentRecognitionTestRequestSelectsMinerU4(t *testing.T) {
+	provider, endpoint, key := "mineru4", "http://new-mineru", "new-key"
+	cfg := &service.RecognitionConfig{OCRProvider: "mineru", MinerUEndpoint: "http://legacy"}
+	attachmentRecognitionTestRequest{AttachmentOCRProvider: &provider, AttachmentMinerU4Endpoint: &endpoint, AttachmentMinerU4APIKey: &key}.apply(cfg)
+	if cfg.OCRProvider != provider || cfg.MinerU4Endpoint != endpoint || cfg.MinerU4APIKey != key || cfg.MinerUEndpoint != "http://legacy" {
+		t.Fatalf("新版测试配置未正确应用: %+v", cfg)
+	}
+}

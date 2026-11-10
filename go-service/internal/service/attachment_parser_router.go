@@ -90,9 +90,11 @@ func effectiveSupportedTypes(cfg *RecognitionConfig) []string {
 			enabled = true
 		case usesDocumentParser(cfg, fileType):
 			enabled = strings.TrimSpace(cfg.CompatEndpoint) != ""
-		case isType(minerUTypes, fileType):
+		case isType(minerUTypes, fileType) || (cfg.OCRProvider == "mineru4" && isType(documentParserTypes, fileType)):
 			if cfg.OCRProvider == "aliyun" {
 				enabled = strings.TrimSpace(cfg.AliyunOCRAccessKeyID) != "" && strings.TrimSpace(cfg.AliyunOCRAccessKeySecret) != ""
+			} else if cfg.OCRProvider == "mineru4" {
+				enabled = strings.TrimSpace(cfg.MinerU4Endpoint) != ""
 			} else {
 				enabled = strings.TrimSpace(cfg.MinerUEndpoint) != ""
 			}
@@ -126,9 +128,12 @@ func (s *AttachmentRecognitionService) recognizeAttachment(
 	case usesDocumentParser(cfg, fileType):
 		return s.recognizeOneViaCompatibility(ctx, cfg, file, raw, base, fileType == "pdf" || fileType == "ofd")
 
-	case isType(minerUTypes, fileType):
+	case isType(minerUTypes, fileType) || (cfg.OCRProvider == "mineru4" && isType(documentParserTypes, fileType)):
 		if cfg.OCRProvider == "aliyun" {
 			return s.recognizeOneViaAliyunOCR(ctx, cfg, file, raw, base)
+		}
+		if cfg.OCRProvider == "mineru4" {
+			return s.recognizeOneViaMinerU4(ctx, cfg, file.FileName, raw, base)
 		}
 		return s.recognizeOneViaMinerU(ctx, cfg, file, base)
 
@@ -160,6 +165,14 @@ func (s *AttachmentRecognitionService) recognizeOneViaMinerU(
 	file oa.AttachmentFilePayload,
 	base oa.AttachmentInfo,
 ) oa.AttachmentInfo {
+	if cfg.OCRProvider == "mineru4" {
+		raw, err := decodeAttachmentData(file.FileData, int64(cfg.MaxFileSizeMB)*1024*1024)
+		if err != nil {
+			base.Error = err.Error()
+			return base
+		}
+		return s.recognizeOneViaMinerU4(ctx, cfg, file.FileName, raw, base)
+	}
 	parsed, err := s.recognizeViaMinerU(ctx, cfg, []oa.AttachmentFilePayload{file}, base.FieldKey, base.FieldName)
 	if err != nil {
 		base.Error = serviceErrorMessage(err)

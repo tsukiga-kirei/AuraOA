@@ -318,6 +318,11 @@ PUT /api/admin/system/configs
 | `attachment.ai_content_limit_mode` | `bytes` / `unlimited` | `bytes` | 按单附件字节限制，或发送全部解析正文 |
 | `attachment.ai_content_max_bytes` | 正整数 | `10000` | 仅 `bytes` 模式生效，按 UTF-8 字符边界安全截断 |
 | `attachment.document_parser_types` | 逗号分隔扩展名 | 空 | 选择由代码直接提取正文的 PDF / Office / OFD 类型 |
+| `attachment.ocr_provider` | `mineru` / `mineru4` / `aliyun` | `mineru` | 旧版 MinerU / MinerU 4.0 / 阿里云 OCR |
+| `attachment.mineru4_endpoint` | URL | 空 | MinerU 4.0 服务根地址，不含 `/v1`，可保留部署路径前缀 |
+| `attachment.mineru4_api_key` | 字符串 | 空 | 新版服务独立 Bearer API Key，可选 |
+| `attachment.mineru4_tier` | `flash` / `basic` / `standard` / `advanced` | `standard` | PDF/图片解析档位，Office/OFD 固定使用原生 `flash` |
+| `attachment.mineru4_ocr_mode` | `auto` / `txt` / `ocr` | `auto` | 新版 OCR 模式 |
 
 该策略同时作用于审核、归档复盘、流程总结和 OA 嵌入入口。调用日志保存实际发送给模型
 的提示词，不再对日志副本单独做有损字节截断。
@@ -330,9 +335,23 @@ PUT /api/admin/system/configs
 POST /api/admin/system/attachment-recognition/test
 ```
 
-探测 MinerU 的 `/health` 连通性。请求体可携带尚未保存的
-`attachment_mineru_endpoint`、`attachment_mineru_api_key` 和
-`attachment_recognition_enabled`，用于保存前预检。
+按 `attachment_ocr_provider` 探测服务：`mineru` 使用旧版 `/health`；`mineru4`
+使用 `/v1/health`，并要求 JSON `status=ok`。不会真实解析附件。
+
+请求体字段均可选，未传字段使用已保存值；显式空字符串会覆盖已保存值：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `attachment_ocr_provider` | string | `mineru` / `mineru4`；选择要测试的协议 |
+| `attachment_mineru_endpoint` | string | 旧版服务地址 |
+| `attachment_mineru_api_key` | string | 旧版 API Key |
+| `attachment_mineru4_endpoint` | string | 新版服务地址 |
+| `attachment_mineru4_api_key` | string | 新版 API Key |
+| `attachment_recognition_enabled` | boolean | 临时启用值；不影响健康检查是否执行 |
+
+成功返回统一响应，`data` 为 `{"success":true,"message":"MinerU 服务可达"}`。
+健康检查只确认服务可达与鉴权；解析档位、模型与实际文件处理能力需通过真实附件验证。
+新增配置键须先执行迁移 `000101_attachment_mineru4_configs`。
 
 ---
 

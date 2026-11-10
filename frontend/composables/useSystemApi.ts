@@ -158,7 +158,7 @@ export const useSystemApi = () => {
   // ============================================================
 
   /**
-   * 探测 MinerU /health 接口是否可达；不会进行真实文件解析。
+   * 按所选版本探测 MinerU /health 或 /v1/health 接口是否可达；不会进行真实文件解析。
    */
   async function testAttachmentRecognition(data?: Record<string, any>): Promise<any> {
     return authFetch<any>('/api/admin/system/attachment-recognition/test', { method: 'POST', body: data || {} })

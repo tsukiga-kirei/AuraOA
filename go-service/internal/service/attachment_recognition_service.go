@@ -81,7 +81,7 @@ type RecognitionConfig struct {
 	OFDEnabled            bool
 	VisualFallbackEnabled bool
 
-	// OCR 提供商（mineru / aliyun）
+	// OCR 提供商（mineru / mineru4 / aliyun）
 	OCRProvider string
 
 	// 阿里云 OCR（attachment.aliyun_ocr_*）
@@ -89,6 +89,12 @@ type RecognitionConfig struct {
 	AliyunOCRAccessKeyID     string
 	AliyunOCRAccessKeySecret string
 	AliyunOCRType            string
+
+	// MinerU 4.0（独立配置，不沿用旧版 backend 与语言参数）
+	MinerU4Endpoint string
+	MinerU4APIKey   string
+	MinerU4Tier     string
+	MinerU4OCRMode  string
 
 	// MinerU
 	MinerUEndpoint      string
@@ -126,6 +132,8 @@ func (s *AttachmentRecognitionService) LoadConfig() (*RecognitionConfig, error) 
 		AIContentLimitMode:       attachmentAIContentLimitBytes,
 		AIContentMaxBytes:        defaultAttachmentAIContentBytes,
 		OCRProvider:              "mineru",
+		MinerU4Tier:              "standard",
+		MinerU4OCRMode:           "auto",
 		AliyunOCREndpoint:        "ocr-api.cn-hangzhou.aliyuncs.com",
 		AliyunOCRAccessKeyID:     "",
 		AliyunOCRAccessKeySecret: "",
@@ -210,6 +218,15 @@ func (s *AttachmentRecognitionService) LoadConfig() (*RecognitionConfig, error) 
 	}
 	if t := strings.TrimSpace(read("attachment.aliyun_ocr_type")); t != "" {
 		cfg.AliyunOCRType = t
+	}
+
+	cfg.MinerU4Endpoint = strings.TrimSpace(read("attachment.mineru4_endpoint"))
+	cfg.MinerU4APIKey = read("attachment.mineru4_api_key")
+	if v := read("attachment.mineru4_tier"); v != "" {
+		cfg.MinerU4Tier = v
+	}
+	if v := read("attachment.mineru4_ocr_mode"); v != "" {
+		cfg.MinerU4OCRMode = v
 	}
 
 	cfg.MinerUEndpoint = read("attachment.mineru_endpoint")
@@ -704,7 +721,7 @@ func (s *AttachmentRecognitionService) fetchMinerUTaskResult(ctx context.Context
 	return "", fmt.Errorf("任务结果中缺少 Markdown 内容")
 }
 
-// TestConnection 仅探测 MinerU /health；不做真实解析（与产品决策一致）。
+// TestConnection 按所选版本探测 MinerU 健康接口，不做真实解析。
 func (s *AttachmentRecognitionService) TestConnection(ctx context.Context) error {
 	cfg, err := s.LoadConfig()
 	if err != nil {
@@ -713,11 +730,14 @@ func (s *AttachmentRecognitionService) TestConnection(ctx context.Context) error
 	return s.TestConnectionWithConfig(ctx, cfg)
 }
 
-// TestConnectionWithConfig 使用指定配置探测 MinerU /health；
+// TestConnectionWithConfig 使用指定配置探测旧版 /health 或 4.0 /v1/health；
 // 用于前端“未保存先测试”场景。
 func (s *AttachmentRecognitionService) TestConnectionWithConfig(ctx context.Context, cfg *RecognitionConfig) error {
 	if cfg == nil {
 		return newServiceError(errcode.ErrInvalidParam, "测试配置为空")
+	}
+	if cfg.OCRProvider == "mineru4" {
+		return s.testMinerU4Connection(ctx, cfg)
 	}
 	if cfg.MinerUEndpoint == "" {
 		return newServiceError(errcode.ErrInvalidParam, "MinerU 服务地址未配置")

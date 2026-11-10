@@ -90,6 +90,10 @@ const DEFAULT_ATTACHMENT_TYPES = [
 ]
 const generalConfig = ref<SystemGeneralConfig>({
   attachment_ocr_provider: 'mineru',
+  attachment_mineru4_endpoint: '',
+  attachment_mineru4_api_key: '',
+  attachment_mineru4_tier: 'standard',
+  attachment_mineru4_ocr_mode: 'auto',
   attachment_aliyun_ocr_endpoint: 'ocr-api.cn-hangzhou.aliyuncs.com',
   attachment_aliyun_ocr_access_key_id: '',
   attachment_aliyun_ocr_access_key_secret: '',
@@ -176,12 +180,15 @@ interface AttachmentFormatRoute {
 
 const getAttachmentRouteState = (
   formats: string[],
-  parser: 'builtin' | 'mineru' | 'aliyun' | 'document' | 'none',
+  parser: 'builtin' | 'mineru' | 'mineru4' | 'aliyun' | 'document' | 'none',
 ): AttachmentRouteState => {
   if (!generalConfig.value.attachment_recognition_enabled) return 'disabled'
   if (!formats.some(format => attachmentSupportedTypes.value.includes(format))) return 'disabled'
   if (parser === 'builtin') return 'ready'
   if (parser === 'none') return 'disabled'
+  if (parser === 'mineru4') {
+    return generalConfig.value.attachment_mineru4_endpoint?.trim() ? 'ready' : 'needs_config'
+  }
   if (parser === 'mineru') {
     return generalConfig.value.attachment_mineru_endpoint?.trim() ? 'ready' : 'needs_config'
   }
@@ -195,7 +202,9 @@ const getAttachmentRouteState = (
 const attachmentDocumentParserTypesHintText = computed(() => {
   return generalConfig.value.attachment_ocr_provider === 'aliyun'
     ? t('admin.settings.attachmentDocumentParserTypesAliyunHint')
-    : t('admin.settings.attachmentDocumentParserTypesMineruHint')
+    : generalConfig.value.attachment_ocr_provider === 'mineru4'
+      ? t('admin.settings.attachmentDocumentParserTypesMineru4Hint')
+      : t('admin.settings.attachmentDocumentParserTypesMineruHint')
 })
 
 const attachmentVisualFallbackEnableDescText = computed(() => {
@@ -204,16 +213,21 @@ const attachmentVisualFallbackEnableDescText = computed(() => {
     : t('admin.settings.attachmentVisualFallbackEnableMineruDesc')
 })
 
+const attachmentVisualParserLabel = computed(() => generalConfig.value.attachment_ocr_provider === 'aliyun'
+  ? t('admin.settings.attachmentAliyunOcr')
+  : generalConfig.value.attachment_ocr_provider === 'mineru4' ? t('admin.settings.attachmentMineru4') : 'MinerU')
+
 const documentRoute = (format: string, fallbackToVisual: boolean): AttachmentFormatRoute => {
   const selected = documentParserTypes.value.includes(format)
   const isAliyun = generalConfig.value.attachment_ocr_provider === 'aliyun'
-  const visualParser = isAliyun ? 'aliyun' : 'mineru'
-  const visualLabel = isAliyun ? t('admin.settings.attachmentAliyunOcr') : 'MinerU'
+  const visualParser = generalConfig.value.attachment_ocr_provider
+  if (visualParser === 'mineru4') fallbackToVisual = true
+  const visualLabel = attachmentVisualParserLabel.value
   const visualDesc = isAliyun ? t('admin.settings.attachmentRouteAliyunFallbackDesc') : t('admin.settings.attachmentRouteMineruFallbackDesc')
   const parser = selected ? 'document' : fallbackToVisual ? visualParser : 'none'
 
   let codeDesc = t('admin.settings.attachmentRouteCodeDocumentDesc')
-  if (fallbackToVisual && generalConfig.value.attachment_visual_fallback_enabled) {
+  if (['pdf', 'ofd'].includes(format) && generalConfig.value.attachment_visual_fallback_enabled) {
     codeDesc = isAliyun
       ? t('admin.settings.attachmentRouteCodeWithAliyunFallbackDesc')
       : t('admin.settings.attachmentRouteCodeWithMineruFallbackDesc')
@@ -246,9 +260,9 @@ const attachmentFormatRoutes = computed<AttachmentFormatRoute[]>(() => [
   {
     key: 'ocr-images',
     formats: ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'tiff', 'webp'],
-    parser: generalConfig.value.attachment_ocr_provider === 'aliyun' ? t('admin.settings.attachmentAliyunOcr') : 'MinerU',
+    parser: attachmentVisualParserLabel.value,
     description: generalConfig.value.attachment_ocr_provider === 'aliyun' ? t('admin.settings.attachmentRouteAliyunImageDesc') : t('admin.settings.attachmentRouteMineruImageDesc'),
-    state: getAttachmentRouteState(['png', 'jpg', 'jpeg', 'bmp', 'gif', 'tiff', 'webp'], generalConfig.value.attachment_ocr_provider === 'aliyun' ? 'aliyun' : 'mineru'),
+    state: getAttachmentRouteState(['png', 'jpg', 'jpeg', 'bmp', 'gif', 'tiff', 'webp'], generalConfig.value.attachment_ocr_provider),
   },
   ...['docx', 'xlsx', 'pptx'].map(format => documentRoute(format, true)),
   ...['doc', 'xls', 'ppt', 'ofd'].map(format => documentRoute(format, false)),
@@ -704,6 +718,9 @@ const testAttachmentConnection = async () => {
   try {
     const result = await apiTestAttachmentRecognition({
       attachment_recognition_enabled: generalConfig.value.attachment_recognition_enabled,
+      attachment_ocr_provider: generalConfig.value.attachment_ocr_provider,
+      attachment_mineru4_endpoint: generalConfig.value.attachment_mineru4_endpoint,
+      attachment_mineru4_api_key: generalConfig.value.attachment_mineru4_api_key || '',
       attachment_mineru_endpoint: generalConfig.value.attachment_mineru_endpoint,
       attachment_mineru_api_key: generalConfig.value.attachment_mineru_api_key || '',
     })
@@ -1171,12 +1188,16 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
               </a-col>
             </a-row>
             <a-row :gutter="16">
-              <a-col :xs="24" :md="12">
+              <a-col :span="24">
                 <a-form-item :label="t('admin.settings.attachmentOCRProvider')">
                   <a-radio-group v-model:value="generalConfig.attachment_ocr_provider" button-style="solid">
                     <a-radio-button value="mineru">
                       <FileSearchOutlined style="margin-right: 6px;" />
                       {{ t('admin.settings.attachmentOCRProviderMineru') }}
+                    </a-radio-button>
+                    <a-radio-button value="mineru4">
+                      <FileSearchOutlined style="margin-right: 6px;" />
+                      {{ t('admin.settings.attachmentMineru4') }}
                     </a-radio-button>
                     <a-radio-button value="aliyun">
                       <CloudUploadOutlined style="margin-right: 6px;" />
@@ -1187,6 +1208,50 @@ const onlineAIModels = computed(() => aiModels.value.filter(m => m.status === 'o
                 </a-form-item>
               </a-col>
             </a-row>
+          </a-form>
+        </div>
+
+        <div v-if="generalConfig.attachment_ocr_provider === 'mineru4'" class="config-section">
+          <div class="config-section-header">
+            <div class="config-section-icon config-section-icon--info"><FileSearchOutlined /></div>
+            <div>
+              <h3>{{ t('admin.settings.attachmentMineru4') }}</h3>
+              <p>{{ t('admin.settings.attachmentMineru4Desc') }}</p>
+            </div>
+          </div>
+          <a-form layout="vertical">
+            <a-form-item :label="t('admin.settings.attachmentMineruEndpoint')">
+              <a-input v-model:value="generalConfig.attachment_mineru4_endpoint" size="large" :placeholder="t('admin.settings.attachmentMineru4EndpointPlaceholder')" />
+              <div class="form-hint">{{ t('admin.settings.attachmentMineru4EndpointHint') }}</div>
+            </a-form-item>
+            <a-form-item :label="t('admin.settings.attachmentMineruApiKey')">
+              <a-input-password v-model:value="generalConfig.attachment_mineru4_api_key" size="large" :placeholder="t('admin.settings.attachmentMineruApiKeyPlaceholder')" />
+            </a-form-item>
+            <a-row :gutter="16">
+              <a-col :xs="24" :md="12">
+                <a-form-item :label="t('admin.settings.attachmentMineru4Tier')">
+                  <a-select v-model:value="generalConfig.attachment_mineru4_tier" size="large" style="width: 100%;">
+                    <a-select-option v-for="tier in ['flash', 'basic', 'standard', 'advanced']" :key="tier" :value="tier">{{ tier }}</a-select-option>
+                  </a-select>
+                  <div class="form-hint">{{ t('admin.settings.attachmentMineru4TierHint') }}</div>
+                </a-form-item>
+              </a-col>
+              <a-col :xs="24" :md="12">
+                <a-form-item :label="t('admin.settings.attachmentMineruParseMethod')">
+                  <a-select v-model:value="generalConfig.attachment_mineru4_ocr_mode" size="large" style="width: 100%;">
+                    <a-select-option value="auto">{{ t('admin.settings.attachmentMineruParseMethodAuto') }}</a-select-option>
+                    <a-select-option value="txt">{{ t('admin.settings.attachmentMineruParseMethodTxt') }}</a-select-option>
+                    <a-select-option value="ocr">{{ t('admin.settings.attachmentMineruParseMethodOcr') }}</a-select-option>
+                  </a-select>
+                </a-form-item>
+              </a-col>
+            </a-row>
+            <div class="service-test-actions">
+              <a-button class="attachment-action-btn" size="large" :loading="testingAttachment" @click="testAttachmentConnection">
+                <template #icon><SyncOutlined v-if="testingAttachment" /><FileSearchOutlined v-else /></template>
+                {{ t('admin.settings.attachmentTestConnection') }}
+              </a-button>
+            </div>
           </a-form>
         </div>
 

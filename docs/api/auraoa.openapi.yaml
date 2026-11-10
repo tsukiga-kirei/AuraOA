@@ -1973,7 +1973,12 @@ paths:
                     example: success
     put:
       summary: 批量更新系统配置
-      description: 通用 KV 更新；附件 AI 正文策略使用 attachment.ai_content_limit_mode（bytes/unlimited）与 attachment.ai_content_max_bytes。
+      description: >-
+        通用 KV 更新；附件 AI 正文策略使用 attachment.ai_content_limit_mode（bytes/unlimited）与 attachment.ai_content_max_bytes。
+        附件 OCR 引擎 attachment.ocr_provider 支持 mineru、mineru4、aliyun。
+        MinerU 4.0 独立配置键为 attachment.mineru4_endpoint、attachment.mineru4_api_key、
+        attachment.mineru4_tier（flash/basic/standard/advanced，默认 standard）、
+        attachment.mineru4_ocr_mode（auto/txt/ocr，默认 auto）。值均为字符串。
       tags:
       - SystemAdmin
       security:
@@ -2244,6 +2249,28 @@ paths:
   /api/admin/system/attachment-recognition/test:
     post:
       summary: 测试 MinerU 附件解析服务连通性
+      description: 按 attachment_ocr_provider 选择旧版 /health 或 MinerU 4.0 /v1/health；新版要求 status=ok，不执行真实文件解析。未传字段沿用已保存值。
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                attachment_ocr_provider:
+                  type: string
+                  enum: [mineru, mineru4]
+                attachment_recognition_enabled:
+                  type: boolean
+                attachment_mineru_endpoint:
+                  type: string
+                attachment_mineru_api_key:
+                  type: string
+                attachment_mineru4_endpoint:
+                  type: string
+                  description: MinerU 4.0 服务根地址，不含 /v1。
+                attachment_mineru4_api_key:
+                  type: string
       tags:
       - SystemAdmin
       security:
@@ -2262,6 +2289,16 @@ paths:
                   message:
                     type: string
                     example: success
+                  data:
+                    type: object
+                    properties:
+                      success:
+                        type: boolean
+                        example: true
+                      message:
+                        type: string
+                        example: MinerU 服务可达
+
   /api/admin/system/attachment-recognition/test-compat:
     post:
       summary: 测试文档内容解析服务连通性
