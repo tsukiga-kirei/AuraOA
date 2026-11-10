@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -2474,16 +2475,30 @@ func (a *Ecology9Adapter) recognizeProcessAttachments(
 				zap.String("fieldName", fieldName),
 				zap.String("docIDs", tgt.docIDs))
 
-			files, fetchErr := a.fetchWeaverAttachmentsByDocIDs(ctx, processID, fieldKey, tgt.docIDs)
-			if fetchErr != nil {
+			files, failedDocIDs, fetchErr := a.fetchWeaverAttachmentsByDocIDs(ctx, processID, fieldKey, tgt.docIDs)
+			if fetchErr != nil && len(files) == 0 {
 				fetchFailed++
-				pkglogger.Global().Warn("附件识别：拉取泛微附件失败，跳过该项",
+				pkglogger.Global().Warn("附件识别：拉取泛微附件全部失败，跳过内容解析",
 					zap.String("processID", processID),
 					zap.String("field", fieldKey),
 					zap.Int("rowIndex", tgt.rowIndex),
 					zap.Error(fetchErr))
+				a.fallbackAttachmentFileNamesAndInfos(ctx, &all, pd, tableKey, fieldKey, fieldName, tgt.detailTable, tgt.rowIndex, failedDocIDs, &files)
+				if tableKey == "main" {
+					applyAttachmentFileNamesToRow(pd.MainData, fieldKey, tgt.docIDs, files)
+				} else if tgt.rowIndex > 0 {
+					detailRows := pd.DetailTables[tableKey]
+					if idx := tgt.rowIndex - 1; idx >= 0 && idx < len(detailRows) {
+						applyAttachmentFileNamesToRow(detailRows[idx], fieldKey, tgt.docIDs, files)
+					}
+				}
 				continue
 			}
+
+			if len(failedDocIDs) > 0 {
+				a.fallbackAttachmentFileNamesAndInfos(ctx, &all, pd, tableKey, fieldKey, fieldName, tgt.detailTable, tgt.rowIndex, failedDocIDs, &files)
+			}
+
 			if tableKey == "main" {
 				applyAttachmentFileNamesToRow(pd.MainData, fieldKey, tgt.docIDs, files)
 			} else if tgt.rowIndex > 0 {
@@ -2493,22 +2508,31 @@ func (a *Ecology9Adapter) recognizeProcessAttachments(
 				}
 			}
 
-			infos, recogErr := a.attachmentRecognitionSvc.RecognizeAttachments(ctx, files, fieldKey, fieldName)
-			if recogErr != nil {
-				recogFailed++
-				pkglogger.Global().Warn("附件识别：附件解析失败，跳过该项",
-					zap.String("processID", processID),
-					zap.String("field", fieldKey),
-					zap.Int("rowIndex", tgt.rowIndex),
-					zap.Error(recogErr))
-				continue
+			var validFiles []AttachmentFilePayload
+			for _, f := range files {
+				if f.FileData != "" {
+					validFiles = append(validFiles, f)
+				}
 			}
 
-			for i := range infos {
-				infos[i].DetailTable = tgt.detailTable
-				infos[i].RowIndex = tgt.rowIndex
+			if len(validFiles) > 0 {
+				infos, recogErr := a.attachmentRecognitionSvc.RecognizeAttachments(ctx, validFiles, fieldKey, fieldName)
+				if recogErr != nil {
+					recogFailed++
+					pkglogger.Global().Warn("附件识别：附件解析失败，跳过该项",
+						zap.String("processID", processID),
+						zap.String("field", fieldKey),
+						zap.Int("rowIndex", tgt.rowIndex),
+						zap.Error(recogErr))
+					continue
+				}
+
+				for i := range infos {
+					infos[i].DetailTable = tgt.detailTable
+					infos[i].RowIndex = tgt.rowIndex
+				}
+				all = append(all, infos...)
 			}
-			all = append(all, infos...)
 		}
 	}
 
@@ -2533,9 +2557,9 @@ func (a *Ecology9Adapter) recognizeMainAttachments(
 	return a.recognizeProcessAttachments(ctx, processID, formID, "", pd)
 }
 
-func (a *Ecology9Adapter) fetchWeaverAttachmentsByDocIDs(
+func (a *Ecology9Adapter) fetchSingleWeaverAttachmentsByDocID(
 	ctx context.Context,
-	processID, fieldKey, docIDs string,
+	processID, fieldKey, docID string,
 ) ([]AttachmentFilePayload, error) {
 	if a.weaverAPIURL == "" {
 		return nil, fmt.Errorf("未配置泛微附件接口 URL（weaver_api_url）")
@@ -2552,7 +2576,7 @@ func (a *Ecology9Adapter) fetchWeaverAttachmentsByDocIDs(
 		return nil, fmt.Errorf("泛微附件接口 URL 非法: %w", err)
 	}
 	query := reqURL.Query()
-	query.Set("docIds", docIDs)
+	query.Set("docIds", docID)
 	query.Set("appid", a.weaverAppID)
 	query.Set("loginid", a.weaverLoginID)
 	reqURL.RawQuery = query.Encode()
@@ -2560,7 +2584,7 @@ func (a *Ecology9Adapter) fetchWeaverAttachmentsByDocIDs(
 	pkglogger.Global().Info("附件识别：请求泛微附件接口",
 		zap.String("processID", processID),
 		zap.String("field", fieldKey),
-		zap.String("docIds", docIDs),
+		zap.String("docIds", docID),
 		zap.String("apiBase", fmt.Sprintf("%s://%s%s", reqURL.Scheme, reqURL.Host, reqURL.Path)))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL.String(), nil)
@@ -2587,10 +2611,8 @@ func (a *Ecology9Adapter) fetchWeaverAttachmentsByDocIDs(
 		return nil, fmt.Errorf("泛微附件接口 HTTP %d: %s", resp.StatusCode, errBody)
 	}
 
-	// 泛微桥接接口的对外契约使用 camelCase：
+	// 泛微桥接接口对外契约使用 camelCase：
 	// { docId, fileName, fileSize, fileData }。
-	// AuraOA 内部模型则统一保留 snake_case JSON tag，故在边界层显式转换，
-	// 避免外部协议细节泄漏到内部结构。
 	var result struct {
 		Code int `json:"code"`
 		Data []struct {
@@ -2629,6 +2651,127 @@ func (a *Ecology9Adapter) fetchWeaverAttachmentsByDocIDs(
 		zap.Int("fileCount", len(result.Data)),
 		zap.Strings("fileNames", fileNames))
 	return files, nil
+}
+
+func (a *Ecology9Adapter) fetchWeaverAttachmentsByDocIDs(
+	ctx context.Context,
+	processID, fieldKey, rawDocIDs string,
+) ([]AttachmentFilePayload, []string, error) {
+	idList := splitAttachmentDocIDs(rawDocIDs)
+	if len(idList) == 0 {
+		return nil, nil, nil
+	}
+
+	// 单个附件直接请求
+	if len(idList) == 1 {
+		files, err := a.fetchSingleWeaverAttachmentsByDocID(ctx, processID, fieldKey, idList[0])
+		if err != nil {
+			return nil, idList, err
+		}
+		return files, nil, nil
+	}
+
+	// 多个附件逐个请求：
+	// 避免多个大文件合并在同一响应导致泛微 OverLimitSizeException 或内存溢出；
+	// 同时确保每个附件都有机会拉取，单个附件对端主动报错不影响其他成功附件。
+	pkglogger.Global().Info("附件识别：检测到多个附件，启用逐个拉取模式以避免响应超限",
+		zap.String("processID", processID),
+		zap.String("field", fieldKey),
+		zap.Int("docCount", len(idList)))
+
+	var allFiles []AttachmentFilePayload
+	var failedDocs []string
+	var lastErr error
+
+	for _, singleID := range idList {
+		files, err := a.fetchSingleWeaverAttachmentsByDocID(ctx, processID, fieldKey, singleID)
+		if err != nil {
+			failedDocs = append(failedDocs, singleID)
+			lastErr = err
+			pkglogger.Global().Warn("附件识别：单个泛微附件拉取失败，跳过该项",
+				zap.String("processID", processID),
+				zap.String("field", fieldKey),
+				zap.String("docID", singleID),
+				zap.Error(err))
+			continue
+		}
+		allFiles = append(allFiles, files...)
+	}
+
+	if len(allFiles) == 0 && len(failedDocs) > 0 {
+		return nil, failedDocs, fmt.Errorf("所有附件拉取均失败（共 %d 个），最后一次错误: %w", len(failedDocs), lastErr)
+	}
+
+	if len(failedDocs) > 0 {
+		pkglogger.Global().Warn("附件识别：部分泛微附件拉取失败，已提取成功项",
+			zap.String("processID", processID),
+			zap.String("field", fieldKey),
+			zap.Int("successCount", len(allFiles)),
+			zap.Int("failedCount", len(failedDocs)),
+			zap.Strings("failedDocIDs", failedDocs))
+	}
+
+	return allFiles, failedDocs, nil
+}
+
+func extractFileExt(name string) string {
+	ext := filepath.Ext(name)
+	return strings.ToLower(strings.TrimPrefix(ext, "."))
+}
+
+func (a *Ecology9Adapter) fallbackAttachmentFileNamesAndInfos(
+	ctx context.Context,
+	all *[]AttachmentInfo,
+	pd *ProcessData,
+	tableKey, fieldKey, fieldName, detailTable string,
+	rowIndex int,
+	failedDocIDs []string,
+	files *[]AttachmentFilePayload,
+) {
+	if len(failedDocIDs) == 0 {
+		return
+	}
+	versions, err := a.fetchLatestAttachmentVersions(ctx, failedDocIDs)
+	if err != nil {
+		pkglogger.Global().Warn("附件识别：查询失败附件版本元数据异常",
+			zap.Strings("failedDocIDs", failedDocIDs),
+			zap.Error(err))
+	}
+
+	for _, docID := range failedDocIDs {
+		fileName := docID
+		var fileSize int64
+		if row := versions[docID]; row != nil {
+			if fn := strings.TrimSpace(mapGet(row, "file_name")); fn != "" {
+				fileName = fn
+			}
+			fileSize = int64(mapGetInt(row, "file_size"))
+		}
+
+		if files != nil {
+			*files = append(*files, AttachmentFilePayload{
+				DocID:    docID,
+				FileName: fileName,
+				FileSize: fileSize,
+			})
+		}
+
+		if all != nil {
+			errMsg := "泛微接口拉取失败: 对端响应中断(可能文件过大超出泛微响应限制)"
+			*all = append(*all, AttachmentInfo{
+				DocID:       docID,
+				FileName:    fileName,
+				FileType:    extractFileExt(fileName),
+				FileSize:    fileSize,
+				FieldKey:    fieldKey,
+				FieldName:   fieldName,
+				DetailTable: detailTable,
+				RowIndex:    rowIndex,
+				ExtractedAt: apptime.FormatRFC3339(apptime.Now()),
+				Error:       errMsg,
+			})
+		}
+	}
 }
 
 // applyAttachmentFileNamesToRow 把附件字段的 docId 列表换成文件名，供主表/明细 JSON 展示。
@@ -4241,12 +4384,14 @@ func (a *Ecology9Adapter) fetchLatestAttachmentVersions(ctx context.Context, doc
 	versionIDCol := a.col("versionid")
 	imageFileIDCol := a.col("imagefileid")
 	imageFileNameCol := a.col("imagefilename")
+	fileSizeCol := a.col("filesize")
 	query := fmt.Sprintf(`
 		SELECT
 			DIF.%s AS doc_id,
 			DIF.%s AS version_id,
 			DIF.%s AS image_file_id,
-			COALESCE(IMG.%s, '') AS file_name
+			COALESCE(IMG.%s, '') AS file_name,
+			COALESCE(IMG.%s, 0) AS file_size
 		FROM %s DIF
 		LEFT JOIN %s IMG ON DIF.%s = IMG.%s
 		WHERE DIF.%s IN ?
@@ -4257,6 +4402,7 @@ func (a *Ecology9Adapter) fetchLatestAttachmentVersions(ctx context.Context, doc
 		versionIDCol,
 		imageFileIDCol,
 		imageFileNameCol,
+		fileSizeCol,
 		docTable,
 		imageTable, imageFileIDCol, imageFileIDCol,
 		docIDCol,
