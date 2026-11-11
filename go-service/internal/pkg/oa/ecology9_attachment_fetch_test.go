@@ -92,3 +92,54 @@ func TestFetchWeaverAttachmentsByDocIDs_AllFailed(t *testing.T) {
 		t.Fatalf("预期 failedDocs 为 2，实际: %d", len(failedDocs))
 	}
 }
+
+func TestMapGetUnwrapsResolvedAttachmentAndBrowseValues(t *testing.T) {
+	row := map[string]interface{}{
+		"fj": "295726,295727",
+	}
+	applyAttachmentFileNamesToRow(row, "fj", "295726,295727", []AttachmentFilePayload{
+		{DocID: "295726", FileName: "合同.pdf"},
+		{DocID: "295727", FileName: "验收报告.pdf"},
+	})
+
+	if got := mapGet(row, "FJ"); got != "295726,295727" {
+		t.Fatalf("expected unwrapped docIDs, got %q", got)
+	}
+	docIDs := splitAttachmentDocIDs(mapGet(row, "fj"))
+	if len(docIDs) != 2 || docIDs[0] != "295726" || docIDs[1] != "295727" {
+		t.Fatalf("unexpected split docIDs: %v", docIDs)
+	}
+
+	browseRow := map[string]interface{}{
+		"doc_ref": map[string]interface{}{"value": 9981, "display": "关联文档"},
+		"weird":   map[string]interface{}{"display": "no value"},
+	}
+	if got := mapGet(browseRow, "doc_ref"); got != "9981" {
+		t.Fatalf("expected unwrapped numeric value 9981, got %q", got)
+	}
+	if got := mapGet(browseRow, "weird"); got != "" {
+		t.Fatalf("expected empty string when value key missing, got %q", got)
+	}
+	if got := stringifyDBValue(browseRow["doc_ref"]); got != "9981" {
+		t.Fatalf("expected stringifyDBValue to unwrap resolved map, got %q", got)
+	}
+}
+
+func TestFilterNumericDocIDsAndSkipsDBOnInvalidOnly(t *testing.T) {
+	valid, skipped := filterNumericDocIDs([]string{"295726", "map[display:x value:1]", " 295727 ", "abc", ""})
+	if len(valid) != 2 || valid[0] != "295726" || valid[1] != "295727" {
+		t.Fatalf("unexpected valid docIDs: %v", valid)
+	}
+	if len(skipped) != 2 || skipped[0] != "map[display:x value:1]" || skipped[1] != "abc" {
+		t.Fatalf("unexpected skipped docIDs: %v", skipped)
+	}
+
+	adapter := &Ecology9Adapter{}
+	got, err := adapter.fetchLatestAttachmentVersions(context.Background(), []string{"not-numeric", "map[bad]"})
+	if err != nil {
+		t.Fatalf("expected nil error when all docIDs are non-numeric, got %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected empty result map, got %v", got)
+	}
+}

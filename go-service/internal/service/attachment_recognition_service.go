@@ -90,7 +90,7 @@ type RecognitionConfig struct {
 	AliyunOCRAccessKeySecret string
 	AliyunOCRType            string
 
-	// MinerU 4.0（独立配置，不沿用旧版 backend 与语言参数）
+	// MinerU 4.1（独立配置，使用统一 Tasks 协议，不沿用旧版 backend 与语言参数）
 	MinerU4Endpoint string
 	MinerU4APIKey   string
 	MinerU4Tier     string

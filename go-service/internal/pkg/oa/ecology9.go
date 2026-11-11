@@ -215,24 +215,44 @@ type e9WorkflowBillField struct {
 
 func (e9WorkflowBillField) TableName() string { return "workflow_billfield" }
 
-// mapGet 从 map[string]interface{} 中不区分大小写地取字符串值。
+// mapGet 从 map[string]interface{} 中不区分大小写地取字符串值；
+// 若字段已被替换为浏览/选择/附件解析后的 {"value": ..., "display": ...} 结构，则解包原始 value。
 func mapGet(m map[string]interface{}, key string) string {
 	key = strings.ToLower(key)
 	for k, v := range m {
 		if strings.ToLower(k) == key {
-			if v == nil {
-				return ""
-			}
-			if s, ok := v.(string); ok {
-				return s
-			}
-			if b, ok := v.([]byte); ok {
-				return string(b)
-			}
-			return fmt.Sprintf("%v", v)
+			return stringifyMapValue(v)
 		}
 	}
 	return ""
+}
+
+// stringifyMapValue 将数据库字段或已解析的 {"value": ..., "display": ...} 映射转为原始字符串，避免输出 Go map 调试格式。
+func stringifyMapValue(v interface{}) string {
+	switch tv := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return tv
+	case []byte:
+		return string(tv)
+	case map[string]interface{}:
+		for mk, mv := range tv {
+			if strings.EqualFold(mk, "value") {
+				return stringifyMapValue(mv)
+			}
+		}
+		return ""
+	case map[string]string:
+		for mk, mv := range tv {
+			if strings.EqualFold(mk, "value") {
+				return mv
+			}
+		}
+		return ""
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }
 
 // mapGetInt 从 map[string]interface{} 中不区分大小写地取整数值。
@@ -274,17 +294,7 @@ func mapFindKey(m map[string]interface{}, key string) (string, bool) {
 }
 
 func stringifyDBValue(v interface{}) string {
-	if v == nil {
-		return ""
-	}
-	switch t := v.(type) {
-	case string:
-		return strings.TrimSpace(t)
-	case []byte:
-		return strings.TrimSpace(string(t))
-	default:
-		return strings.TrimSpace(fmt.Sprintf("%v", t))
-	}
+	return strings.TrimSpace(stringifyMapValue(v))
 }
 
 // ── ValidateProcess ────────────────────────────────────────
@@ -2735,7 +2745,7 @@ func (a *Ecology9Adapter) fallbackAttachmentFileNamesAndInfos(
 	if err != nil {
 		pkglogger.Global().Warn("附件识别：查询失败附件版本元数据异常",
 			zap.Strings("failedDocIDs", failedDocIDs),
-			zap.Error(err))
+			zap.String("error", pkglogger.CompactDBError(err)))
 	}
 
 	for _, docID := range failedDocIDs {
@@ -4252,7 +4262,7 @@ func (a *Ecology9Adapter) FetchProcessContextAnchor(ctx context.Context, process
 		if versionErr != nil {
 			pkglogger.Global().Warn("查询附件版本元数据失败，退化为附件字段值判断",
 				zap.String("processID", processID),
-				zap.Error(versionErr))
+				zap.String("error", pkglogger.CompactDBError(versionErr)))
 		} else {
 			anchor.AttachmentFingerprint, anchor.AttachmentFieldFingerprints =
 				ComputeAttachmentFingerprints(attachmentVersions)
@@ -4339,7 +4349,7 @@ func (a *Ecology9Adapter) fetchAttachmentVersionAnchors(
 		pkglogger.Global().Warn("批量查询附件版本失败，退化为 docId 判断",
 			zap.String("processID", processID),
 			zap.Int("docCount", len(docIDs)),
-			zap.Error(err))
+			zap.String("error", pkglogger.CompactDBError(err)))
 		return items, nil
 	}
 	for i := range items {
@@ -4373,11 +4383,44 @@ func splitAttachmentDocIDs(raw string) []string {
 	return out
 }
 
+func isNumericDocID(id string) bool {
+	if id == "" {
+		return false
+	}
+	for _, r := range id {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func filterNumericDocIDs(docIDs []string) (valid, skipped []string) {
+	for _, raw := range docIDs {
+		id := strings.TrimSpace(raw)
+		if isNumericDocID(id) {
+			valid = append(valid, id)
+		} else if id != "" {
+			skipped = append(skipped, id)
+		}
+	}
+	return valid, skipped
+}
+
 func (a *Ecology9Adapter) fetchLatestAttachmentVersions(ctx context.Context, docIDs []string) (map[string]map[string]interface{}, error) {
 	out := make(map[string]map[string]interface{}, len(docIDs))
 	if len(docIDs) == 0 {
 		return out, nil
 	}
+	validDocIDs, skippedDocIDs := filterNumericDocIDs(docIDs)
+	if len(skippedDocIDs) > 0 {
+		pkglogger.Global().Warn("附件版本查询忽略非数字 docId",
+			zap.Strings("skippedDocIDs", skippedDocIDs))
+	}
+	if len(validDocIDs) == 0 {
+		return out, nil
+	}
+	docIDs = validDocIDs
 	docTable := a.tableName("DocImageFile")
 	imageTable := a.tableName("ImageFile")
 	docIDCol := a.col("docid")

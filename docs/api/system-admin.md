@@ -318,8 +318,8 @@ PUT /api/admin/system/configs
 | `attachment.ai_content_limit_mode` | `bytes` / `unlimited` | `bytes` | 按单附件字节限制，或发送全部解析正文 |
 | `attachment.ai_content_max_bytes` | 正整数 | `10000` | 仅 `bytes` 模式生效，按 UTF-8 字符边界安全截断 |
 | `attachment.document_parser_types` | 逗号分隔扩展名 | 空 | 选择由代码直接提取正文的 PDF / Office / OFD 类型 |
-| `attachment.ocr_provider` | `mineru` / `mineru4` / `aliyun` | `mineru` | 旧版 MinerU / MinerU 4.0 / 阿里云 OCR |
-| `attachment.mineru4_endpoint` | URL | 空 | MinerU 4.0 服务根地址，不含 `/v1`，可保留部署路径前缀 |
+| `attachment.ocr_provider` | `mineru` / `mineru4` / `aliyun` | `mineru` | 旧版 MinerU / MinerU 4.1 / 阿里云 OCR |
+| `attachment.mineru4_endpoint` | URL | 空 | MinerU 4.1 服务根地址，不含 `/v1`，可保留部署路径前缀 |
 | `attachment.mineru4_api_key` | 字符串 | 空 | 新版服务独立 Bearer API Key，可选 |
 | `attachment.mineru4_tier` | `flash` / `basic` / `standard` / `advanced` | `standard` | PDF/图片解析档位，Office/OFD 固定使用原生 `flash` |
 | `attachment.mineru4_ocr_mode` | `auto` / `txt` / `ocr` | `auto` | 新版 OCR 模式 |
@@ -335,8 +335,8 @@ PUT /api/admin/system/configs
 POST /api/admin/system/attachment-recognition/test
 ```
 
-按 `attachment_ocr_provider` 探测服务：`mineru` 使用旧版 `/health`；`mineru4`
-使用 `/v1/health`，并要求 JSON `status=ok`。不会真实解析附件。
+按 `attachment_ocr_provider` 探测服务：`mineru` 使用旧版 `/health`；`mineru4`（MinerU 4.1）
+使用 `/v1/health`，并要求 JSON `status=ok`（若返回 `4.0.x` 版本则明确提示需升级服务端）。不会真实解析附件。
 
 请求体字段均可选，未传字段使用已保存值；显式空字符串会覆盖已保存值：
 

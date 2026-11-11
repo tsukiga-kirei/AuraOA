@@ -93,7 +93,7 @@ export interface SystemGeneralConfig {
     // ===== 附件解析（attachment.*） =====
     /** attachment.recognition_enabled — 是否启用附件解析功能 */
     attachment_recognition_enabled: boolean
-    /** attachment.mineru4_endpoint — MinerU 4.0 V1 服务根地址 */
+    /** attachment.mineru4_endpoint — MinerU 4.1 服务根地址 */
     attachment_mineru4_endpoint: string
     attachment_mineru4_api_key?: string
     attachment_mineru4_tier: 'flash' | 'basic' | 'standard' | 'advanced'

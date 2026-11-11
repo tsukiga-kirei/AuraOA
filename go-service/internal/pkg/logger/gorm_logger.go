@@ -52,6 +52,21 @@ func (l *GormLogger) Error(_ context.Context, msg string, args ...interface{}) {
 	Global().Sugar().Errorf(msg, args...)
 }
 
+// CompactDBError 剥离达梦等驱动自带的多行内部调用栈（stack info），仅保留核心错误码与摘要信息。
+func CompactDBError(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	for _, marker := range []string{"\r\nstack info:", "\nstack info:"} {
+		if idx := strings.Index(msg, marker); idx >= 0 {
+			msg = msg[:idx]
+			break
+		}
+	}
+	return strings.TrimSpace(msg)
+}
+
 // Trace 记录每条 SQL 执行情况：慢查询用 WARN，错误用 ERROR，正常用 DEBUG。
 func (l *GormLogger) Trace(_ context.Context, begin time.Time, fc func() (sql string, rowsAffected int64), err error) {
 	elapsed := time.Since(begin)
@@ -69,8 +84,8 @@ func (l *GormLogger) Trace(_ context.Context, begin time.Time, fc func() (sql st
 		if l.IgnoreRecordNotFoundError && err == gorm.ErrRecordNotFound {
 			return
 		}
-		// 其他错误（如达梦驱动报错 Error -6128）以 ERROR 级别记录，包含完整错误信息
-		Global().Error("GORM 查询错误", append(fields, zap.Error(err))...)
+		// 其他错误（如达梦驱动报错 Error -6128）以 ERROR 级别记录，剥离驱动冗余堆栈后仍由 zap 输出业务调用链
+		Global().Error("GORM 查询错误", append(fields, zap.String("error", CompactDBError(err)))...)
 
 	case l.SlowThreshold != 0 && elapsed > l.SlowThreshold:
 		// 慢查询以 WARN 级别记录

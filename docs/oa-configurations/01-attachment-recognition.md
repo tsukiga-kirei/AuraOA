@@ -53,7 +53,7 @@
 | 启用附件识别 | `attachment.recognition_enabled` | `false` | 关闭时所有 OA 表单字段照常送入 AI，但跳过附件识别 |
 | 最大文件大小（MB） | `attachment.max_file_size_mb` | `10` | 超出大小的文件以「已跳过」标记进入 prompt，不会下发到任何解析器 |
 | 支持的文件类型 | `attachment.supported_types` | `pdf,png,jpg,jpeg,bmp,gif,tiff,webp,txt,csv,md,docx,xlsx,pptx,doc,xls,ppt,ofd` | 逗号分隔；不在白名单的扩展名按「已跳过」处理；旧 Office 与 OFD 还受各自开关控制 |
-| OCR 解析引擎 | `attachment.ocr_provider` | `mineru` | 可选 `mineru`（旧版自建服务）、`mineru4`（MinerU 4.0 V1）或 `aliyun`（阿里云统一文字识别） |
+| OCR 解析引擎 | `attachment.ocr_provider` | `mineru` | 可选 `mineru`（旧版自建服务）、`mineru4`（MinerU 4.1 Tasks API）或 `aliyun`（阿里云统一文字识别） |
 | 发送给 AI 的附件正文 | `attachment.ai_content_limit_mode` | `bytes` | `bytes` 按单个附件限制正文字节数；`unlimited` 发送全部已解析正文 |
 | 单附件正文上限（字节） | `attachment.ai_content_max_bytes` | `10000` | 仅在 `bytes` 模式生效；按 UTF-8 字符边界安全截断，不会切坏中文 |
 | 启用单流程附件数量上限 | `attachment.enable_count_limit` | `true` | 可由环境变量 `AURAOA_ATTACHMENT_ENABLE_COUNT_LIMIT` 覆盖；开启时超出数量的附件跳过内容解析，防止超时与 Token 暴增 |
@@ -81,9 +81,9 @@
 
 > **测试连接**仅探测 `GET {mineru_endpoint}/health`，不会真实调用 `/file_parse` 解析文件。当前适配同时兼容两类 MinerU 返回：一类直接在同步响应中返回 Markdown，另一类先返回已完成任务摘要，再通过 `result_url` 拉取最终 Markdown。
 
-### MinerU 4.0 解析服务
+### MinerU 4.1 解析服务
 
-进入「系统设置 → 附件识别」，在 OCR 解析引擎选择 **MinerU 4.0**，填写根地址与
+进入「系统设置 → 附件识别」，在 OCR 解析引擎选择 **MinerU 4.1**，填写根地址与
 可选 API Key，选择 PDF/图片解析档位和 OCR 模式，测试连接后保存。先执行迁移
 `000101_attachment_mineru4_configs` 并同步更新前后端。迁移不会自动切换当前引擎。
 新版配置独立保存，切换引擎不会覆盖旧版配置。
@@ -95,14 +95,15 @@
 | PDF/图片解析档位 | `attachment.mineru4_tier` | `standard` | `flash/basic/standard/advanced`，须选择服务端已启用档位 |
 | OCR 模式 | `attachment.mineru4_ocr_mode` | `auto` | `auto/txt/ocr` |
 
-实现依据 [4.0 官方 HTTP API 文档](https://github.com/opendatalab/MinerU/blob/mineru-4.0.0-released/docs/en/usage/http_api.md)
-与 [4.0 官方客户端](https://github.com/opendatalab/MinerU/blob/mineru-4.0.0-released/mineru/parser/api_client.py)：
-创建 `/v1/uploads`（带 SHA-256）→ 按返回地址 PUT 文件 → 完成上传 → 创建
-`/v1/parse/jobs` → 查询终态 → 通过 `/v1/files/{file_id}/content` 下载 Markdown。
-缓存命中直接复用返回的文件 ID。不会发送旧版 backend、语言、公式或表格开关。
+实现依据 [4.1 官方 HTTP API 文档](https://github.com/opendatalab/MinerU/blob/master/docs/en/usage/http_api.md)
+与 [4.1 官方客户端](https://github.com/opendatalab/MinerU/blob/master/mineru/parser/api_client.py)：
+创建 `/v1/tasks`（携带文件名、`bytes`、`sha256sum`、`tier`、`ocr_mode` 与 `output_formats: ["default"]`）
+→ 当文件状态为 `waiting-file` 时按 `upload.url` 与 `upload.headers` 执行 `PUT` 上传（不调用 `/complete`）
+→ 轮询 `GET /v1/tasks/{task_id}` 至完成 → 下载 `result_url` 结果 ZIP 并读取 `markdown.md`。
+缓存命中直接复用返回的完成态与 `result_url`。不会发送旧版 backend、语言、公式或表格开关。
 Office/OFD 使用 `flash` 原生解析；PDF/图片采用所选档位。
 
-测试连接检查 `/v1/health` 及 `status=ok`，不提交文件。整体解析沿用附件 HTTP 超时
+测试连接检查 `/v1/health` 及 `status=ok`（若识别到 4.0 版本会明确提示需升级至 4.1+），不提交文件。整体解析沿用附件 HTTP 超时
 预算（默认 300 秒），支持请求取消与有界轮询；单文件失败仍保留为附件错误。
 上传、结果下载及跨源重定向不会向其他源发送 MinerU API Key。
 
@@ -110,7 +111,7 @@ Office/OFD 使用 `flash` 原生解析；PDF/图片采用所选档位。
 PDF/OFD 无文字层时的视觉回退、ZIP 子文件和规则导入共用该配置。
 TXT/CSV/MD 继续本地读取，扩展名仍须在支持类型白名单内。
 
-此选项适配 **4.0.x** uploads/jobs 协议；4.1 的 Tasks 协议有破坏性变化，不能用此选项接入。
+此选项适配 **4.1.x** 统一 `/v1/tasks` 协议，不再兼容 4.0 的 `uploads/parse/jobs` 接口。
 
 ### 阿里云 OCR 服务
 
@@ -154,8 +155,8 @@ Office/OFD 开关转换为对应扩展名选择。
 | `png,jpg,jpeg,bmp,gif,tiff,webp` | 经由所选 OCR 引擎（MinerU 或 阿里云 OCR）直接识别 |
 | `pdf` | 选择代码解析时由 PDFBox 提取文字层，否则走所选 OCR 引擎；无文字层可自动回退 OCR 引擎 |
 | `docx,xlsx,pptx` | 选择代码解析时由 Apache POI 提取，解析失败后分别尝试 `doc,xls,ppt` 兼容解析；否则走所选 OCR 引擎 |
-| `doc,xls,ppt` | 选择代码解析时由 Apache POI 提取；未选择且引擎为 MinerU 4.0 时走原生解析，否则不处理 |
-| `ofd` | 选择代码解析时由 OFDRW 提取；无文字层时可转 PDF 回退至 OCR 引擎；未选择且引擎为 MinerU 4.0 时走原生解析 |
+| `doc,xls,ppt` | 选择代码解析时由 Apache POI 提取；未选择且引擎为 MinerU 4.1 时走原生解析，否则不处理 |
+| `ofd` | 选择代码解析时由 OFDRW 提取；无文字层时可转 PDF 回退至 OCR 引擎；未选择且引擎为 MinerU 4.1 时走原生解析 |
 
 白名单只决定文件能否进入路由，不代表对应解析器已启用。系统对外返回的规则导入
 能力会按代码解析类型、MinerU 与文档解析服务地址过滤实际可用类型。
