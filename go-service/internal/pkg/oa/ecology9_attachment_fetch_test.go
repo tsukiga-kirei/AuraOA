@@ -5,8 +5,63 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 )
+
+func TestFetchAttachmentVersionAnchorsKeepsTableAndRawIDs(t *testing.T) {
+	db := setupTestE9DB(t)
+	for _, query := range []string{
+		`CREATE TABLE workflow_requestbase (requestid INTEGER, workflowid INTEGER);`,
+		`CREATE TABLE workflow_bill (id INTEGER, tablename TEXT);`,
+		`CREATE TABLE DocImageFile (docid INTEGER, versionid INTEGER, imagefileid INTEGER);`,
+		`CREATE TABLE ImageFile (imagefileid INTEGER, imagefilename TEXT, filesize INTEGER);`,
+		`INSERT INTO workflow_requestbase VALUES (9001, 101);`,
+		`INSERT INTO workflow_bill VALUES (201, 'formtable_main_900003');`,
+		`INSERT INTO workflow_billfield (id, billid, fieldname, fieldhtmltype, type, detailtable) VALUES
+		 (10, 201, 'fj', '6', 0, ''), (11, 201, 'fj', '6', 0, '1'), (12, 201, 'fj', '3', 9, '2');`,
+		`INSERT INTO DocImageFile VALUES (10, 1, 100), (10, 2, 101), (20, 1, 200), (30, 1, 300);`,
+		`INSERT INTO ImageFile VALUES (100, '旧合同.pdf', 10), (101, '合同.pdf', 20), (200, '明细.pdf', 30), (300, '文档.pdf', 40);`,
+	} {
+		if err := db.Exec(query).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	adapter := &Ecology9Adapter{db: db, driver: "mysql"}
+	pd := &ProcessData{MainData: map[string]interface{}{"fj": "10"}, DetailTables: map[string][]map[string]interface{}{
+		"formtable_main_900003_dt1": {{"fj": "20"}},
+		"formtable_main_900003_dt2": {{"fj": "30"}},
+	}}
+	before, err := adapter.fetchAttachmentVersionAnchors(context.Background(), "9001", pd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	global, fields := ComputeAttachmentFingerprints(before)
+	for _, key := range []string{"fj", "formtable_main_900003_dt1:fj", "formtable_main_900003_dt2:fj"} {
+		if fields[key] == "" {
+			t.Fatalf("版本指纹缺少独立的主表/明细字段 %q：%v", key, fields)
+		}
+	}
+	for _, item := range before {
+		if item.DocID == "10" && (item.VersionID != 2 || item.ImageFileID != "101" || item.FileName != "合同.pdf") {
+			t.Fatalf("应读取最新附件版本：%+v", item)
+		}
+	}
+	versions, err := adapter.fetchLatestAttachmentVersions(context.Background(), []string{"10"})
+	if err != nil || mapGetInt(versions["10"], "file_size") != 20 {
+		t.Fatalf("查询表达式返回的文件大小也应正确解包：%v, %v", versions, err)
+	}
+	applyAttachmentFileNamesToRow(pd.MainData, "fj", "10", []AttachmentFilePayload{{DocID: "10", FileName: "合同.pdf"}})
+	applyAttachmentFileNamesToRow(pd.DetailTables["formtable_main_900003_dt1"][0], "fj", "20", []AttachmentFilePayload{{DocID: "20", FileName: "明细.pdf"}})
+	after, err := adapter.fetchAttachmentVersionAnchors(context.Background(), "9001", pd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, gotFields := ComputeAttachmentFingerprints(after)
+	if global == "" || got != global || !reflect.DeepEqual(fields, gotFields) {
+		t.Fatalf("无附件下载与带展示值的执行路径必须读取相同附件版本指纹：before=%+v after=%+v", before, after)
+	}
+}
 
 func TestFetchWeaverAttachmentsByDocIDs_PerDocIDResilience(t *testing.T) {
 	// 模拟泛微服务端：
@@ -40,10 +95,10 @@ func TestFetchWeaverAttachmentsByDocIDs_PerDocIDResilience(t *testing.T) {
 	defer server.Close()
 
 	adapter := &Ecology9Adapter{
-		weaverAPIURL: server.URL,
-		weaverAppID:  "test_app",
+		weaverAPIURL:  server.URL,
+		weaverAppID:   "test_app",
 		weaverLoginID: "sysadmin",
-		httpClient:   server.Client(),
+		httpClient:    server.Client(),
 	}
 
 	ctx := context.Background()
@@ -77,10 +132,10 @@ func TestFetchWeaverAttachmentsByDocIDs_AllFailed(t *testing.T) {
 	defer server.Close()
 
 	adapter := &Ecology9Adapter{
-		weaverAPIURL: server.URL,
-		weaverAppID:  "test_app",
+		weaverAPIURL:  server.URL,
+		weaverAppID:   "test_app",
 		weaverLoginID: "sysadmin",
-		httpClient:   server.Client(),
+		httpClient:    server.Client(),
 	}
 
 	ctx := context.Background()

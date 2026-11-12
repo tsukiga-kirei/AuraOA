@@ -567,10 +567,7 @@ func (s *AuditExecuteService) fetchOAAnchorWithData(
 	if err != nil {
 		return oa.OAContextAnchor{}, newServiceError(errcode.ErrOAQueryFailed, err.Error())
 	}
-	anchor.ContentFingerprint = computeSelectedProcessFingerprint(pd, fieldSet, true, true)
-	anchor.AttachmentFingerprint = attachmentFingerprintForFieldSet(*anchor, fieldSet)
-	anchor.ExecutionFingerprint = executionFingerprint
-	return *anchor, nil
+	return auditOAAnchorForFields(*anchor, pd, fieldSet, executionFingerprint), nil
 }
 
 func (s *AuditExecuteService) buildOAContextAnchorForJob(

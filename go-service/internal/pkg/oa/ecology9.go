@@ -236,6 +236,12 @@ func stringifyMapValue(v interface{}) string {
 		return tv
 	case []byte:
 		return string(tv)
+	case *interface{}:
+		// 部分驱动对 COALESCE 等表达式返回接口指针，不能将内存地址写入名称和指纹。
+		if tv == nil {
+			return ""
+		}
+		return stringifyMapValue(*tv)
 	case map[string]interface{}:
 		for mk, mv := range tv {
 			if strings.EqualFold(mk, "value") {
@@ -269,13 +275,9 @@ func mapGetInt(m map[string]interface{}, key string) int {
 				return int(n)
 			case float64:
 				return int(n)
-			case string:
+			case string, []byte, *interface{}:
 				var out int
-				_, _ = fmt.Sscanf(strings.TrimSpace(n), "%d", &out)
-				return out
-			case []byte:
-				var out int
-				_, _ = fmt.Sscanf(strings.TrimSpace(string(n)), "%d", &out)
+				_, _ = fmt.Sscanf(strings.TrimSpace(stringifyMapValue(n)), "%d", &out)
 				return out
 			}
 		}
@@ -2828,11 +2830,20 @@ func applyAttachmentFileNamesToRow(row map[string]interface{}, fieldKey, rawDocI
 		}
 	}
 	actualKey, ok := mapFindKey(row, fieldKey)
+	var rawValue interface{} = rawDocIDs
 	if !ok {
 		actualKey = fieldKey
+	} else {
+		// 保留数据库原值及类型，避免文件名补全将数字或字节串变为字符串而改变指纹。
+		rawValue = row[actualKey]
+		if resolved, ok := rawValue.(map[string]interface{}); ok {
+			if value, exists := resolved["value"]; exists {
+				rawValue = value
+			}
+		}
 	}
 	row[actualKey] = map[string]interface{}{
-		"value":   rawDocIDs,
+		"value":   rawValue,
 		"display": strings.Join(names, ", "),
 	}
 }
@@ -4334,7 +4345,7 @@ func (a *Ecology9Adapter) fetchAttachmentVersionAnchors(
 				docIDs := splitAttachmentDocIDs(mapGet(dRow, fieldKey))
 				for _, docID := range docIDs {
 					docIDsSet[docID] = struct{}{}
-					items = append(items, AttachmentVersionAnchor{FieldKey: fieldKey, DocID: docID})
+					items = append(items, AttachmentVersionAnchor{FieldKey: tableKey + ":" + fieldKey, DocID: docID})
 				}
 			}
 		}

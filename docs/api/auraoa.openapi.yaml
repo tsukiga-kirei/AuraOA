@@ -7093,7 +7093,7 @@ paths:
               $ref: '#/components/schemas/EmbedRefreshEventRequest'
   /api/embed/context:
     get:
-      description: 个人视角仅在配置与已发布通用配置存在实际生效差异，或本人已有有效审核结果、运行中任务时返回；仅保存过覆盖值不构成个人定制。
+      description: 个人视角仅在配置与已发布通用配置存在实际生效差异，或本人已有有效审核结果、运行中任务时返回；仅保存过覆盖值不构成个人定制。变化检测与失败自动重试拦截按业务原值及生效范围内的主表、明细附件版本计算，忽略展示包装；同名附件按表区分，范围外附件版本不参与完整尝试指纹。
       summary: 获取嵌入审核上下文
       tags:
       - Embed
@@ -7274,6 +7274,7 @@ paths:
   /api/embed/summary/context:
     get:
       summary: 获取嵌入流程总结上下文
+      description: 总结块的附件版本依赖与正文输入使用相同的表和字段范围，区分主表及各明细表的同名附件；内容指纹忽略字段展示包装。沿用未声明表或 nil 字段集合全选、空集合及 false 字段不选中的既有语义。
       tags:
       - Embed
       security:

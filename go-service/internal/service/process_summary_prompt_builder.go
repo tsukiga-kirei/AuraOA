@@ -224,21 +224,13 @@ func filterAttachmentsForFieldSet(attachments []oa.AttachmentInfo, fieldSet Sele
 	if fieldSet == nil {
 		return attachments
 	}
-	allowed := map[string]bool{}
-	for _, keys := range fieldSet {
-		if keys == nil {
-			return attachments
-		}
-		for key := range keys {
-			allowed[strings.ToLower(key)] = true
-		}
-	}
-	if len(allowed) == 0 {
-		return nil
-	}
 	out := make([]oa.AttachmentInfo, 0, len(attachments))
 	for _, item := range attachments {
-		if allowed[strings.ToLower(item.FieldKey)] {
+		table := item.DetailTable
+		if table == "" {
+			table = "main"
+		}
+		if oa.AttachmentFieldSelected(fieldSet, table, item.FieldKey) {
 			out = append(out, item)
 		}
 	}

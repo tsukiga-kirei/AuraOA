@@ -92,14 +92,28 @@ func IsAnchorStale(stored, current OAContextAnchor) bool {
 	return CompareContextAnchors(stored, current).Any()
 }
 
-// ComputeProcessDataFingerprint 对流程主表+明细数据做稳定 hash。
+// ComputeProcessDataFingerprint 对流程主表与明细的业务原值做稳定 hash，展示值不参与比较。
 func ComputeProcessDataFingerprint(pd *ProcessData) string {
 	if pd == nil {
 		return ""
 	}
+	var details map[string][]map[string]interface{}
+	if pd.DetailTables != nil {
+		details = make(map[string][]map[string]interface{}, len(pd.DetailTables))
+		for table, rows := range pd.DetailTables {
+			var normalized []map[string]interface{}
+			if rows != nil {
+				normalized = make([]map[string]interface{}, len(rows))
+				for i, row := range rows {
+					normalized[i] = processFingerprintRow(row)
+				}
+			}
+			details[table] = normalized
+		}
+	}
 	payload := map[string]interface{}{
-		"main_data":     pd.MainData,
-		"detail_tables": pd.DetailTables,
+		"main_data":     processFingerprintRow(pd.MainData),
+		"detail_tables": details,
 	}
 	b, err := json.Marshal(canonicalize(payload))
 	if err != nil {
@@ -109,9 +123,30 @@ func ComputeProcessDataFingerprint(pd *ProcessData) string {
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
+func processFingerprintRow(row map[string]interface{}) map[string]interface{} {
+	if row == nil {
+		return nil
+	}
+	out := make(map[string]interface{}, len(row))
+	for key, value := range row {
+		// 仅解开字段级展示包装，避免把含 value/display 字段的整行或嵌套业务 JSON 当作包装。
+		if resolved, ok := value.(map[string]interface{}); ok {
+			if raw, exists := resolved["value"]; exists {
+				_, hasDisplay := resolved["display"]
+				_, hasItems := resolved["items"]
+				if hasDisplay && (len(resolved) == 2 || (len(resolved) == 3 && hasItems)) {
+					value = raw
+				}
+			}
+		}
+		out[key] = value
+	}
+	return out
+}
+
 // AttachmentVersionAnchor 是无需下载文件即可读取的附件版本元数据。
 type AttachmentVersionAnchor struct {
-	FieldKey    string `json:"field_key"`
+	FieldKey    string `json:"field_key"` // 主表保留字段名；明细使用「表名:字段名」，避免同名字段串扰。
 	DocID       string `json:"doc_id"`
 	VersionID   int64  `json:"version_id"`
 	ImageFileID string `json:"image_file_id,omitempty"`

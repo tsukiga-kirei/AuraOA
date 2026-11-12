@@ -154,6 +154,11 @@ AuraOA 从 OA 物理表读取到的值通常是数据库存储值，例如人员
 | 选择框 / 下拉框 | `fieldhtmltype=5` | `workflow_selectitem` | 用 `fieldid + selectvalue` 找 `selectname`，再解析泛微多语言串 |
 | 附件 | `fieldhtmltype=6` | OA 附件接口 | 仅当附件字段位于最终生效字段范围时下载、识别，并拼入 `{{attachments}}` |
 
+附件名称补全保留字段原值及类型，内容指纹仅比较业务原值，不比较 `display` / `items` 展示包装。
+附件版本独立读取 `docId`、最新版本、文件 ID 和文件名；主表与明细的同名附件分组独立，明细指纹键
+使用 `表名:字段名`。下载范围、版本比较和总结块附件正文筛选共用字段判断，显式关闭的字段不参与。
+数据库查询表达式返回接口指针时先解包实际值，避免将内存地址当作文件名参与指纹。
+
 浏览按钮通用解析优先级：
 
 1. 先按 `workflow_billfield.type = workflow_browserurl.id` 查浏览按钮定义。

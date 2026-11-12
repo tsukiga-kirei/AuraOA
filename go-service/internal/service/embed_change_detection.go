@@ -93,29 +93,46 @@ func attachmentFingerprintForFieldSet(anchor oa.OAContextAnchor, fieldSet Select
 		return anchor.AttachmentFingerprint
 	}
 	keys := make([]string, 0)
-	seen := make(map[string]struct{})
-	for _, fields := range fieldSet {
-		for field := range fields {
-			key := strings.ToLower(strings.TrimSpace(field))
-			if _, ok := anchor.AttachmentFieldFingerprints[key]; !ok {
-				continue
-			}
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			keys = append(keys, key)
-		}
+	selected := attachmentFieldFingerprintsForFieldSet(anchor, fieldSet)
+	for key := range selected {
+		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 	parts := make([]string, 0, len(keys))
 	for _, key := range keys {
-		parts = append(parts, key+"="+anchor.AttachmentFieldFingerprints[key])
+		parts = append(parts, key+"="+selected[key])
 	}
 	if len(parts) == 0 {
 		return ""
 	}
 	return stableJSONFingerprint(parts)
+}
+
+func attachmentFieldFingerprintsForFieldSet(anchor oa.OAContextAnchor, fieldSet SelectedFieldSet) map[string]string {
+	if fieldSet == nil {
+		return anchor.AttachmentFieldFingerprints
+	}
+	selected := make(map[string]string)
+	for key, fingerprint := range anchor.AttachmentFieldFingerprints {
+		// 主表保留历史字段键，明细使用「表名:字段名」，与实际下载和总结块提示词一致。
+		table, field := "main", key
+		if parts := strings.SplitN(key, ":", 2); len(parts) == 2 {
+			table, field = parts[0], parts[1]
+		}
+		if oa.AttachmentFieldSelected(fieldSet, table, field) {
+			selected[key] = fingerprint
+		}
+	}
+	return selected
+}
+
+// auditOAAnchorForFields 让上下文查询与任务执行按同一字段范围保存完整锚点和失败拦截指纹。
+func auditOAAnchorForFields(anchor oa.OAContextAnchor, pd *oa.ProcessData, fieldSet SelectedFieldSet, executionFingerprint string) oa.OAContextAnchor {
+	anchor.ContentFingerprint = computeSelectedProcessFingerprint(pd, fieldSet, true, true)
+	anchor.AttachmentFingerprint = attachmentFingerprintForFieldSet(anchor, fieldSet)
+	anchor.AttachmentFieldFingerprints = attachmentFieldFingerprintsForFieldSet(anchor, fieldSet)
+	anchor.ExecutionFingerprint = executionFingerprint
+	return anchor
 }
 
 func buildSummaryBlockDependencyFingerprints(

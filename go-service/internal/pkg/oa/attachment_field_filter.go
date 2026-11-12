@@ -63,26 +63,7 @@ func attachmentFieldAllowedForTable(ctx context.Context, tableKey, fieldKey stri
 
 	// 优先检查多表 FieldSet 过滤器
 	if fieldSet, exists := ctx.Value(attachmentFieldSetFilterContextKey{}).(map[string]map[string]bool); exists {
-		allowedFields, ok := fieldSet[normalTable]
-		if !ok {
-			// 尝试模糊匹配（如去除 mainTable 前缀后的 dt1）
-			for tKey, fMap := range fieldSet {
-				if strings.EqualFold(tKey, normalTable) {
-					allowedFields = fMap
-					ok = true
-					break
-				}
-			}
-		}
-		if !ok {
-			// 该表未在选择集中指定，默认全选允许
-			return true
-		}
-		if allowedFields == nil {
-			// 该表全选
-			return true
-		}
-		return allowedFields[normalField]
+		return AttachmentFieldSelected(fieldSet, normalTable, normalField)
 	}
 
 	// 降级检查传统单表过滤器（仅在未设置 FieldSet 时生效）
@@ -90,5 +71,28 @@ func attachmentFieldAllowedForTable(ctx context.Context, tableKey, fieldKey stri
 		return allowed[normalField]
 	}
 
+	return true
+}
+
+// AttachmentFieldSelected 统一附件下载、提示词及版本指纹的多表字段选择口径。
+// 未声明的表或 nil 字段集合沿用全选语义；空集合和显式 false 不选中。
+func AttachmentFieldSelected(fieldSet map[string]map[string]bool, tableKey, fieldKey string) bool {
+	if fieldSet == nil {
+		return true
+	}
+	for table, fields := range fieldSet {
+		if !strings.EqualFold(strings.TrimSpace(table), strings.TrimSpace(tableKey)) {
+			continue
+		}
+		if fields == nil {
+			return true
+		}
+		for field, enabled := range fields {
+			if strings.EqualFold(strings.TrimSpace(field), strings.TrimSpace(fieldKey)) {
+				return enabled
+			}
+		}
+		return false
+	}
 	return true
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"unicode"
 
 	"auraoa/go-service/internal/model"
 	"github.com/google/uuid"
@@ -165,10 +166,10 @@ func validateArchiveReviewStructure(fields map[string]json.RawMessage) error {
 func validateReviewRuleCoverage(expected, actual []string) error {
 	want, got := map[string]int{}, map[string]int{}
 	for _, name := range expected {
-		want[strings.TrimSpace(stripRuleScopePrefix(name))]++
+		want[reviewRuleCoverageKey(name)]++
 	}
 	for _, name := range actual {
-		got[strings.TrimSpace(stripRuleScopePrefix(name))]++
+		got[reviewRuleCoverageKey(name)]++
 	}
 	// 个人规则也会进入提示词，允许返回额外条目；租户已启用规则不能被遗漏或合并掉。
 	for name, count := range want {
@@ -177,6 +178,16 @@ func validateReviewRuleCoverage(expected, actual []string) error {
 		}
 	}
 	return nil
+}
+
+// reviewRuleCoverageKey 仅忽略规则回显中的排版空白，保留文字、标点与重复条目校验。
+func reviewRuleCoverageKey(content string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, stripRuleScopePrefix(content))
 }
 
 func validateAuditRuleCoverage(result *model.AuditResultJSON, rules []model.AuditRule) error {

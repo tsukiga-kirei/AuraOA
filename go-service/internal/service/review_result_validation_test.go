@@ -104,6 +104,38 @@ func TestReviewRuleCoverageRejectsOmission(t *testing.T) {
 	}
 }
 
+func TestReviewRuleCoverageIgnoresLayoutWhitespace(t *testing.T) {
+	content := "核查以下事项：\r\n1. 是否存在重复报销；\n2. 是否存在明显金额异常；\n\t　任一项违反时，判定为不通过。"
+	flattened := "核查以下事项：1.是否存在重复报销；2.是否存在明显金额异常；任一项违反时，判定为不通过。"
+	audit := &model.AuditResultJSON{RuleResults: []model.RuleResultJSON{{RuleContent: "（默认开启） " + flattened}}}
+	archive := &model.ArchiveResultJSON{RuleAudit: []model.ArchiveRuleAuditJSON{{RuleName: "[default_on] " + flattened}}}
+	if err := validateAuditRuleCoverage(audit, []model.AuditRule{{RuleContent: content}}); err != nil {
+		t.Fatalf("审核不应因换行、制表符或全角空格差异失败：%v", err)
+	}
+	if err := validateArchiveRuleCoverage(archive, []model.ArchiveRule{{RuleContent: content}}); err != nil {
+		t.Fatalf("归档无规则 ID 时也应容忍排版差异：%v", err)
+	}
+	for _, tc := range []struct {
+		name     string
+		expected []string
+		actual   []string
+	}{
+		{"遗漏", []string{content}, nil},
+		{"删改文字", []string{content}, []string{strings.ReplaceAll(flattened, "重复报销", "报销")}},
+		{"修改标点", []string{"金额 < 100"}, []string{"金额 <= 100"}},
+		{"重复规则数量不足", []string{content, flattened}, []string{flattened}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if validateReviewRuleCoverage(tc.expected, tc.actual) == nil {
+				t.Fatal("排版归一化不能放过遗漏、改写或合并的规则")
+			}
+		})
+	}
+	if err := validateReviewRuleCoverage([]string{content, flattened}, []string{flattened, "\u00a0" + content}); err != nil {
+		t.Fatalf("重复规则均返回时应通过：%v", err)
+	}
+}
+
 func TestArchiveRecheckPreservesEvaluationObjects(t *testing.T) {
 	for _, pair := range [][2]string{
 		{`"flow_audit":{"is_complete":true,"missing_nodes":[],"node_results":[{"node_id":"finance","node_name":"财务","compliant":true,"reasoning":"已审批"}]}`, `"flow_audit":null`},
