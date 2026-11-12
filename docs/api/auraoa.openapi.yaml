@@ -10092,8 +10092,6 @@ components:
           type: string
         title:
           type: string
-        trigger_source:
-          type: string
         use_latest_config:
           type: boolean
           default: false

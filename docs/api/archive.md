@@ -54,7 +54,7 @@ GET /api/archive/stats
 POST /api/archive/execute
 ```
 
-提交单条归档复盘任务，后端异步执行。
+提交单条归档复盘任务，后端异步执行。配置 `status=inactive` 时直接拒绝执行。
 
 请求可选字段 `use_latest_config` 默认 `false`。首次复盘会将最终生效的字段、规则、尺度和提示词
 保存为不可变执行配置版本并绑定流程；再次复盘默认沿用原版本。只有明确传 `true` 时才升级绑定。

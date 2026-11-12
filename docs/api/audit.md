@@ -73,6 +73,8 @@ POST /api/audit/execute
 | `title` | string | — | 流程标题 |
 | `use_latest_config` | boolean | — | 默认 `false`，沿用该流程已绑定的执行配置版本；仅明确传 `true` 时升级到当前最新配置后重新审核 |
 
+触发来源（`trigger_source` / `trigger_detail`）由入口在服务端固定：单条为 `workbench_manual`，批量为 `workbench_batch`，请求体不能覆盖；配置 `status=inactive` 时直接拒绝执行。
+
 首次执行会把最终生效的字段范围、规则、审核尺度和提示词保存为不可变执行配置版本，并与流程实例绑定。
 租户流程配置在首次发布前仅为草稿，不会进入审核工作台或执行入口；首次发布生成基础配置 v1。
 同一流程后续重新审核默认沿用该版本；管理端修改规则、尺度或提示词不会自动使历史结果失效。

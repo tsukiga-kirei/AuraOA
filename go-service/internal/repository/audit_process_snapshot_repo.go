@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/apptime"
@@ -26,21 +27,21 @@ func NewAuditProcessSnapshotRepo(db *gorm.DB) *AuditProcessSnapshotRepo {
 }
 
 // UpsertAppendValid 成功解析后追加日志 id 并更新最新有效结论（按 channel 隔离工作台与嵌入）。
+// 并发完成同一流程时通过唯一键 + 行锁串行化，避免读改写丢失 id 或唯一键冲突。
 func (r *AuditProcessSnapshotRepo) UpsertAppendValid(c *gin.Context, tenantID uuid.UUID, processID, channel string, logID uuid.UUID, title, processType, recommendation string, score, confidence int) error {
 	if channel == "" {
 		channel = model.AuditSnapshotChannelWorkbench
 	}
-	var existing model.AuditProcessSnapshot
-	err := r.WithTenant(c).Where("process_id = ? AND channel = ?", processID, channel).First(&existing).Error
 	now := apptime.Now()
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		ids := []string{logID.String()}
-		b, _ := json.Marshal(ids)
+	initialIDs, _ := json.Marshal([]string{logID.String()})
+	// 与业务日志一致，不绑定请求/任务上下文：任务收尾时上下文可能已取消或超时。
+	return r.DB.Transaction(func(tx *gorm.DB) error {
+		// 首次并发完成时只有一个事务能插入，其余通过 ON CONFLICT 退化为更新。
 		row := &model.AuditProcessSnapshot{
 			TenantID:         tenantID,
 			ProcessID:        processID,
 			Channel:          channel,
-			ValidLogIDs:      datatypes.JSON(b),
+			ValidLogIDs:      datatypes.JSON(initialIDs),
 			LatestValidLogID: logID,
 			Title:            title,
 			ProcessType:      processType,
@@ -49,35 +50,44 @@ func (r *AuditProcessSnapshotRepo) UpsertAppendValid(c *gin.Context, tenantID uu
 			Confidence:       confidence,
 			UpdatedAt:        now,
 		}
-		return r.DB.Create(row).Error
-	}
-	if err != nil {
-		return err
-	}
-
-	var uuidStrs []string
-	_ = json.Unmarshal(existing.ValidLogIDs, &uuidStrs)
-	found := false
-	for _, id := range uuidStrs {
-		if id == logID.String() {
-			found = true
-			break
+		if err := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "process_id"}, {Name: "channel"}},
+			DoNothing: true,
+		}).Create(row).Error; err != nil {
+			return err
 		}
-	}
-	if !found {
-		uuidStrs = append(uuidStrs, logID.String())
-	}
-	b, _ := json.Marshal(uuidStrs)
-	return r.WithTenant(c).Model(&model.AuditProcessSnapshot{}).Where("id = ?", existing.ID).Updates(map[string]interface{}{
-		"valid_log_ids":       datatypes.JSON(b),
-		"latest_valid_log_id": logID,
-		"title":               title,
-		"process_type":        processType,
-		"recommendation":      recommendation,
-		"score":               score,
-		"confidence":          confidence,
-		"updated_at":          now,
-	}).Error
+
+		var existing model.AuditProcessSnapshot
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("tenant_id = ? AND process_id = ? AND channel = ?", tenantID, processID, channel).
+			First(&existing).Error; err != nil {
+			return err
+		}
+
+		var logIDs []string
+		_ = json.Unmarshal(existing.ValidLogIDs, &logIDs)
+		found := false
+		for _, id := range logIDs {
+			if id == logID.String() {
+				found = true
+				break
+			}
+		}
+		if !found {
+			logIDs = append(logIDs, logID.String())
+		}
+		encoded, _ := json.Marshal(logIDs)
+		return tx.Model(&model.AuditProcessSnapshot{}).Where("id = ?", existing.ID).Updates(map[string]interface{}{
+			"valid_log_ids":       datatypes.JSON(encoded),
+			"latest_valid_log_id": logID,
+			"title":               title,
+			"process_type":        processType,
+			"recommendation":      recommendation,
+			"score":               score,
+			"confidence":          confidence,
+			"updated_at":          now,
+		}).Error
+	})
 }
 
 // GetByProcessID 单流程工作台渠道快照。

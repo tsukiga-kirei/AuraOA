@@ -30,7 +30,6 @@ export interface AuditDetailItem {
   base_config_version: number
   personal_version: number
   field_config: {
-    field_mode: string
     field_overrides: string[]
   }
   rule_config: {
@@ -168,7 +167,6 @@ export interface UpdatePersonalConfigRequest {
   base_config_version: number
   personal_version: number
   field_config: {
-    field_mode: string
     field_overrides: string[]
   }
   rule_config: {

@@ -45,11 +45,12 @@ func effectiveAuditAIConfig(
 
 func auditAIConfigFromTemplates(strictness string, items []model.SystemPromptTemplate, base ...model.AIConfigData) (datatypes.JSON, error) {
 	effective := model.AIConfigData{AuditStrictness: strictness}
-	// 个人尺度只切换提示词，空值传输策略仍沿用租户配置。
+	// 个人尺度只切换提示词，空值传输与深度思考策略仍沿用租户配置。
 	if len(base) > 0 {
 		effective.Recheck = recheckConfigForStrictness(base[0].Recheck, base[0].AuditStrictness, strictness)
 		effective.SkipEmptyFields = base[0].SkipEmptyFields
 		effective.SkipEmptyFieldKeys = base[0].SkipEmptyFieldKeys
+		effective.EnableThinking = base[0].EnableThinking
 	}
 	for _, item := range items {
 		switch {
@@ -96,11 +97,12 @@ func effectiveArchiveAIConfig(
 
 func archiveAIConfigFromTemplates(strictness string, items []model.SystemPromptTemplate, base ...model.ArchiveAIConfigData) (datatypes.JSON, error) {
 	effective := model.ArchiveAIConfigData{AuditStrictness: strictness}
-	// 与审核侧对称，个人尺度不能丢失租户空值传输策略。
+	// 与审核侧对称，个人尺度不能丢失租户空值传输与深度思考策略。
 	if len(base) > 0 {
 		effective.Recheck = recheckConfigForStrictness(base[0].Recheck, base[0].AuditStrictness, strictness)
 		effective.SkipEmptyFields = base[0].SkipEmptyFields
 		effective.SkipEmptyFieldKeys = base[0].SkipEmptyFieldKeys
+		effective.EnableThinking = base[0].EnableThinking
 	}
 	matched := 0
 	for _, item := range items {

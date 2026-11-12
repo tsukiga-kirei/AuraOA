@@ -17,6 +17,7 @@ import (
 	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/apptime"
+	"auraoa/go-service/internal/pkg/csvsafe"
 	"auraoa/go-service/internal/pkg/errcode"
 	excelpkg "auraoa/go-service/internal/pkg/excel"
 	"auraoa/go-service/internal/pkg/response"
@@ -350,15 +351,15 @@ func (h *ArchiveReviewHandler) ExportLogs(c *gin.Context) {
 	_ = w.Write([]string{"记录ID", "流程编号", "流程标题", "操作人", "流程类型", "合规性", "评分", "状态", "创建时间"})
 	for _, item := range items {
 		_ = w.Write([]string{
-			item.ID.String(),
-			item.ProcessID,
-			item.Title,
-			item.UserName,
-			item.ProcessType,
-			item.Compliance,
-			fmt.Sprintf("%d", item.ComplianceScore),
-			item.Status,
-			item.CreatedAt.Format("2006-01-02 15:04:05"),
+			csvsafe.Cell(item.ID.String()),
+			csvsafe.Cell(item.ProcessID),
+			csvsafe.Cell(item.Title),
+			csvsafe.Cell(item.UserName),
+			csvsafe.Cell(item.ProcessType),
+			csvsafe.Cell(item.Compliance),
+			csvsafe.Cell(fmt.Sprintf("%d", item.ComplianceScore)),
+			csvsafe.Cell(item.Status),
+			csvsafe.Cell(item.CreatedAt.Format("2006-01-02 15:04:05")),
 		})
 	}
 	w.Flush()

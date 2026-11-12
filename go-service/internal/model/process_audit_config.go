@@ -17,7 +17,7 @@ type ProcessAuditConfig struct {
 	MainFields       datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"main_fields"`
 	DetailTables     datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"detail_tables"`
 	FieldMode        string         `gorm:"size:20;not null;default:all" json:"field_mode"`
-	KBMode           string         `gorm:"column:kb_mode;size:20;not null;default:rules_only" json:"kb_mode"`
+	KBMode           string         `gorm:"column:kb_mode;size:20;not null;default:rules_only" json:"kb_mode"` // 知识库模式：当前仅 rules_only，RAG 未实现
 	AIConfig         datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"ai_config"`
 	UserPermissions  datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"user_permissions"`
 	AccessControl    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"access_control"`

@@ -548,6 +548,7 @@ encryption:
 | [OA 系统对接说明](docs/oa-integration.md) | OA 适配器架构、泛微 E9 实现、数据提取流程、未完成适配 |
 | [OA Basic 单点登录](docs/oa-basic-sso-integration.md) | OA 服务端 Basic 换取一次性浏览器登录地址的配置、Java 示例与联调说明 |
 | [AI 系统对接说明](docs/ai-integration.md) | AI 调用架构、两阶段审核流程、Token 配额管理、未完成适配 |
+| [审核链路与决策路径](docs/audit-review-path.md) | 从触发开关、配置解析到最终结论的完整审核路径与决策规则 |
 
 ### API 接口文档（[`docs/api/`](docs/api/)）
 

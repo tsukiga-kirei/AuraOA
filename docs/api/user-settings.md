@@ -39,8 +39,8 @@ PUT /api/tenant/settings/processes?process_type=...
 | `config_id` | string | 流程审核配置 ID |
 | `base_config_version` | integer | 页面加载时的当前租户基础版本；保存时用于阻止覆盖管理员的新配置 |
 | `personal_version` | integer | 页面加载时的个人配置版本；保存时用于阻止多页面互相覆盖 |
-| `field_config` | object | 字段配置（`field_mode`、`field_overrides`） |
-| `rule_config` | object | 规则配置（`custom_rules`、`rule_toggle_overrides`） |
+| `field_config` | object | 字段配置；仅 `field_overrides`（在租户字段范围内追加），字段模式由租户统一决定 |
+| `rule_config` | object | 规则配置（`custom_rules`、`rule_toggle_overrides`）；租户关闭 `allow_custom_rules` 时两者均不生效，已保存的配置会保留以便权限恢复 |
 | `ai_config` | object | AI 配置（`strictness_override`） |
 
 保存成功后个人版本递增。若租户基础版本或个人版本已经变化，接口返回 HTTP `409`，前端应刷新合并视图后由用户重新确认保存。

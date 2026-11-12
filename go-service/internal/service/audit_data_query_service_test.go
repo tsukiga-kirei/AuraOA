@@ -139,7 +139,7 @@ func TestQueryEvidenceDistinguishesIncompleteFailedAndEmptyResults(t *testing.T)
 func TestQueryReferenceSurvivesEffectiveConfigSnapshot(t *testing.T) {
 	raw := datatypes.JSON(`[{"query_id":"11111111-1111-4111-8111-111111111111","version_no":2,"enabled":true,"bindings":{"person":{"source":"field","field":"main:person"}},"trigger":{"field":"main:amount","value_type":"number","operator":"gte","value":"5000"}}]`)
 	rules := []model.AuditRule{{ID: uuid.New(), RuleScope: "mandatory", DataQueries: raw}}
-	effective := resolveEffectiveAuditRules(rules, nil)
+	effective := resolveEffectiveAuditRules(rules, nil, true)
 	encoded, err := json.Marshal(AuditExecutionConfigSnapshot{EffectiveRules: effective})
 	if err != nil {
 		t.Fatal(err)

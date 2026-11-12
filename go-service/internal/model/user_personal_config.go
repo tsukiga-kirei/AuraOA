@@ -33,9 +33,8 @@ type AuditDetailItem struct {
 	AIConfig          UserAIConfig `json:"ai_config"`
 }
 
-// FieldConfig 字段配置
+// FieldConfig 字段配置。字段传输模式由租户配置统一决定，个人只追加字段。
 type FieldConfig struct {
-	FieldMode      string   `json:"field_mode"`      // 为空时继承租户模式
 	FieldOverrides []string `json:"field_overrides"` // 用户在租户选择基础上额外增加的字段 key
 }
 
@@ -48,7 +47,6 @@ type RuleConfig struct {
 // UserAIConfig AI 个性化配置
 type UserAIConfig struct {
 	StrictnessOverride string `json:"strictness_override"`
-	EnableThinking     *bool  `json:"enable_thinking,omitempty"`
 }
 
 // CustomRule 用户自定义的私有审核规则

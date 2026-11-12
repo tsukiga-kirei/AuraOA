@@ -167,7 +167,7 @@ func TestResolveEffectiveAuditRulesUsesTenantRulesAsBase(t *testing.T) {
 		{RuleID: uuid.NewString(), Enabled: true},
 	}}}
 
-	effective := resolveEffectiveAuditRules(rules, detail)
+	effective := resolveEffectiveAuditRules(rules, detail, true)
 	if len(effective) != len(rules) {
 		t.Fatalf("有效规则必须保持租户规则边界，got=%d want=%d", len(effective), len(rules))
 	}
@@ -179,6 +179,12 @@ func TestResolveEffectiveAuditRulesUsesTenantRulesAsBase(t *testing.T) {
 	}
 	if !isRuleEnabled(&rules[1]) {
 		t.Fatal("合并个人配置不能修改租户规则原对象")
+	}
+
+	// 租户关闭自定义规则权限后，已保存的个人开关不得继续生效。
+	noToggle := resolveEffectiveAuditRules(rules, detail, false)
+	if !isRuleEnabled(&noToggle[1]) {
+		t.Fatal("关闭自定义规则权限后个人开关不能生效")
 	}
 }
 
@@ -194,7 +200,7 @@ func TestResolveEffectiveArchiveRulesUsesTenantRulesAsBase(t *testing.T) {
 		{RuleID: optionalID.String(), Enabled: true},
 	}}}
 
-	effective := resolveEffectiveArchiveRules(rules, detail)
+	effective := resolveEffectiveArchiveRules(rules, detail, true)
 	if len(effective) != len(rules) {
 		t.Fatalf("有效规则必须保持租户规则边界，got=%d want=%d", len(effective), len(rules))
 	}
@@ -203,6 +209,11 @@ func TestResolveEffectiveArchiveRulesUsesTenantRulesAsBase(t *testing.T) {
 	}
 	if effective[1].Enabled == nil || !*effective[1].Enabled {
 		t.Fatal("非 mandatory 租户归档规则应允许个人开关覆盖")
+	}
+
+	noToggle := resolveEffectiveArchiveRules(rules, detail, false)
+	if noToggle[1].Enabled == nil || *noToggle[1].Enabled {
+		t.Fatal("关闭自定义规则权限后归档个人开关不能生效")
 	}
 	if rules[1].Enabled == nil || *rules[1].Enabled {
 		t.Fatal("合并个人配置不能修改租户归档规则原对象")

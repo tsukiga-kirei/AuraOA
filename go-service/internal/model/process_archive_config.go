@@ -18,7 +18,7 @@ type ProcessArchiveConfig struct {
 	MainFields       datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"main_fields"`               // 主表字段配置列表
 	DetailTables     datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'" json:"detail_tables"`             // 明细子表配置列表
 	FieldMode        string         `gorm:"size:20;not null;default:all" json:"field_mode"`                    // 字段提取模式：all/selected
-	KBMode           string         `gorm:"column:kb_mode;size:20;not null;default:rules_only" json:"kb_mode"` // 知识库模式
+	KBMode           string         `gorm:"column:kb_mode;size:20;not null;default:rules_only" json:"kb_mode"` // 知识库模式：当前仅 rules_only，RAG 未实现
 	AIConfig         datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"ai_config"`                 // AI复核配置
 	UserPermissions  datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"user_permissions"`          // 用户权限配置
 	AccessControl    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"access_control"`            // 访问控制（all/roles/members/departments）

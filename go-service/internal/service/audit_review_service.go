@@ -133,15 +133,17 @@ func (s *AuditExecuteService) BatchRdb() *redis.Client {
 	return s.rdb
 }
 
-// AuditExecuteRequest 审核执行请求
+// AuditExecuteRequest 审核执行请求。
+// TriggerSource/TriggerDetail/PersonalPerspective 由入口在服务端确定，不接受请求体覆盖，
+// 避免调用方伪造渠道、跳过共享快照或抑制完成通知。
 type AuditExecuteRequest struct {
 	PersonalPerspective bool       `json:"-"`
 	StandardPerspective bool       `json:"-"`
 	ProcessID           string     `json:"process_id" binding:"required"`
 	ProcessType         string     `json:"process_type" binding:"required"`
 	Title               string     `json:"title"`
-	TriggerSource       string     `json:"trigger_source"`
-	TriggerDetail       string     `json:"trigger_detail"`
+	TriggerSource       string     `json:"-"`
+	TriggerDetail       string     `json:"-"`
 	OAOperatorID        string     `json:"-"`
 	OAOperatorName      string     `json:"-"`
 	OAOperatorDept      string     `json:"-"`
@@ -194,15 +196,23 @@ func (s *AuditExecuteService) createPendingAuditLog(c *gin.Context, req *AuditEx
 	if err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, fmt.Sprintf("流程 '%s' 的审核配置不存在", req.ProcessType))
 	}
-	member, _ := s.orgRepo.FindByUserAndTenant(userID, tenantID)
-	if !accessControlAllows(config.AccessControl, member) {
-		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权执行该审核流程")
+	if config.Status != "active" {
+		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, fmt.Sprintf("流程 '%s' 的审核配置已停用", req.ProcessType))
 	}
 
 	trigger := normalizeTriggerSource(req.TriggerSource, model.AuditTriggerWorkbenchManual)
 	if err := s.validateEmbedTrigger(c, req.ProcessType, trigger); err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, err
 	}
+	// 嵌入审核（含个人视角）是否可用由嵌入开关和 OA 页面可见性决定，执行身份是租户管理员或
+	// OA 操作人，不能再用前台 access_control 判断，否则管理员不在允许名单时会被误拒。
+	if !req.PersonalPerspective && !model.IsEmbedTrigger(trigger) {
+		member, _ := s.orgRepo.FindByUserAndTenant(userID, tenantID)
+		if !accessControlAllows(config.AccessControl, member) {
+			return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrPermissionDenied, "当前用户无权执行该审核流程")
+		}
+	}
+
 	triggerDetail, queueKind := normalizeAuditTriggerDetail(trigger, req.TriggerDetail)
 	scope := "user:" + userID.String()
 	configUserID := userID
@@ -631,8 +641,12 @@ func (s *AuditExecuteService) processAuditJob(
 		executionFingerprint,
 	)
 
-	// 拉取审批流快照（历史 + 路由图），失败时不阻塞主流程
-	flowSnapshot := s.fetchFlowSnapshot(c, tenant, req.ProcessID)
+	// 拉取审批流快照（历史 + 路由图）。提示词未引用审批流且没有关联审批流的启用规则时跳过，
+	// 避免无意义的 OA 查询和提示词占位；失败时不阻塞主流程。
+	var flowSnapshot *oa.ProcessFlowSnapshot
+	if needsAuditFlowContext(&aiConfig, rules) {
+		flowSnapshot = s.fetchFlowSnapshot(c, tenant, req.ProcessID)
+	}
 	externalContextText := s.resolveAuditRulesExternalContext(c, tenant, req.ProcessID, processData, rules)
 	queryText, queryEvidence := s.dataQueries.ResolveRules(c, req.ProcessID, processData, rules)
 	externalContextText += "\n" + queryText
@@ -658,6 +672,13 @@ func (s *AuditExecuteService) processAuditJob(
 
 	feedbackMemoryText, memoryErr := s.feedbackMemory.RuntimeText(c, "audit", req.ProcessType)
 	if memoryErr != nil {
+		// 读取失败必须落终态，否则 Worker 只记录日志，任务会一直停在 assembling，
+		// 直到超时对账才被标记失败，用户侧看不到错误原因。
+		s.markAuditFailedOrTimeout(c, tenantID, auditLogID, memoryErr)
+		tlog.Warn("审核任务执行失败",
+			zap.String("auditLogID", auditLogID.String()),
+			zap.Error(memoryErr),
+		)
 		return memoryErr
 	}
 	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
@@ -956,6 +977,13 @@ func (s *AuditExecuteService) BatchExecute(c *gin.Context, items []AuditExecuteR
 		)
 		release()
 		if processErr != nil {
+			// 收尾逻辑（如复核失败回退）可能在返回错误前已把任务写成 completed，
+			// 批量结果以数据库最终终态为准，避免把已完成任务计为失败。
+			if final, readErr := s.auditLogRepo.GetByID(c, logID); readErr == nil && final.Status == model.JobStatusCompleted {
+				result.Success++
+				result.Results = append(result.Results, *auditExecuteResponseFromLog(final))
+				continue
+			}
 			result.Failed++
 			result.Results = append(result.Results, AuditExecuteResponse{
 				ID:         logID.String(),
@@ -1133,12 +1161,26 @@ func (s *AuditExecuteService) SubscribeJobStream(c *gin.Context, id uuid.UUID) (
 
 	go func() {
 		defer close(ch)
+		pubsubCh := pubsub.Channel()
+		// 发送统一走 select，客户端断开后立刻退出，避免缓冲写满后 goroutine 永久阻塞。
+		send := func(ev JobStreamEvent) bool {
+			select {
+			case ch <- ev:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		}
 		// 如果已有累计，则首先把累计发给前端铺底
 		if thinkingHistory != "" {
-			ch <- JobStreamEvent{Event: "thinking", Data: thinkingHistory}
+			if !send(JobStreamEvent{Event: "thinking", Data: thinkingHistory}) {
+				return
+			}
 		}
 		if reasoningHistory != "" {
-			ch <- JobStreamEvent{Event: "message", Data: reasoningHistory}
+			if !send(JobStreamEvent{Event: "message", Data: reasoningHistory}) {
+				return
+			}
 		}
 		for _, stage := range []string{"structured", "recheck"} {
 			field := stage + "_output"
@@ -1146,16 +1188,28 @@ func (s *AuditExecuteService) SubscribeJobStream(c *gin.Context, id uuid.UUID) (
 				field = "structured_output"
 			}
 			if text, ok := stageHistory[field].(string); ok && text != "" {
-				ch <- JobStreamEvent{Event: stage, Data: text}
+				if !send(JobStreamEvent{Event: stage, Data: text}) {
+					return
+				}
 			}
 		}
 
-		for msg := range pubsub.Channel() {
-			var ev JobStreamEvent
-			if err := json.Unmarshal([]byte(msg.Payload), &ev); err == nil && ev.Event != "" {
-				ch <- ev
-			} else {
-				ch <- JobStreamEvent{Event: "message", Data: msg.Payload}
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg, ok := <-pubsubCh:
+				if !ok {
+					return
+				}
+				var ev JobStreamEvent
+				if err := json.Unmarshal([]byte(msg.Payload), &ev); err == nil && ev.Event != "" {
+					if !send(ev) {
+						return
+					}
+				} else if !send(JobStreamEvent{Event: "message", Data: msg.Payload}) {
+					return
+				}
 			}
 		}
 	}()
@@ -1175,10 +1229,10 @@ func (s *AuditExecuteService) GetAuditJobStatus(c *gin.Context, id uuid.UUID) (m
 	}
 	out := buildAuditResultFromLog(log)
 	out["updated_at"] = apptime.FormatRFC3339(log.UpdatedAt)
-	out["progress_steps"] = auditProgressSteps(log.Status, len(log.AIRecheck) > 2)
+	out["progress_steps"] = auditProgressSteps(log.Status, len(log.AIRecheck) > 2, auditFailureStage(log))
 	var recheck model.AIRecheckRecord
 	if json.Unmarshal(log.AIRecheck, &recheck) == nil && recheck.RetryOnly && log.Status != model.JobStatusCompleted && log.Status != model.JobStatusFailed && log.Status != model.JobStatusCancelled {
-		out["progress_steps"] = auditProgressSteps(model.JobStatusRechecking, true)
+		out["progress_steps"] = auditProgressSteps(model.JobStatusRechecking, true, "")
 	}
 	appendReviewStageSnapshots(c.Request.Context(), s.rdb, "audit", id, out)
 	return out, nil
@@ -1241,7 +1295,28 @@ func (s *AuditExecuteService) userCanAccessAuditProcess(
 	return accessControlAllows(config.AccessControl, member)
 }
 
-func auditProgressSteps(status string, recheck ...bool) []map[string]interface{} {
+// auditFailureStage 推断失败任务实际停在哪个阶段，用于进度条标记。
+// 不能用“是否计划复核”代替实际失败阶段，否则推理阶段失败会被误标成 AI 复核失败。
+func auditFailureStage(log *model.AuditLog) string {
+	if log == nil || log.Status != model.JobStatusFailed {
+		return ""
+	}
+	var record model.AIRecheckRecord
+	if json.Unmarshal(log.AIRecheck, &record) == nil &&
+		(record.RetryOnly || len(record.OriginalResult) > 0 || record.Status == "running" || record.Status == "completed") {
+		return model.JobStatusRechecking
+	}
+	if strings.TrimSpace(log.RawContent) != "" || strings.TrimSpace(log.AIReasoning) != "" {
+		return model.JobStatusExtracting
+	}
+	// 进入推理阶段时先写入 OA 上下文锚点，可用于区分组装阶段与推理阶段。
+	if len(log.OAContextAnchor) > 2 {
+		return model.JobStatusReasoning
+	}
+	return model.JobStatusAssembling
+}
+
+func auditProgressSteps(status string, recheckPlanned bool, failedStage string) []map[string]interface{} {
 	defs := []struct {
 		key   string
 		label string
@@ -1251,7 +1326,7 @@ func auditProgressSteps(status string, recheck ...bool) []map[string]interface{}
 		{model.JobStatusReasoning, "推理分析"},
 		{model.JobStatusExtracting, "结构化提取"},
 	}
-	if status == model.JobStatusRechecking || (len(recheck) > 0 && recheck[0]) {
+	if status == model.JobStatusRechecking || recheckPlanned {
 		defs = append(defs, struct {
 			key   string
 			label string
@@ -1269,9 +1344,12 @@ func auditProgressSteps(status string, recheck ...bool) []map[string]interface{}
 		if status == model.JobStatusCompleted {
 			cur = len(defs) - 1
 		} else if status == model.JobStatusFailed {
-			cur = 2
-			if len(defs) == 5 {
-				cur = 4
+			cur = 1
+			if idx, found := phaseIdx[failedStage]; found {
+				cur = idx
+			}
+			if cur >= len(defs) {
+				cur = len(defs) - 1
 			}
 		} else {
 			cur = 0
@@ -2566,6 +2644,25 @@ func (s *AuditExecuteService) fetchOAData(c *gin.Context, tenant *model.Tenant, 
 	return data, nil
 }
 
+// needsAuditFlowContext 判断本次审核是否需要审批流快照：
+// 推理提示词显式引用审批流/当前节点，或至少一条启用规则标记为关联审批流。
+func needsAuditFlowContext(aiConfig *model.AIConfigData, rules []model.AuditRule) bool {
+	if aiConfig != nil {
+		prompt := aiConfig.UserReasoningPrompt
+		if strings.Contains(prompt, "{{flow_history}}") ||
+			strings.Contains(prompt, "{{flow_graph}}") ||
+			strings.Contains(prompt, "{{current_node}}") {
+			return true
+		}
+	}
+	for i := range rules {
+		if rules[i].IsEnabled() && rules[i].RelatedFlow {
+			return true
+		}
+	}
+	return false
+}
+
 // fetchFlowSnapshot 拉取审批流快照，失败时返回 nil 不阻塞主流程。
 func (s *AuditExecuteService) fetchFlowSnapshot(c *gin.Context, tenant *model.Tenant, processID string) *oa.ProcessFlowSnapshot {
 	if tenant.OADBConnectionID == nil {
@@ -2630,24 +2727,6 @@ func isRuleEnabled(r *model.AuditRule) bool {
 	return r.Enabled == nil || *r.Enabled
 }
 
-func formatRules(rules []model.AuditRule) string {
-	if len(rules) == 0 {
-		return "（无审核规则）"
-	}
-	var sb strings.Builder
-	for i, r := range rules {
-		if !isRuleEnabled(&r) {
-			continue
-		}
-		sb.WriteString(formatRuleLineForPrompt(i+1, r.RuleScope, r.RuleContent, r.ApplicabilityCondition))
-		sb.WriteString("\n")
-	}
-	if sb.Len() == 0 {
-		return "（无启用的审核规则）"
-	}
-	return sb.String()
-}
-
 // resolveUserConfig 解析租户流程配置 + 用户个人配置，返回最终字段集和规则文本。
 //
 // 核心原则：以租户配置为权威来源，用户个人配置是"锦上添花"。
@@ -2701,7 +2780,7 @@ func (s *AuditExecuteService) resolveAuditUserDetail(
 	fieldSet := s.resolveFieldSet(config, userDetail, perms)
 
 	// ── 规则解析 ──
-	effectiveRules := resolveEffectiveAuditRules(tenantRules, userDetail)
+	effectiveRules := resolveEffectiveAuditRules(tenantRules, userDetail, perms.AllowCustomRules)
 	rulesText := s.resolveRulesText(effectiveRules, userDetail, perms)
 	strictness := ""
 	personalVersion := 0
@@ -2719,9 +2798,10 @@ func (s *AuditExecuteService) resolveAuditUserDetail(
 
 // resolveEffectiveAuditRules 以租户规则为底座，仅叠加个人开关。
 // 个人配置不能创造或替换租户规则；mandatory 规则始终启用。
-func resolveEffectiveAuditRules(tenantRules []model.AuditRule, userDetail *model.AuditDetailItem) []model.AuditRule {
+// allowToggle=false（租户关闭“自定义审核规则”）时忽略已保存的规则开关覆盖。
+func resolveEffectiveAuditRules(tenantRules []model.AuditRule, userDetail *model.AuditDetailItem, allowToggle bool) []model.AuditRule {
 	toggleMap := make(map[string]bool)
-	if userDetail != nil {
+	if allowToggle && userDetail != nil {
 		for _, toggle := range userDetail.RuleConfig.RuleToggleOverrides {
 			toggleMap[toggle.RuleID] = toggle.Enabled
 		}
@@ -2835,13 +2915,16 @@ func (s *AuditExecuteService) resolveRulesText(
 	toggleMap := make(map[string]bool)
 	var customRules []model.CustomRule
 	if userDetail != nil {
-		for _, t := range userDetail.RuleConfig.RuleToggleOverrides {
-			if !tenantRuleIDs[t.RuleID] {
-				continue
+		if perms.AllowCustomRules {
+			// 租户关闭“自定义审核规则”后，已保存的规则开关不再生效，设置页也同步锁定。
+			for _, t := range userDetail.RuleConfig.RuleToggleOverrides {
+				if !tenantRuleIDs[t.RuleID] {
+					continue
+				}
+				toggleMap[t.RuleID] = t.Enabled
 			}
-			toggleMap[t.RuleID] = t.Enabled
+			customRules = userDetail.RuleConfig.CustomRules
 		}
-		customRules = userDetail.RuleConfig.CustomRules
 	}
 
 	var sb strings.Builder

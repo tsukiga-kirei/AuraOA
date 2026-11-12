@@ -12,6 +12,7 @@ import (
 
 	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/pkg/apptime"
+	"auraoa/go-service/internal/pkg/csvsafe"
 	"auraoa/go-service/internal/pkg/errcode"
 	"auraoa/go-service/internal/pkg/response"
 	"auraoa/go-service/internal/repository"
@@ -213,16 +214,16 @@ func (h *CronTaskHandler) ExportAllLogs(c *gin.Context) {
 			ownerName = "-"
 		}
 		_ = w.Write([]string{
-			item.ID.String(),
-			item.TaskLabel,
-			item.TaskType,
-			item.TriggerType,
-			item.CreatedBy,
-			ownerName,
-			item.Status,
-			item.Message,
-			item.StartedAt.Format("2006-01-02 15:04:05"),
-			finishedAt,
+			csvsafe.Cell(item.ID.String()),
+			csvsafe.Cell(item.TaskLabel),
+			csvsafe.Cell(item.TaskType),
+			csvsafe.Cell(item.TriggerType),
+			csvsafe.Cell(item.CreatedBy),
+			csvsafe.Cell(ownerName),
+			csvsafe.Cell(item.Status),
+			csvsafe.Cell(item.Message),
+			csvsafe.Cell(item.StartedAt.Format("2006-01-02 15:04:05")),
+			csvsafe.Cell(finishedAt),
 		})
 	}
 	w.Flush()

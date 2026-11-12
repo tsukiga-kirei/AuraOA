@@ -14,9 +14,8 @@ type UpdateUserProcessConfigRequest struct {
 	AIConfig          UserAIConfigDTO    `json:"ai_config"`
 }
 
-// UserFieldConfigDTO 用户字段配置 DTO
+// UserFieldConfigDTO 用户字段配置 DTO。字段传输模式由租户配置统一决定。
 type UserFieldConfigDTO struct {
-	FieldMode      string   `json:"field_mode"`
 	FieldOverrides []string `json:"field_overrides"`
 }
 

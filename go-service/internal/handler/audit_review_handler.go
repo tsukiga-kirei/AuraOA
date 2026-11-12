@@ -16,6 +16,7 @@ import (
 	"auraoa/go-service/internal/dto"
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/apptime"
+	"auraoa/go-service/internal/pkg/csvsafe"
 	"auraoa/go-service/internal/pkg/errcode"
 	excelpkg "auraoa/go-service/internal/pkg/excel"
 	jwtpkg "auraoa/go-service/internal/pkg/jwt"
@@ -155,6 +156,9 @@ func (h *AuditHandler) Execute(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败: "+err.Error())
 		return
 	}
+	// 触发来源由入口固定，不信任请求体，避免伪造嵌入渠道或跳过共享快照。
+	req.TriggerSource = model.AuditTriggerWorkbenchManual
+	req.TriggerDetail = ""
 
 	result, err := h.auditService.Execute(c, &req)
 	if err != nil {
@@ -237,6 +241,11 @@ func (h *AuditHandler) BatchExecute(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, errcode.ErrParamValidation, "参数校验失败: "+err.Error())
 		return
+	}
+	// 批量入口的触发来源固定为批量，不接受请求体覆盖。
+	for i := range req.Items {
+		req.Items[i].TriggerSource = model.AuditTriggerWorkbenchBatch
+		req.Items[i].TriggerDetail = ""
 	}
 
 	result, err := h.auditService.BatchExecute(c, req.Items)
@@ -358,15 +367,15 @@ func (h *AuditHandler) ExportLogs(c *gin.Context) {
 	_ = w.Write([]string{"记录ID", "流程编号", "流程标题", "操作人", "流程类型", "审核建议", "评分", "状态", "创建时间"})
 	for _, item := range items {
 		_ = w.Write([]string{
-			item.ID.String(),
-			item.ProcessID,
-			item.Title,
-			item.UserName,
-			item.ProcessType,
-			item.Recommendation,
-			fmt.Sprintf("%d", item.Score),
-			item.Status,
-			item.CreatedAt.Format("2006-01-02 15:04:05"),
+			csvsafe.Cell(item.ID.String()),
+			csvsafe.Cell(item.ProcessID),
+			csvsafe.Cell(item.Title),
+			csvsafe.Cell(item.UserName),
+			csvsafe.Cell(item.ProcessType),
+			csvsafe.Cell(item.Recommendation),
+			csvsafe.Cell(fmt.Sprintf("%d", item.Score)),
+			csvsafe.Cell(item.Status),
+			csvsafe.Cell(item.CreatedAt.Format("2006-01-02 15:04:05")),
 		})
 	}
 	w.Flush()

@@ -319,6 +319,21 @@ func (s *UserPersonalConfigService) UpdateByProcessType(c *gin.Context, userID u
 	}
 	nextPersonalVersion := existingDetail.PersonalVersion + 1
 
+	// 租户关闭“自定义审核规则”后，忽略请求中的规则开关与私有规则并保留原配置，
+	// 使权限重新开启时可恢复；执行侧同样不会应用这些配置。
+	ruleToggles := make([]model.RuleToggleOverride, 0, len(req.RuleConfig.RuleToggleOverrides))
+	if perms.AllowCustomRules {
+		for _, t := range req.RuleConfig.RuleToggleOverrides {
+			ruleToggles = append(ruleToggles, model.RuleToggleOverride{RuleID: t.RuleID, Enabled: t.Enabled})
+		}
+	} else {
+		ruleToggles = append(ruleToggles, existingDetail.RuleConfig.RuleToggleOverrides...)
+	}
+	customRules := existingDetail.RuleConfig.CustomRules
+	if perms.AllowCustomRules {
+		customRules = versionedCustomRules(req.RuleConfig.CustomRules, existingDetail.RuleConfig.CustomRules, baseVersion.VersionNo, nextPersonalVersion)
+	}
+
 	// 构建新的 AuditDetailItem
 	newDetail := model.AuditDetailItem{
 		ConfigID:          configID,
@@ -326,20 +341,15 @@ func (s *UserPersonalConfigService) UpdateByProcessType(c *gin.Context, userID u
 		BaseConfigVersion: baseVersion.VersionNo,
 		PersonalVersion:   nextPersonalVersion,
 		FieldConfig: model.FieldConfig{
-			FieldMode:      req.FieldConfig.FieldMode,
 			FieldOverrides: req.FieldConfig.FieldOverrides,
 		},
 		RuleConfig: model.RuleConfig{
-			CustomRules:         versionedCustomRules(req.RuleConfig.CustomRules, existingDetail.RuleConfig.CustomRules, baseVersion.VersionNo, nextPersonalVersion),
-			RuleToggleOverrides: make([]model.RuleToggleOverride, len(req.RuleConfig.RuleToggleOverrides)),
+			CustomRules:         customRules,
+			RuleToggleOverrides: ruleToggles,
 		},
 		AIConfig: model.UserAIConfig{
 			StrictnessOverride: req.AIConfig.StrictnessOverride,
 		},
-	}
-
-	for i, t := range req.RuleConfig.RuleToggleOverrides {
-		newDetail.RuleConfig.RuleToggleOverrides[i] = model.RuleToggleOverride{RuleID: t.RuleID, Enabled: t.Enabled}
 	}
 
 	// 更新或追加到 auditDetails
@@ -463,10 +473,12 @@ func (s *UserPersonalConfigService) GetFullAuditProcessConfig(c *gin.Context, us
 	}
 	userDetail.RuleConfig.RuleToggleOverrides = validRuleToggles
 
-	// 构建规则开关 map (用于快速查找)
+	// 构建规则开关 map (用于快速查找)；租户关闭自定义规则权限时不再展示个人覆盖。
 	toggleMap := map[string]bool{}
-	for _, t := range userDetail.RuleConfig.RuleToggleOverrides {
-		toggleMap[t.RuleID] = t.Enabled
+	if perms.AllowCustomRules {
+		for _, t := range userDetail.RuleConfig.RuleToggleOverrides {
+			toggleMap[t.RuleID] = t.Enabled
+		}
 	}
 
 	// 字段合并
@@ -722,10 +734,12 @@ func (s *UserPersonalConfigService) GetFullArchiveConfig(c *gin.Context, userID 
 	}
 	userDetail.RuleConfig.RuleToggleOverrides = validRuleToggles
 
-	// 构建规则开关 map
+	// 构建规则开关 map；租户关闭自定义规则权限时不再展示个人覆盖。
 	toggleMap := map[string]bool{}
-	for _, t := range userDetail.RuleConfig.RuleToggleOverrides {
-		toggleMap[t.RuleID] = t.Enabled
+	if perms.AllowCustomRules {
+		for _, t := range userDetail.RuleConfig.RuleToggleOverrides {
+			toggleMap[t.RuleID] = t.Enabled
+		}
 	}
 
 	// 字段合并
@@ -888,25 +902,35 @@ func (s *UserPersonalConfigService) UpdateArchiveConfig(c *gin.Context, userID u
 	}
 	nextPersonalVersion := existingDetail.PersonalVersion + 1
 
+	// 与审核侧对称：无自定义规则权限时保留原开关和私有规则，执行侧不应用。
+	ruleToggles := make([]model.RuleToggleOverride, 0, len(req.RuleConfig.RuleToggleOverrides))
+	if perms.AllowCustomRules {
+		for _, t := range req.RuleConfig.RuleToggleOverrides {
+			ruleToggles = append(ruleToggles, model.RuleToggleOverride{RuleID: t.RuleID, Enabled: t.Enabled})
+		}
+	} else {
+		ruleToggles = append(ruleToggles, existingDetail.RuleConfig.RuleToggleOverrides...)
+	}
+	customRules := existingDetail.RuleConfig.CustomRules
+	if perms.AllowCustomRules {
+		customRules = versionedCustomRules(req.RuleConfig.CustomRules, existingDetail.RuleConfig.CustomRules, baseVersion.VersionNo, nextPersonalVersion)
+	}
+
 	newDetail := model.ArchiveDetailItem{
 		ConfigID:          configID,
 		ProcessType:       processType,
 		BaseConfigVersion: baseVersion.VersionNo,
 		PersonalVersion:   nextPersonalVersion,
 		FieldConfig: model.FieldConfig{
-			FieldMode:      req.FieldConfig.FieldMode,
 			FieldOverrides: req.FieldConfig.FieldOverrides,
 		},
 		RuleConfig: model.RuleConfig{
-			CustomRules:         versionedCustomRules(req.RuleConfig.CustomRules, existingDetail.RuleConfig.CustomRules, baseVersion.VersionNo, nextPersonalVersion),
-			RuleToggleOverrides: make([]model.RuleToggleOverride, len(req.RuleConfig.RuleToggleOverrides)),
+			CustomRules:         customRules,
+			RuleToggleOverrides: ruleToggles,
 		},
 		AIConfig: model.UserAIConfig{
 			StrictnessOverride: req.AIConfig.StrictnessOverride,
 		},
-	}
-	for i, t := range req.RuleConfig.RuleToggleOverrides {
-		newDetail.RuleConfig.RuleToggleOverrides[i] = model.RuleToggleOverride{RuleID: t.RuleID, Enabled: t.Enabled}
 	}
 
 	found := false

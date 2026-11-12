@@ -15,7 +15,7 @@ func TestAuditAIConfigFromTemplatesAppliesPersonalStrictness(t *testing.T) {
 		{PromptType: "user", Phase: "reasoning", Content: "宽松用户推理"},
 		{PromptType: "system", Phase: "extraction", Content: "宽松系统提取"},
 		{PromptType: "user", Phase: "extraction", Content: "宽松用户提取"},
-	}, model.AIConfigData{SkipEmptyFields: true, SkipEmptyFieldKeys: []string{"main:remark"}})
+	}, model.AIConfigData{SkipEmptyFields: true, SkipEmptyFieldKeys: []string{"main:remark"}, EnableThinking: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,6 +29,9 @@ func TestAuditAIConfigFromTemplatesAppliesPersonalStrictness(t *testing.T) {
 	if !got.SkipEmptyFields || len(got.SkipEmptyFieldKeys) != 1 || got.SkipEmptyFieldKeys[0] != "main:remark" {
 		t.Fatal("个人审核尺度不得丢失空值传输策略")
 	}
+	if !got.EnableThinking {
+		t.Fatal("个人审核尺度不得丢失租户深度思考设置")
+	}
 }
 
 func TestArchiveAIConfigFromTemplatesOnlyUsesMatchingModuleAndStrictness(t *testing.T) {
@@ -38,7 +41,7 @@ func TestArchiveAIConfigFromTemplatesOnlyUsesMatchingModuleAndStrictness(t *test
 		{PromptKey: "archive_system_reasoning_loose", Strictness: &loose, PromptType: "system", Phase: "reasoning", Content: "宽松归档推理"},
 		{PromptKey: "archive_system_reasoning_standard", Strictness: &standard, PromptType: "system", Phase: "reasoning", Content: "标准归档推理"},
 		{PromptKey: "audit_user_reasoning_loose", Strictness: &loose, PromptType: "user", Phase: "reasoning", Content: "错误模块"},
-	}, model.ArchiveAIConfigData{SkipEmptyFieldKeys: []string{"form_dt1:remark"}})
+	}, model.ArchiveAIConfigData{SkipEmptyFieldKeys: []string{"form_dt1:remark"}, EnableThinking: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,6 +54,9 @@ func TestArchiveAIConfigFromTemplatesOnlyUsesMatchingModuleAndStrictness(t *test
 	}
 	if got.SkipEmptyFields || len(got.SkipEmptyFieldKeys) != 1 || got.SkipEmptyFieldKeys[0] != "form_dt1:remark" {
 		t.Fatal("个人复核尺度不得丢失空值传输策略")
+	}
+	if !got.EnableThinking {
+		t.Fatal("个人复核尺度不得丢失租户深度思考设置")
 	}
 }
 

@@ -27,6 +27,8 @@ POST /api/tenant/rules/configs
 `access_control.allow_all=true` 时允许当前租户内所有成员访问，不需要逐个选择。
 关闭“所有人”后，`allowed_roles`、`allowed_members`、`allowed_departments` 按“任一命中即允许”解释；
 三项全部为空或 JSON 无法解析时默认拒绝前台访问，`tenant_admin` 不会自动绕过此业务访问控制。
+该名单只约束工作台与批量执行入口；OA 嵌入审核由租户/流程的 `embed_enabled` 和 OA 页面可见性控制，
+标准视角以租户管理员身份执行，不套用此名单。配置 `status=inactive` 时，列表、嵌入、定时任务和直接执行入口均拒绝执行。
 
 ---
 

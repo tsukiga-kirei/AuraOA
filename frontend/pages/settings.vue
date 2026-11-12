@@ -450,7 +450,6 @@ const handleSaveWorkbench = async () => {
     base_config_version: cfg.current_base_config_version,
     personal_version: cfg.personal_version,
     field_config: {
-      field_mode: perms.allow_custom_fields ? cfg.field_mode : 'all',
       field_overrides: perms.allow_custom_fields && cfg.field_mode === 'selected' ? selectedKeys : [],
     },
     rule_config: {
@@ -740,7 +739,6 @@ const handleSaveArchive = async () => {
     base_config_version: cfg.current_base_config_version,
     personal_version: cfg.personal_version,
     field_config: {
-      field_mode: perms.allow_custom_fields ? cfg.field_mode : 'all',
       field_overrides: perms.allow_custom_fields && cfg.field_mode === 'selected' ? selectedKeys : [],
     },
     rule_config: {
@@ -1235,6 +1233,9 @@ const handleSaveSummary = async () => {
             <!-- 租户规则 -->
             <div class="section-header-row">
               <h4 class="config-section-title">{{ t('settings.workbench.tenantRules') }}</h4>
+              <span v-if="!fullProcessConfig.user_permissions.allow_custom_rules" class="locked-tag">
+                <LockOutlined /> {{ t('settings.workbench.lockedByAdmin') }}
+              </span>
             </div>
             <div v-if="fullProcessConfig.tenant_rules.length" class="rule-config-list">
               <div v-for="rule in fullProcessConfig.tenant_rules" :key="rule.id" class="rule-config-item">
@@ -1257,7 +1258,7 @@ const handleSaveSummary = async () => {
                     }"
                   >{{ scopeConfig[rule.rule_scope]?.label }}</span>
                 </div>
-                <a-switch v-model:checked="rule.enabled" size="small" :disabled="rule.rule_scope === 'mandatory'" />
+                <a-switch v-model:checked="rule.enabled" size="small" :disabled="rule.rule_scope === 'mandatory' || !fullProcessConfig.user_permissions.allow_custom_rules" />
               </div>
             </div>
             <div v-else class="field-empty-hint">{{ t('settings.workbench.noTenantRules') }}</div>
@@ -1663,6 +1664,9 @@ const handleSaveSummary = async () => {
             <!-- 租户规则 -->
             <div class="section-header-row">
               <h4 class="config-section-title">{{ t('settings.archive.tenantRules') }}</h4>
+              <span v-if="!fullArchiveConfig.user_permissions.allow_custom_rules" class="locked-tag">
+                <LockOutlined /> {{ t('settings.workbench.lockedByAdmin') }}
+              </span>
             </div>
             <div v-if="fullArchiveConfig.tenant_rules.length" class="rule-config-list">
               <div v-for="rule in fullArchiveConfig.tenant_rules" :key="rule.id" class="rule-config-item">
@@ -1685,7 +1689,7 @@ const handleSaveSummary = async () => {
                     }"
                   >{{ scopeConfig[rule.rule_scope]?.label }}</span>
                 </div>
-                <a-switch v-model:checked="rule.enabled" size="small" :disabled="rule.rule_scope === 'mandatory'" />
+                <a-switch v-model:checked="rule.enabled" size="small" :disabled="rule.rule_scope === 'mandatory' || !fullArchiveConfig.user_permissions.allow_custom_rules" />
               </div>
             </div>
             <div v-else class="field-empty-hint">{{ t('settings.archive.noTenantRules') }}</div>

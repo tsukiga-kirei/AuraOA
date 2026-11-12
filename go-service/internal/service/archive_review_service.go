@@ -1100,7 +1100,7 @@ func (s *ArchiveReviewService) GetArchiveJobStatus(c *gin.Context, id uuid.UUID)
 	}
 	out := buildArchiveResultFromLog(logEntry)
 	out["updated_at"] = apptime.FormatRFC3339(logEntry.UpdatedAt)
-	out["progress_steps"] = archiveProgressSteps(logEntry.Status, len(logEntry.AIRecheck) > 2)
+	out["progress_steps"] = archiveProgressSteps(logEntry.Status, len(logEntry.AIRecheck) > 2, archiveFailureStage(logEntry))
 	appendReviewStageSnapshots(c.Request.Context(), s.rdb, "archive", id, out)
 	return out, nil
 }
@@ -1205,6 +1205,9 @@ func (s *ArchiveReviewService) createPendingArchiveLog(c *gin.Context, req *dto.
 	cfg, rules, err := s.getArchiveConfigCached(c, tenantID, req.ProcessType)
 	if err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, fmt.Sprintf("流程 '%s' 的归档复盘配置不存在", req.ProcessType))
+	}
+	if cfg.Status != "active" {
+		return uuid.Nil, uuid.Nil, uuid.Nil, newServiceError(errcode.ErrNoProcessConfig, fmt.Sprintf("流程 '%s' 的归档复盘配置已停用", req.ProcessType))
 	}
 	allowed, err := s.userCanAccessArchive(c, tenantID, userID, cfg)
 	if err != nil {
@@ -1440,14 +1443,18 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 	}
 
 	archivedItem, _ := s.fetchArchivedItem(ctx, adapter, logEntry.ProcessID)
-	flowSnapshot, err := adapter.FetchProcessFlow(ctx, logEntry.ProcessID)
-	if err != nil || flowSnapshot == nil {
-		flowSnapshot = &oa.ProcessFlowSnapshot{
-			IsComplete:   true,
-			MissingNodes: []string{},
-			Nodes:        []oa.ProcessFlowNode{},
-			HistoryText:  "",
-			GraphText:    "",
+	// 与审核侧对称：仅在提示词引用审批流或有启用规则关联审批流时拉取，失败时不阻塞主流程。
+	var flowSnapshot *oa.ProcessFlowSnapshot
+	if needsArchiveFlowContext(&aiConfig, rules) {
+		flowSnapshot, err = adapter.FetchProcessFlow(ctx, logEntry.ProcessID)
+		if err != nil || flowSnapshot == nil {
+			flowSnapshot = &oa.ProcessFlowSnapshot{
+				IsComplete:   true,
+				MissingNodes: []string{},
+				Nodes:        []oa.ProcessFlowNode{},
+				HistoryText:  "",
+				GraphText:    "",
+			}
 		}
 	}
 
@@ -1506,6 +1513,12 @@ func (s *ArchiveReviewService) processArchiveJob(ctx context.Context, archiveLog
 
 	feedbackMemoryText, memoryErr := s.feedbackMemory.RuntimeText(c, "archive", logEntry.ProcessType)
 	if memoryErr != nil {
+		// 与审核侧对称：读取失败立即落终态，避免任务长时间停在 assembling。
+		s.markArchiveFailedOrTimeout(c, tenantID, archiveLogID, memoryErr)
+		tlog.Warn("归档复盘任务执行失败",
+			zap.String("archiveLogID", archiveLogID.String()),
+			zap.Error(memoryErr),
+		)
 		return memoryErr
 	}
 	if s.sysFlags != nil && s.sysFlags.DataEncryptionEnabled() {
@@ -1906,7 +1919,7 @@ func (s *ArchiveReviewService) resolveArchiveUserConfig(
 	}
 
 	fieldSet := s.resolveArchiveFieldSet(config, userDetail, perms)
-	effectiveRules := resolveEffectiveArchiveRules(tenantRules, userDetail)
+	effectiveRules := resolveEffectiveArchiveRules(tenantRules, userDetail, perms.AllowCustomRules)
 	rulesText := s.resolveArchiveRulesText(effectiveRules, userDetail, perms)
 	strictness := ""
 	personalVersion := 0
@@ -1921,11 +1934,31 @@ func (s *ArchiveReviewService) resolveArchiveUserConfig(
 	return fieldSet, rulesText, effectiveRules, effectiveAIConfig, personalVersion, nil
 }
 
+// needsArchiveFlowContext 判断本次归档复盘是否需要审批流快照：
+// 推理提示词显式引用审批流/当前节点，或至少一条启用规则标记为关联审批流。
+func needsArchiveFlowContext(aiConfig *model.ArchiveAIConfigData, rules []model.ArchiveRule) bool {
+	if aiConfig != nil {
+		prompt := aiConfig.UserReasoningPrompt
+		if strings.Contains(prompt, "{{flow_history}}") ||
+			strings.Contains(prompt, "{{flow_graph}}") ||
+			strings.Contains(prompt, "{{current_node}}") {
+			return true
+		}
+	}
+	for i := range rules {
+		if rules[i].IsEnabled() && rules[i].RelatedFlow {
+			return true
+		}
+	}
+	return false
+}
+
 // resolveEffectiveArchiveRules 以租户归档规则为底座，仅叠加个人开关。
 // 个人配置不能创造或替换租户规则；mandatory 规则始终启用。
-func resolveEffectiveArchiveRules(tenantRules []model.ArchiveRule, userDetail *model.ArchiveDetailItem) []model.ArchiveRule {
+// allowToggle=false（租户关闭“自定义审核规则”）时忽略已保存的规则开关覆盖。
+func resolveEffectiveArchiveRules(tenantRules []model.ArchiveRule, userDetail *model.ArchiveDetailItem, allowToggle bool) []model.ArchiveRule {
 	toggleMap := make(map[string]bool)
-	if userDetail != nil {
+	if allowToggle && userDetail != nil {
 		for _, toggle := range userDetail.RuleConfig.RuleToggleOverrides {
 			toggleMap[toggle.RuleID] = toggle.Enabled
 		}
@@ -2005,7 +2038,7 @@ func (s *ArchiveReviewService) resolveArchiveRulesText(
 	}
 
 	toggleMap := map[string]bool{}
-	if userDetail != nil {
+	if perms.AllowCustomRules && userDetail != nil {
 		for _, toggle := range userDetail.RuleConfig.RuleToggleOverrides {
 			toggleMap[toggle.RuleID] = toggle.Enabled
 		}
@@ -2235,7 +2268,27 @@ func emptyArchiveFlowAuditMap() map[string]interface{} {
 	}
 }
 
-func archiveProgressSteps(status string, recheck ...bool) []map[string]interface{} {
+// archiveFailureStage 推断失败任务实际停在哪个阶段，避免把早期失败误标成 AI 复核失败。
+func archiveFailureStage(logEntry *model.ArchiveLog) string {
+	if logEntry == nil || logEntry.Status != model.JobStatusFailed {
+		return ""
+	}
+	var record model.AIRecheckRecord
+	if json.Unmarshal(logEntry.AIRecheck, &record) == nil &&
+		(record.RetryOnly || len(record.OriginalResult) > 0 || record.Status == "running" || record.Status == "completed") {
+		return model.JobStatusRechecking
+	}
+	if strings.TrimSpace(logEntry.RawContent) != "" || strings.TrimSpace(logEntry.AIReasoning) != "" {
+		return model.JobStatusExtracting
+	}
+	// 进入推理阶段时先写入流程快照，可用于区分组装阶段与推理阶段。
+	if len(logEntry.ProcessSnapshot) > 2 {
+		return model.JobStatusReasoning
+	}
+	return model.JobStatusAssembling
+}
+
+func archiveProgressSteps(status string, recheckPlanned bool, failedStage string) []map[string]interface{} {
 	defs := []struct {
 		key   string
 		label string
@@ -2245,7 +2298,7 @@ func archiveProgressSteps(status string, recheck ...bool) []map[string]interface
 		{model.JobStatusReasoning, "推理分析"},
 		{model.JobStatusExtracting, "结构化提取"},
 	}
-	if status == model.JobStatusRechecking || (len(recheck) > 0 && recheck[0]) {
+	if status == model.JobStatusRechecking || recheckPlanned {
 		defs = append(defs, struct {
 			key   string
 			label string
@@ -2263,9 +2316,12 @@ func archiveProgressSteps(status string, recheck ...bool) []map[string]interface
 		if status == model.JobStatusCompleted {
 			cur = len(defs) - 1
 		} else if status == model.JobStatusFailed {
-			cur = 2
-			if len(defs) == 5 {
-				cur = 4
+			cur = 1
+			if idx, found := phaseIdx[failedStage]; found {
+				cur = idx
+			}
+			if cur >= len(defs) {
+				cur = len(defs) - 1
 			}
 		} else {
 			cur = 0

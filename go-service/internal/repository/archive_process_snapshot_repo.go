@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/apptime"
@@ -26,17 +27,16 @@ func NewArchiveProcessSnapshotRepo(db *gorm.DB) *ArchiveProcessSnapshotRepo {
 }
 
 // UpsertAppendValid 成功解析后追加 archive_logs id。
+// 并发完成同一流程时通过唯一键 + 行锁串行化，避免读改写丢失 id 或唯一键冲突。
 func (r *ArchiveProcessSnapshotRepo) UpsertAppendValid(c *gin.Context, tenantID uuid.UUID, processID string, archiveLogID uuid.UUID, title, processType, compliance string, complianceScore, confidence int) error {
-	var existing model.ArchiveProcessSnapshot
-	err := r.WithTenant(c).Where("process_id = ?", processID).First(&existing).Error
 	now := apptime.Now()
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		ids := []string{archiveLogID.String()}
-		b, _ := json.Marshal(ids)
+	initialIDs, _ := json.Marshal([]string{archiveLogID.String()})
+	// 不绑定请求/任务上下文：任务收尾时上下文可能已取消或超时。
+	return r.DB.Transaction(func(tx *gorm.DB) error {
 		row := &model.ArchiveProcessSnapshot{
 			TenantID:                tenantID,
 			ProcessID:               processID,
-			ValidArchiveLogIDs:      datatypes.JSON(b),
+			ValidArchiveLogIDs:      datatypes.JSON(initialIDs),
 			LatestValidArchiveLogID: archiveLogID,
 			Title:                   title,
 			ProcessType:             processType,
@@ -45,35 +45,44 @@ func (r *ArchiveProcessSnapshotRepo) UpsertAppendValid(c *gin.Context, tenantID 
 			Confidence:              confidence,
 			UpdatedAt:               now,
 		}
-		return r.DB.Create(row).Error
-	}
-	if err != nil {
-		return err
-	}
-
-	var uuidStrs []string
-	_ = json.Unmarshal(existing.ValidArchiveLogIDs, &uuidStrs)
-	found := false
-	for _, id := range uuidStrs {
-		if id == archiveLogID.String() {
-			found = true
-			break
+		if err := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "process_id"}},
+			DoNothing: true,
+		}).Create(row).Error; err != nil {
+			return err
 		}
-	}
-	if !found {
-		uuidStrs = append(uuidStrs, archiveLogID.String())
-	}
-	b, _ := json.Marshal(uuidStrs)
-	return r.WithTenant(c).Model(&model.ArchiveProcessSnapshot{}).Where("id = ?", existing.ID).Updates(map[string]interface{}{
-		"valid_archive_log_ids":       datatypes.JSON(b),
-		"latest_valid_archive_log_id": archiveLogID,
-		"title":                       title,
-		"process_type":                processType,
-		"compliance":                  compliance,
-		"compliance_score":            complianceScore,
-		"confidence":                  confidence,
-		"updated_at":                  now,
-	}).Error
+
+		var existing model.ArchiveProcessSnapshot
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("tenant_id = ? AND process_id = ?", tenantID, processID).
+			First(&existing).Error; err != nil {
+			return err
+		}
+
+		var logIDs []string
+		_ = json.Unmarshal(existing.ValidArchiveLogIDs, &logIDs)
+		found := false
+		for _, id := range logIDs {
+			if id == archiveLogID.String() {
+				found = true
+				break
+			}
+		}
+		if !found {
+			logIDs = append(logIDs, archiveLogID.String())
+		}
+		encoded, _ := json.Marshal(logIDs)
+		return tx.Model(&model.ArchiveProcessSnapshot{}).Where("id = ?", existing.ID).Updates(map[string]interface{}{
+			"valid_archive_log_ids":       datatypes.JSON(encoded),
+			"latest_valid_archive_log_id": archiveLogID,
+			"title":                       title,
+			"process_type":                processType,
+			"compliance":                  compliance,
+			"compliance_score":            complianceScore,
+			"confidence":                  confidence,
+			"updated_at":                  now,
+		}).Error
+	})
 }
 
 // GetByProcessID 单流程快照。

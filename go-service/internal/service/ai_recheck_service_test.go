@@ -275,7 +275,7 @@ func TestAIRecheckConfigVersionIsolation(t *testing.T) {
 	if normalizedAIConfigContent(datatypes.JSON(legacy))["recheck"] != nil {
 		t.Fatal("默认结构不能使旧配置指纹变化")
 	}
-	if len(auditProgressSteps("completed")) != 5 || len(auditProgressSteps("completed", true)) != 6 || len(archiveProgressSteps("rechecking")) != 5 {
+	if len(auditProgressSteps("completed", false, "")) != 5 || len(auditProgressSteps("completed", true, "")) != 6 || len(archiveProgressSteps("rechecking", false, "")) != 5 {
 		t.Fatal("进度必须按配置区分两阶段与三阶段")
 	}
 }

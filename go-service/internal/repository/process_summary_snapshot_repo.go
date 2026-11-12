@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"auraoa/go-service/internal/model"
 	"auraoa/go-service/internal/pkg/apptime"
@@ -25,48 +26,56 @@ func NewProcessSummarySnapshotRepo(db *gorm.DB) *ProcessSummarySnapshotRepo {
 }
 
 func (r *ProcessSummarySnapshotRepo) UpsertAppendValid(c *gin.Context, tenantID uuid.UUID, processID string, logID uuid.UUID, title, processType string, blockCount int) error {
-	var existing model.ProcessSummarySnapshot
-	err := r.WithTenant(c).Where("process_id = ?", processID).First(&existing).Error
 	now := apptime.Now()
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		ids := []string{logID.String()}
-		b, _ := json.Marshal(ids)
+	initialIDs, _ := json.Marshal([]string{logID.String()})
+	// 与审核/归档快照一致：并发完成时用唯一键 + 行锁串行追加，避免丢 id 或唯一键冲突。
+	return r.DB.Transaction(func(tx *gorm.DB) error {
 		row := &model.ProcessSummarySnapshot{
 			TenantID:         tenantID,
 			ProcessID:        processID,
-			ValidLogIDs:      datatypes.JSON(b),
+			ValidLogIDs:      datatypes.JSON(initialIDs),
 			LatestValidLogID: logID,
 			Title:            title,
 			ProcessType:      processType,
 			BlockCount:       blockCount,
 			UpdatedAt:        now,
 		}
-		return r.DB.Create(row).Error
-	}
-	if err != nil {
-		return err
-	}
-	var uuidStrs []string
-	_ = json.Unmarshal(existing.ValidLogIDs, &uuidStrs)
-	found := false
-	for _, id := range uuidStrs {
-		if id == logID.String() {
-			found = true
-			break
+		if err := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "process_id"}},
+			DoNothing: true,
+		}).Create(row).Error; err != nil {
+			return err
 		}
-	}
-	if !found {
-		uuidStrs = append(uuidStrs, logID.String())
-	}
-	b, _ := json.Marshal(uuidStrs)
-	return r.WithTenant(c).Model(&model.ProcessSummarySnapshot{}).Where("id = ?", existing.ID).Updates(map[string]interface{}{
-		"valid_log_ids":       datatypes.JSON(b),
-		"latest_valid_log_id": logID,
-		"title":               title,
-		"process_type":        processType,
-		"block_count":         blockCount,
-		"updated_at":          now,
-	}).Error
+
+		var existing model.ProcessSummarySnapshot
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("tenant_id = ? AND process_id = ?", tenantID, processID).
+			First(&existing).Error; err != nil {
+			return err
+		}
+
+		var logIDs []string
+		_ = json.Unmarshal(existing.ValidLogIDs, &logIDs)
+		found := false
+		for _, id := range logIDs {
+			if id == logID.String() {
+				found = true
+				break
+			}
+		}
+		if !found {
+			logIDs = append(logIDs, logID.String())
+		}
+		encoded, _ := json.Marshal(logIDs)
+		return tx.Model(&model.ProcessSummarySnapshot{}).Where("id = ?", existing.ID).Updates(map[string]interface{}{
+			"valid_log_ids":       datatypes.JSON(encoded),
+			"latest_valid_log_id": logID,
+			"title":               title,
+			"process_type":        processType,
+			"block_count":         blockCount,
+			"updated_at":          now,
+		}).Error
+	})
 }
 
 func (r *ProcessSummarySnapshotRepo) GetByProcessID(c *gin.Context, processID string) (*model.ProcessSummarySnapshot, error) {
